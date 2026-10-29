@@ -1,0 +1,11 @@
+# The two programs are their own git checkouts, with their own history.
+# This repo only tracks the fusion layer that wires them together.
+la-fabrique/
+profesor3/
+
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.fusion/
+*.log
