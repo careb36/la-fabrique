@@ -377,6 +377,15 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 print("✓  Fábrica en marcha.", flush=True)
 
+        if args.assistant_only and not _wait_until_up(url, timeout=5.0):
+            print(
+                f"✗  No hay ninguna fábrica en {url}: no configuro el asistente "
+                "para hablar con un servicio que no es la fábrica. Arranca el "
+                "backend primero (python run_fusion.py --backend-only).",
+                file=sys.stderr,
+            )
+            return 1
+
         if not args.no_bootstrap:
             company_id = _ensure_company(url, key, args.company) if key_ok else None
         else:
