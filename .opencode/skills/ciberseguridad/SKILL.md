@@ -1,6 +1,6 @@
 ---
 name: Ciberseguridad y OWASP
-description: Desarrollo seguro en cualquier proyecto de Dev: OWASP Top 10, modelado de amenazas con OWASP pytm, bandit/pip-audit o equivalentes, validación de entradas, rutas, red, secretos, salidas, LLM y evidencias.
+description: Desarrollo seguro en cualquier proyecto: OWASP Top 10, modelado de amenazas con OWASP pytm, bandit/pip-audit o equivalentes, validación de entradas, rutas, red, secretos, salidas, LLM y evidencias.
 ---
 
 # Ciberseguridad y OWASP
@@ -9,7 +9,7 @@ Usar esta skill al agregar o cambiar entradas, archivos, red, dependencias,
 autenticación, APIs, prompts/LLM, contenedores o despliegue. Las compuertas se
 ejecutan y se revisan; no se silencian.
 
-Esta es la versión **portable** para los proyectos de `/home/caro/Dev`. Si el
+Esta es la versión **portable**, válida para cualquier proyecto. Si el
 proyecto tiene una skill local `ciberseguridad`, esa prevalece y esta sirve de
 base.
 

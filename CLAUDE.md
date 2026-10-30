@@ -353,6 +353,7 @@ Test files:
 | `test_workspace_host.py` | Daemon folder browsing, git remote/branch inspection, snapshots, Windows shell/roots; `/v1/workspace/*` relay and discovery through the daemon |
 | `test_audit_chain.py` | The audit hash chain per company: numbered and linked rows, each company its own chain, a deleted, altered or moved row breaks it where it was, a chain rewritten without the key does not verify, unkeyed chains say so, rows without a company stay unchained, KPI turn rows are signed and chained too |
 | `test_tenant_scoping.py` | Every table carries a required `company_id` that references `companies`, or is listed with its reason (the tenant, users, help-desk tickets, the outbox, backlog items through their sprint); `audit_log` alone may hold rows without a company; the lists hold no stale names |
+| `test_exception_handlers.py` | The catch-all 500: it says a report was sent only when the support webhook took it, names the installation from `FABRIQUE_VENDOR_ID`, and publishes the incident ticket on NATS |
 | `test_metrics.py` | `/metrics` labels requests by route template, a fixed route by its path, a CORS preflight as `preflight` and a path no route answered as `unmatched`; memory search caps its `limit` |
 
 **End to end, against a real stack:** `scripts/e2e/run.sh` starts the backend,
@@ -414,11 +415,11 @@ repo root with the proxy's Poetry environment plus
 `llm-proxy/requirements-dev.txt`: `python -m pytest llm-proxy/tests -q`. CI
 runs it after the backend tests.
 
-CI jobs run on the self-hosted runner labelled `lafabrique`
-(`runs-on: [self-hosted, linux, x64, lafabrique]`), not on GitHub-hosted
-machines; only the SLSA release generator stays on `ubuntu-latest`. The
-runner keeps its state between jobs, so a job cleans up what it starts (the
-e2e removes its NATS container) and avoids the ports a local stack uses.
+CI jobs run on GitHub-hosted runners (`runs-on: ubuntu-latest`). The
+repository is public, so a self-hosted runner would run code from any fork's
+pull request on that machine; keep every workflow on hosted runners. The e2e
+still names its containers per run and lets Docker pick their ports, so it
+is safe wherever it runs.
 
 CI runs this suite on every pull request that touches `backend/` or the
 workflow itself, and on pushes to `main`

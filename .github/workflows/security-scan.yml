@@ -9,15 +9,15 @@ on:
     - cron: '0 6 * * 1'
 
 
-# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
-# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
+# en vez de encolarse.
 concurrency:
   group: security-scan-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   security:
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read

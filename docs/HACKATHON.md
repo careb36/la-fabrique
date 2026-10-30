@@ -89,7 +89,7 @@ with its real result, not estimated.
 | LLM proxy tests | `cd llm-proxy && poetry run python -m pytest tests -q` | 24 passed |
 
 Continuous integration runs on every pull request (path-filtered backend,
-frontend, proxy, e2e, security and file-size jobs) on a self-hosted runner.
+frontend, proxy, e2e, security and file-size jobs) on GitHub-hosted runners.
 
 ## What the judges should look at
 

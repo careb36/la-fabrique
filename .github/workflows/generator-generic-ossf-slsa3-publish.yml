@@ -11,8 +11,8 @@ on:
     types: [created]
 
 
-# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
-# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
+# en vez de encolarse.
 concurrency:
   group: slsa3-${{ github.ref }}
   cancel-in-progress: true

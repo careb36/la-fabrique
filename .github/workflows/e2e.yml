@@ -18,8 +18,8 @@ on:
       - '.github/workflows/e2e.yml'
 
 
-# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
-# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
+# en vez de encolarse.
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -31,10 +31,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    # Runs on the self-hosted runner like every other workflow: hosted runners
-    # are blocked by the account's spending limit, so a job on ubuntu-latest
-    # never starts and reports a failure it never produced.
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
 
@@ -63,10 +60,10 @@ jobs:
         run: |
           # Docker itself picks the port (empty host side of -p), then the
           # mapping is read back. Binding an ephemeral port in Python and
-          # passing it to Docker loses a race: this host runs several
-          # self-hosted agents against one Docker daemon, so two concurrent
-          # e2e runs get the same free port and the second container cannot
-          # bind it ("pg_isready: rejecting connections" for a minute).
+          # passing it to Docker loses a race when several jobs share one
+          # Docker daemon: two concurrent e2e runs get the same free port and
+          # the second container cannot bind it ("pg_isready: rejecting
+          # connections" for a minute).
           #
           # A service container cannot be given arguments and the stock NATS
           # image starts without JetStream, which the backend needs for the
@@ -118,9 +115,9 @@ jobs:
       - name: Install the backend
         working-directory: ./backend
         run: |
-          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
-          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
-          # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
+          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y
+          # puede encontrar uno ajeno al job (con otro Python), instalar Poetry
+          # ahí, fuera del PATH, y el siguiente paso muere con
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
           poetry env use python
