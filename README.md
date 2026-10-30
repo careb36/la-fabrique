@@ -252,7 +252,10 @@ Linux/macOS:
 ```bash
 python3 -m venv .venv-backend
 .venv-backend/bin/pip install poetry
+export VIRTUAL_ENV="$PWD/.venv-backend"
+export POETRY_VIRTUALENVS_CREATE=false
 (cd la-fabrique/backend && ../../.venv-backend/bin/poetry install)
+unset VIRTUAL_ENV POETRY_VIRTUALENVS_CREATE
 
 python3 -m venv asistente-b1/.venv
 (cd asistente-b1 && .venv/bin/pip install -e ".[ui,voice]")
