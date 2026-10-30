@@ -22,13 +22,18 @@ import mimetypes
 import os
 from pathlib import Path
 
+from auth_policy import ROLE_RANK
+from database import get_session
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
-from llm.model_factory import AgentRole, ModelFactory
 from llm_proxy_client import LLMProxyClient
+from models import CompanyMember
 from pydantic import BaseModel, Field
-from routers.voice import VoiceCaller, voice_access
 from services import codegen, voice_control
+from sqlmodel import Session, select
+
+from llm.model_factory import AgentRole, ModelFactory
+from routers.voice_support import VoiceCaller, voice_access
 
 router = APIRouter(prefix="/v1/voice", tags=["Voice"])
 
@@ -37,7 +42,7 @@ _LANGUAGE = "es"
 # A generated page is untrusted content: it may run its own script, but not
 # talk to this origin, read cookies or navigate the top window away.
 _PREVIEW_HEADERS = {
-    "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-popups",
+    "Content-Security-Policy": "sandbox allow-scripts allow-popups",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
 }
@@ -46,15 +51,28 @@ _PREVIEW_HEADERS = {
 class VoiceBuildRequest(BaseModel):
     """One build request, in the words the person used."""
 
-    texto: str = Field(description="What to build, verbatim.")
-    nombre: str | None = Field(default=None, description="Optional project name.")
+    texto: str = Field(max_length=4000, description="What to build, verbatim.")
+    nombre: str | None = Field(
+        default=None, max_length=120, description="Optional project name."
+    )
     language: str | None = None
+
+
+def _manages_a_company(session: Session, user) -> bool:
+    roles = session.exec(
+        select(CompanyMember.human_role).where(CompanyMember.user_id == user.id)
+    ).all()
+    return any(ROLE_RANK.get(role, 0) >= ROLE_RANK["Manager"] for role in roles)
 
 
 def builds_root() -> Path:
     """Where generated projects live; ``FABRICA_BUILDS_DIR`` overrides it."""
     configured = (os.getenv("FABRICA_BUILDS_DIR") or "").strip()
-    root = Path(configured) if configured else (Path(__file__).resolve().parents[2] / "builds")
+    root = (
+        Path(configured)
+        if configured
+        else (Path(__file__).resolve().parents[2] / "builds")
+    )
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -74,8 +92,11 @@ def _candidate_models() -> list[str]:
         os.getenv("NEMOTRON_MODEL_STRATEGIC", "").strip(),
         ModelFactory.ROLE_MODEL_MAP[AgentRole.DEVELOPER].model_name.strip(),
     ]
-    return [model for index, model in enumerate(candidates)
-            if model and model not in candidates[:index]]
+    return [
+        model
+        for index, model in enumerate(candidates)
+        if model and model not in candidates[:index]
+    ]
 
 
 def _codegen_switches(model: str) -> dict:
@@ -100,10 +121,13 @@ def _chat(messages: list[dict]) -> str:
     client = LLMProxyClient()
     failures: list[str] = []
     for model in _candidate_models():
-        result = client.chat(messages, model=model,
-                             role=AgentRole.DEVELOPER.value,
-                             max_tokens=codegen.MAX_ANSWER_TOKENS,
-                             extra=_codegen_switches(model))
+        result = client.chat(
+            messages,
+            model=model,
+            role=AgentRole.DEVELOPER.value,
+            max_tokens=codegen.MAX_ANSWER_TOKENS,
+            extra=_codegen_switches(model),
+        )
         if isinstance(result, dict) and not result.get("error"):
             try:
                 return str(result["choices"][0]["message"]["content"])
@@ -115,7 +139,8 @@ def _chat(messages: list[dict]) -> str:
     # Spoken, so short and free of hostnames: the detail travels in data.error.
     failure = codegen.CodegenError(
         "No pude hablar con el proxy de modelos. Revisá que esté arriba y que "
-        "la clave del proveedor sea válida.")
+        "la clave del proveedor sea válida."
+    )
     failure.detail = "; ".join(failures)
     raise failure
 
@@ -123,10 +148,24 @@ def _chat(messages: list[dict]) -> str:
 @router.post("/build")
 def voice_build(
     req: VoiceBuildRequest,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
     caller: VoiceCaller = Depends(voice_access),  # noqa: B008 - FastAPI dependency marker.
 ) -> dict:
     """Build the project the person described and leave it ready to open."""
     language = voice_control.normalize_language(req.language or _LANGUAGE)
+    # Each build spends model tokens: a signed-in caller must be a Manager of
+    # some company, the same bar as starting a sprint. The shared key (or a
+    # demo without authentication) needs no company: builds belong to none.
+    if caller.user is not None and not _manages_a_company(session, caller.user):
+        return _reply(
+            False,
+            voice_control.say(
+                language,
+                "No tienes permiso para construir: hace falta ser Manager de una empresa.",
+                "You do not have permission to build: you need to be a Manager of a company.",
+            ),
+            language,
+        )
     text = " ".join((req.texto or "").split())
     if not text:
         return _reply(
@@ -144,8 +183,9 @@ def voice_build(
     try:
         result = codegen.build(builds_root(), text, _chat)
     except codegen.CodegenError as exc:
-        return _reply(False, str(exc), language,
-                      {"error": getattr(exc, "detail", str(exc))})
+        return _reply(
+            False, str(exc), language, {"error": getattr(exc, "detail", str(exc))}
+        )
 
     files = result["files"]
     listing = ", ".join(files[:4]) + ("…" if len(files) > 4 else "")

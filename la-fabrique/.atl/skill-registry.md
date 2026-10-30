@@ -38,6 +38,5 @@ See `_shared/skill-resolver.md` for the full resolution protocol.
 
 | File | Path | Notes |
 |------|------|-------|
-| REFACTORING_PLAN.md | REFACTORING_PLAN.md | Roadmap and status of the project refactor. |
 | CONTRIBUTING.md | CONTRIBUTING.md | Git flow and commit conventions. |
 | README.md | README.md | General project overview. |

@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Read this first. `CLAUDE.md` has the long-form architecture notes (some of it
-stale — see "Docs that mislead"); `docs/POSITIONING.md` carries the project
+Read this first. `CLAUDE.md` has the long-form architecture notes (partly
+historical — see "Docs"); `docs/POSITIONING.md` carries the project
 direction and the design rules that constrain new work.
 
 ## What this repository is
@@ -17,7 +17,7 @@ product is the layer that verifies their work and records evidence.
 | `backend/app/` | FastAPI app. `main.py` only wires routers, CORS, lifecycle; `routers/` hold HTTP endpoints, `services/` the logic, `models/` the SQLModel tables |
 | `backend/agents/`, `backend/llm/`, `backend/memory/` | optional LangGraph producer, role→model map, engram processing |
 | `backend/janitor/` | daily cleanup/reindex container |
-| `backend/tests/` | pytest suite, 50 modules |
+| `backend/tests/` | pytest suite, 57 modules |
 | `frontend/` | React 18 + Vite + TypeScript + Tailwind; `electron/` for the desktop build |
 | `llm-proxy/` | Flask gateway (per-company token budgets, model routing) with its own tests |
 | `vscode-daemon/` | host-side NATS consumer that writes files and runs commands |
@@ -37,7 +37,7 @@ All of these were run green on `main`; the exceptions are called out below.
 ```bash
 # Backend — no Postgres, NATS, Neo4j or LLM needed (in-memory SQLite + mocks)
 cd backend && poetry install
-cd backend && PYTHONPATH=.:app poetry run pytest tests -q        # ~50s, 665 tests
+cd backend && PYTHONPATH=.:app poetry run pytest tests -q        # ~6 min, 771 tests
 cd backend && PYTHONPATH=.:app poetry run pytest tests/test_board.py -q
 cd backend && ruff check app tests && ruff format --check app tests   # ruff==0.17.1, as CI pins it
 
@@ -57,10 +57,11 @@ make dev-frontend           # Vite alone; `make dev-llm-proxy` too
 ./scripts/start-daemon.sh   # workspace daemon, on the host, not in Docker
 ```
 
-`make dev-backend` does **not** work: it runs `poetry run uvicorn app.main:app`
-without `PYTHONPATH`, so the top-level imports fail on startup with
-`ModuleNotFoundError: No module named 'config'`. Run the backend with that
-variable, or through Docker (the image sets `PYTHONPATH=/app:/app/app`):
+The backend needs `PYTHONPATH=.:app` for its top-level imports (`from config
+import settings`, `from models.sprint import BacklogItem`). `make dev-backend`
+already sets it, and so does the Docker image (`PYTHONPATH=/app:/app/app`);
+running uvicorn by hand without it fails at startup with
+`ModuleNotFoundError: No module named 'config'`:
 
 ```bash
 cd backend && PYTHONPATH=.:app poetry run uvicorn app.main:app --reload --port 8000
@@ -160,9 +161,10 @@ venv's interpreter.
   `claude/…`), commit subjects are written in Spanish and often carry a
   Conventional Commits prefix (`docs: …`, `ci: …`, sometimes none). Fill in
   `.github/PULL_REQUEST_TEMPLATE.md` (it carries the backend and
-  frontend checklists) and reference an issue. Agents may merge their own pull
-  request once every required check on the head commit is green; a human
-  reviews and decides otherwise.
+  frontend checklists) and reference an issue. Agents merge pull requests, their
+  own and each other's, once every check on the head commit is green — all of
+  the checks that ran, not only the ones branch protection requires. No PR waits
+  for a human signature.
 - **Secrets.** Keys (`JWT_SECRET_KEY`, `FERNET_SECRET_KEY`,
   `AUDIT_SIGNING_KEY`, provider API keys) come from `.env`, which is
   git-ignored; only `.env.example` is committed. `SECURITY.md` outranks
@@ -170,8 +172,8 @@ venv's interpreter.
 
 ## CI
 
-Workflows live in `.github/workflows/` and mostly run on the self-hosted
-`[self-hosted, linux, x64, lafabrique]` runner: `backend-tests.yml` (Poetry,
+Workflows live in `.github/workflows/` and run on GitHub-hosted runners
+(`ubuntu-latest`): `backend-tests.yml` (Poetry,
 ruff, mypy, pytest, then the llm-proxy suite), `frontend-build.yml` (`npm ci`,
 tsc, lint, tests, build), `e2e.yml` (the loop against pgvector/Postgres and NATS with
 JetStream), `security-scan.yml` (Trivy, plus a non-failing `safety check`) and
@@ -185,30 +187,35 @@ A red run does not necessarily mean broken code: read the check-run
 not just the log. Two infrastructure failures look identical to test failures in
 the UI and in `--log-failed`:
 
-- *"The self-hosted runner lost communication with the server"* — the tests had
-  already passed (`665 passed`) when the runner dropped; it is the runner host,
-  not the change.
+- *"The runner has received a shutdown signal"* or *"lost communication with the
+  server"* — the runner went away mid-job; it is the runner, not the change.
 - *"The job was not started because recent account payments have failed or your
-  spending limit needs to be increased"* — a job on a hosted runner. Every
-  workflow must stay on the self-hosted label for this reason.
+  spending limit needs to be increased"* — the account's Actions billing, not
+  the change. Never move a workflow to a self-hosted runner to get around it:
+  the repository is public, and a self-hosted runner would run code from any
+  fork's pull request on that machine.
 
 The `Run tests` step also reports `conclusion: null` in that first case, which
 is the tell.
 
-## Docs that mislead
+## Docs
 
-Several top-level documents stop mid-section or describe tooling that is not
-here. Trust the code and the workflows over them:
+The documents were revised on 2026-10-30 against `main`. What is known to be
+wrong now:
 
-- `CONTRIBUTING.md` ends at "## 3. Local setup" and `CODING_STANDARDS.md` at
-  "### 3.1 Monorepo layout" — the rules survive, the details do not.
-- `TESTING_STRATEGY.md` describes Playwright, msw and deepeval; none are
-  installed.
-- `CLAUDE.md` still says `backend/app/main.py` holds every route and that CI
-  runs `poetry check --lock`. Neither is true: routes live in
-  `backend/app/routers/`, and the backend job runs ruff, mypy and pytest.
-- No workflow scans for secrets; `security-scan.yml` only looks at
-  dependencies (Trivy over the filesystem, `safety` in the backend, and that one
-  is non-failing). Do not rely on CI to catch a committed key.
-- `README.md` asks for Node 20+, but `frontend/package.json` sets
-  `"engines": { "node": ">=24" }`, and CI and the `Makefile` use Node 24.
+- **No workflow scans for secrets.** `security-scan.yml` only looks at
+  dependencies: Trivy over the filesystem, and `safety` in the backend, which is
+  non-failing. Do not rely on CI to catch a committed key.
+- **`docs/threat_model.md` is generated.** Its 113 STRIDE entries come from a
+  pytm model, including generic web threats for components that do not exist
+  here. Residual risks are documented in `SECURITY.md`.
+
+The rest — `ARCHITECTURE.md`, `CODING_STANDARDS.md`,
+`docs/API.md`, `USER_GUIDE.md`, `USER_GUIDE.es.md`, `README.md` and
+`README.es.md` — was rewritten or corrected on that date and its commands were
+run. The user guides describe what the dashboard does and, in a section of its
+own, what the product does not do; keep that section honest. If one of them
+drifts again, fix it in the same pull request that made it drift.
+
+`CLAUDE.md` is long and partly historical: it is a narrative of decisions, not a
+map of the code. When it disagrees with `backend/app/`, the code wins.

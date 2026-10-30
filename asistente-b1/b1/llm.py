@@ -12,9 +12,11 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from .i18n import normalize, t
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from . import net
+from .i18n import normalize, t
 
 
 class ModelError(Exception):
@@ -127,7 +129,7 @@ class OpenAICompatModel:
             headers["Authorization"] = f"Bearer {self.api_key}"
         request = urllib.request.Request(url, data=data, method="POST", headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with net.urlopen(request, timeout=self.timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             detail = _short_body(exc)
@@ -147,8 +149,7 @@ class OpenAICompatModel:
         except ValueError:
             raise ModelError(t(self.language, "model.not_json")) from None
 
-    @staticmethod
-    def _parse(body: dict) -> Reply:
+    def _parse(self, body: dict) -> Reply:
         try:
             message = body["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):

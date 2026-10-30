@@ -214,7 +214,9 @@ def test_files_are_never_written_to_a_folder_that_is_not_on_this_machine(
 
 
 def test_commands_run_through_cmd_on_windows(daemon, monkeypatch):
-    monkeypatch.setattr(daemon, "IS_WINDOWS", True)
+    # The shell choice lives in vscode-daemon/shell_exec.py; the daemon imports
+    # it and re-exports the names, so the platform flag is patched there.
+    monkeypatch.setattr(daemon.shell_exec, "IS_WINDOWS", True)
     monkeypatch.delenv("FABRIQUE_EXEC_SHELL", raising=False)
     monkeypatch.setenv("COMSPEC", "C:\\Windows\\system32\\cmd.exe")
 

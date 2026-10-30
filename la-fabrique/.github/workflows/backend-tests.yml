@@ -2,20 +2,20 @@ name: Backend Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - 'backend/**'
       - 'llm-proxy/**'
       - '.github/workflows/backend-tests.yml'
 
 
-# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
-# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
+# en vez de encolarse.
 concurrency:
   group: backend-tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     # Un cuelgue de red en `poetry install` dejó este job 40 minutos parado sin
     # que nadie se enterara (el default son 6 horas). El job entero tarda ~5
     # minutos, así que cortar a los 20 convierte un cuelgue en un fallo visible.
@@ -44,7 +44,7 @@ jobs:
       POETRY_NO_INTERACTION: "1"
       PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python 3.12 (uv)
         shell: bash
@@ -57,9 +57,9 @@ jobs:
       - name: Install dependencies
         working-directory: ./backend
         run: |
-          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
-          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
-          # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
+          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y
+          # puede encontrar uno ajeno al job (con otro Python), instalar Poetry
+          # ahí, fuera del PATH, y el siguiente paso muere con
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
           poetry env use python
@@ -104,7 +104,7 @@ jobs:
           poetry run --directory llm-proxy python -m pytest -q
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: backend-coverage

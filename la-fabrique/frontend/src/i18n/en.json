@@ -802,6 +802,9 @@
     "empty": "No evidence matches these filters.",
     "producer": "Producer",
     "allProducers": "All producers",
+    "showing": "Showing {{shown}} of {{total}} runs",
+    "filters": "Filters",
+    "clearFilters": "Clear filters",
     "verdictLabel": "Verdict",
     "allVerdicts": "All verdicts",
     "ingestedAfter": "Ingested after",
@@ -875,7 +878,11 @@
     "taskFallback": "Task #{{id}}",
     "suggestionTitle": "The Reviewer agent's suggestion",
     "suggestionNote": "A claim read from the run and its verification, never a decision: the review below is yours.",
-    "suggestionUnusable": "The Reviewer agent could not suggest a decision; it is left to people."
+    "suggestionUnusable": "The Reviewer agent could not suggest a decision; it is left to people.",
+    "summary": {
+      "aria": "Evidence by verdict",
+      "all": "All"
+    }
   },
   "analytics": {
     "title": "Analytics",

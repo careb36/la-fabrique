@@ -11,6 +11,7 @@ Usage::
     db_url = settings.POSTGRES_HOST
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -123,6 +124,12 @@ class Settings(BaseSettings):
     # means "the oldest company", which is what a single-tenant install wants.
     VOICE_COMPANY_ID: int | None = None
 
+    @field_validator("VOICE_COMPANY_ID", mode="before")
+    @classmethod
+    def _empty_company_is_unset(cls, value):
+        # `.env.example` and docker compose pass it as an empty string.
+        return None if isinstance(value, str) and not value.strip() else value
+
     # Audit signing — separate HMAC key for decision_signature values.
     # ---------------------------------------------------------------------------
     AUDIT_SIGNING_KEY: str | None = None
@@ -154,6 +161,9 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------------
     RATE_LIMIT_DEFAULT: str = "100/minute"
     RATE_LIMIT_STORAGE_URI: str = "memory://"
+    # Login, registration and the desktop key exchange, per client address:
+    # enough for a person, too few to guess a password or a voice key.
+    AUTH_RATE_LIMIT: str = "10/minute"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     SECURITY_HEADERS_ENABLED: bool = True
 

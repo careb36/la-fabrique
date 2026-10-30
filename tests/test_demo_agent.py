@@ -125,3 +125,21 @@ class OfflineLoopTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_the_model_written_tests_run_without_the_parents_secrets(monkeypatch):
+    """A test file the model wrote cannot read the keys this process holds."""
+    from demo import coding_agent
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "nvapi-must-not-leak")
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        (root / "test_env.py").write_text(
+            "import os, unittest\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_no_key(self):\n"
+            "        self.assertNotIn('NEBIUS_API_KEY', os.environ)\n",
+            encoding="utf-8",
+        )
+        ok, output = coding_agent.run_tests(root)
+    assert ok, output

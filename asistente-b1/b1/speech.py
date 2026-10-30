@@ -300,6 +300,11 @@ class SystemSpeaker:
             return []
         wanted = normalize(self.language)
         if self.engine == "sapi":
+            # The text never becomes PowerShell source: it travels as base64
+            # (no quote of any kind survives in it) and is decoded at run time.
+            # Quoting it instead would have to know every character PowerShell
+            # treats as a quote, curly ones included.
+            payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
             script = (
                 f"$want = '{wanted}';"
                 "if (-not ('System.Speech.Synthesis.SpeechSynthesizer' -as [type])) {"
@@ -308,11 +313,16 @@ class SystemSpeaker:
                 "$hit = $engine.GetInstalledVoices() | Where-Object { $_.Enabled -and "
                 '$_.VoiceInfo.Culture.Name -like "$want*" } | Select-Object -First 1;'
                 "if ($hit) { $engine.SelectVoice($hit.VoiceInfo.Name) };"
-                "$engine.Speak('" + body.replace("'", "''") + "');"
+                "$engine.Speak([System.Text.Encoding]::UTF8.GetString("
+                f"[System.Convert]::FromBase64String('{payload}')));"
             )
             encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
             shell = shutil.which("powershell") or shutil.which("powershell.exe") or "powershell"
             return [shell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+        if body.startswith("-"):
+            # A leading dash would be read as an option (espeak -w<file>, say
+            # -o<file> write files); a leading space is still just text.
+            body = " " + body
         if self.engine == "say":
             voice = self.voice_for(wanted)
             return (["say", "-v", voice] if voice else ["say"]) + [body]

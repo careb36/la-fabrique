@@ -36,6 +36,14 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import nats
+import nats_scope
+import shell_exec
+from shell_exec import COMMAND_TIMEOUT_SECONDS, execute_shell_command
+
+# The old private names stay so the handlers read as they did; the logic lives
+# in shell_exec so it can be tested and linted on its own.
+_build_command_env = shell_exec.build_command_env
+_build_shell_command = shell_exec.build_shell_command
 from nats.errors import TimeoutError as NATSTimeoutError
 
 logging.basicConfig(
@@ -60,16 +68,9 @@ ASSISTANT_FALLBACK_PATHS = {
 QUEUE_GROUP = "workspace-daemon"
 
 # JetStream streams for deliveries queued while no daemon was connected.  The
-# backend declares the same streams (backend/app/nats_client.py).
-DELIVER_SUBJECT = "workspace.deliver"
-DELIVERED_SUBJECT = "workspace.delivered"
-DELIVERY_STREAMS = {
-    "FABRIQUE_DELIVERIES": DELIVER_SUBJECT,
-    "FABRIQUE_DELIVERY_RESULTS": DELIVERED_SUBJECT,
-}
-DELIVERY_CONSUMER = "workspace-daemon"
-STREAM_MAX_AGE_SECONDS = 7 * 24 * 3600
-STREAM_DUPLICATE_WINDOW_SECONDS = 15 * 60
+# backend declares the same streams (backend/app/nats_client.py); nats_scope
+# applies NATS_NAMESPACE to both so two stacks on one broker stay apart.
+
 
 def compute_prompt_hash(prompt: str) -> str:
     """Return a SHA-256 hex digest of the prompt for audit / tamper-detection."""
@@ -216,44 +217,6 @@ async def _publish_glassroom_status(nc, sprint_id, content: str) -> None:
     }).encode())
 
 
-def _build_command_env() -> Dict[str, str]:
-    """Provide a stable host-like environment for assistant CLI execution."""
-    env = os.environ.copy()
-    home = env.get("HOME") or str(Path.home())
-    env["HOME"] = home
-    if IS_WINDOWS:
-        return env
-
-    nvm_root = Path(home) / ".nvm" / "versions" / "node"
-    nvm_bins = sorted(nvm_root.glob("*/bin"), reverse=True) if nvm_root.exists() else []
-
-    path_entries = [
-        *(str(path) for path in nvm_bins),
-        os.path.join(home, ".local", "bin"),
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-        env.get("PATH", ""),
-    ]
-    env["PATH"] = os.pathsep.join(entry for entry in path_entries if entry)
-    return env
-
-
-def _build_shell_command(command: str) -> list[str]:
-    """Run commands through the user's shell when available instead of bare /bin/sh."""
-    configured_shell = os.getenv("FABRIQUE_EXEC_SHELL")
-    if IS_WINDOWS:
-        shell_path = configured_shell or os.environ.get("COMSPEC", "cmd.exe")
-        if Path(shell_path).stem.lower() in {"powershell", "pwsh"}:
-            return [shell_path, "-NoProfile", "-NonInteractive", "-Command", command]
-        return [shell_path, "/d", "/s", "/c", command]
-    shell_path = configured_shell or ("/bin/zsh" if Path("/bin/zsh").exists() else "/bin/sh")
-    if shell_path.endswith("zsh"):
-        return [shell_path, "-dfc", command]
-    if shell_path.endswith("bash"):
-        return [shell_path, "--noprofile", "--norc", "-c", command]
-    return [shell_path, "-c", command]
-
-
 def _is_assistant_command(command: str) -> bool:
     normalized = (command or "").lower()
     return "copilot" in normalized or "claude" in normalized
@@ -272,41 +235,6 @@ def _summarize_command_result(command: str, result: Dict[str, Any]) -> str:
         return f"Workspace command failed (exit {exit_code}): {output_preview}"
 
     return f"Workspace command failed (exit {exit_code}): {command_preview}"
-
-def execute_shell_command(command: str, cwd: str) -> Dict[str, Any]:
-    """
-    Execute a shell command synchronously and capture all output.
-
-    Inspired by OpenHands' real-execution model: runs the command with a
-    120-second timeout, captures both stdout and stderr, and returns the
-    exit code so the caller can decide whether execution succeeded.
-
-    Args:
-        command: Shell command string (passed to ``shell=True``).
-        cwd:     Working directory for the command.
-
-    Returns:
-        Dict with keys ``success`` (bool), ``stdout``, ``stderr``,
-        ``exit_code`` — or ``{"success": False, "error": ...}`` on exception.
-    """
-    logger.info(f"Executing: {command} in {cwd}")
-    try:
-        result = subprocess.run(
-            _build_shell_command(command),
-            cwd=cwd,
-            env=_build_command_env(),
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "exit_code": result.returncode
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 async def handle_msg(nc, msg):
     """
@@ -752,7 +680,7 @@ async def ensure_delivery_streams(js) -> None:
     from nats.js import api
     from nats.js.errors import NotFoundError
 
-    for name, subject in DELIVERY_STREAMS.items():
+    for name, subject in nats_scope.DELIVERY_STREAMS.items():
         try:
             await js.stream_info(name)
         except NotFoundError:
@@ -761,8 +689,8 @@ async def ensure_delivery_streams(js) -> None:
                 subjects=[subject],
                 retention=api.RetentionPolicy.WORK_QUEUE,
                 storage=api.StorageType.FILE,
-                max_age=STREAM_MAX_AGE_SECONDS,
-                duplicate_window=STREAM_DUPLICATE_WINDOW_SECONDS,
+                max_age=nats_scope.STREAM_MAX_AGE_SECONDS,
+                duplicate_window=nats_scope.STREAM_DUPLICATE_WINDOW_SECONDS,
             ))
 
 
@@ -786,7 +714,7 @@ async def process_queued_delivery(nc, js, msg) -> None:
     }
     try:
         await js.publish(
-            DELIVERED_SUBJECT,
+            nats_scope.DELIVERY_RESULT_SUBJECT,
             json.dumps(result).encode(),
             headers={"Nats-Msg-Id": f"delivered-{job.get('job_id')}"},
         )
@@ -804,16 +732,16 @@ async def consume_queued_deliveries(nc, js) -> None:
     from nats.js import api
 
     psub = await js.pull_subscribe(
-        DELIVER_SUBJECT,
-        durable=DELIVERY_CONSUMER,
-        stream="FABRIQUE_DELIVERIES",
+        nats_scope.DELIVERY_SUBJECT,
+        durable=nats_scope.DELIVERY_CONSUMER,
+        stream=nats_scope.DELIVERY_STREAM,
         config=api.ConsumerConfig(
-            durable_name=DELIVERY_CONSUMER,
+            durable_name=nats_scope.DELIVERY_CONSUMER,
             deliver_policy=api.DeliverPolicy.ALL,
             ack_policy=api.AckPolicy.EXPLICIT,
             ack_wait=120,
             max_deliver=10,
-            filter_subject=DELIVER_SUBJECT,
+            filter_subject=nats_scope.DELIVERY_SUBJECT,
         ),
     )
     while True:

@@ -57,6 +57,11 @@ PG_USER=${E2E_POSTGRES_USER:-factory}
 PG_PASSWORD=${E2E_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD:-}}
 PG_DB=${E2E_POSTGRES_DB:-factory_e2e}
 NATS_URL=${E2E_NATS_URL:-nats://127.0.0.1:4222}
+# Keeps this run's JetStream streams and consumers apart from a stack that
+# shares the same broker. Without it both use the work-queue stream
+# FABRIQUE_TASKS with the consumer name "task-worker", so each silently takes
+# and discards the other's task assignments.
+NATS_NAMESPACE=${E2E_NATS_NAMESPACE:-e2e}
 BACKEND_PORT=${E2E_BACKEND_PORT:-18000}
 LLM_PORT=${E2E_LLM_PORT:-15100}
 PY=${E2E_PYTHON:-python}
@@ -112,7 +117,7 @@ printf '#!/bin/sh\necho "%s"\n' "$ADVICE" > "$WORK/bin/e2e-copilot"
 chmod +x "$WORK/bin/e2e-copilot"
 FAKE_LLM_PORT=$LLM_PORT FAKE_LLM_PROMPTS=$PROMPTS FAKE_LLM_VIOLATIONS=$VIOLATIONS "$PY" "$REPO/scripts/e2e/fake_llm.py" > "$WORK/llm.log" 2>&1 & LPID=$!
 PATH="$WORK/bin:$PATH" CONSOLE_ASSISTANT_COMMANDS=e2e-copilot \
-  NATS_URL=$NATS_URL WORKSPACE_ROOT="$WORK/project" "$PY" "$REPO/vscode-daemon/daemon.py" > "$WORK/daemon.log" 2>&1 & DPID=$!
+  NATS_URL=$NATS_URL NATS_NAMESPACE=$NATS_NAMESPACE WORKSPACE_ROOT="$WORK/project" "$PY" "$REPO/vscode-daemon/daemon.py" > "$WORK/daemon.log" 2>&1 & DPID=$!
 cleanup() { kill ${BPID:-} $DPID $LPID 2>/dev/null; wait 2>/dev/null; }
 trap cleanup EXIT
 # The backend asks the daemon once, at startup, which assistants it can run.
@@ -121,7 +126,7 @@ grep -q "Daemon ready" "$WORK/daemon.log" || { echo "daemon did not come up; see
 (
   cd "$REPO/backend" && exec env \
     POSTGRES_HOST=$PG_HOST POSTGRES_PORT=$PG_PORT POSTGRES_USER=$PG_USER POSTGRES_PASSWORD=$PG_PASSWORD POSTGRES_DB=$PG_DB \
-    NATS_URL=$NATS_URL LLM_PROXY_URL=http://127.0.0.1:$LLM_PORT NEO4J_URI=bolt://127.0.0.1:1 \
+    NATS_URL=$NATS_URL NATS_NAMESPACE=$NATS_NAMESPACE LLM_PROXY_URL=http://127.0.0.1:$LLM_PORT NEO4J_URI=bolt://127.0.0.1:1 \
     AUTH_REQUIRED=false JWT_SECRET_KEY=e2e-secret-e2e-secret-e2e-secret-e2e \
     CONSOLE_ASSISTANTS_ENABLED=true COPILOT_CLI_COMMAND_TEMPLATE='e2e-copilot -p {prompt}' CLAUDE_CLI_COMMAND_TEMPLATE= \
     SUPPORT_AGENT_ENABLED=true SUPPORT_AGENT_INTERVAL_SECONDS=2 \

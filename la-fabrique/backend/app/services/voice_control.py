@@ -101,9 +101,7 @@ def resolve_sprint(
     if running is not None:
         return running
     return session.exec(
-        select(Sprint)
-        .where(Sprint.company_id == company_id)
-        .order_by(Sprint.id.desc())
+        select(Sprint).where(Sprint.company_id == company_id).order_by(Sprint.id.desc())
     ).first()
 
 
@@ -179,7 +177,8 @@ def find_agent(session: Session, company_id: int, hint: str | None) -> Agent | N
         if (agent.name or "").strip().lower() == text:
             return agent
     matches = [
-        agent for agent in roster
+        agent
+        for agent in roster
         if text in (agent.name or "").lower() or text in (agent.role or "").lower()
     ]
     return matches[0] if len(matches) == 1 else None
@@ -201,9 +200,7 @@ def sprint_list(session: Session, company_id: int, limit: int = 5) -> list[dict]
         .order_by(Sprint.id.desc())
         .limit(limit)
     ).all()
-    return [
-        {"id": s.id, "name": s.sprint_name, "status": s.status} for s in sprints
-    ]
+    return [{"id": s.id, "name": s.sprint_name, "status": s.status} for s in sprints]
 
 
 def sprints_speech(sprints: list[dict], language: str | None) -> str:
@@ -243,7 +240,9 @@ def sprints_speech(sprints: list[dict], language: str | None) -> str:
 
 def status_snapshot(session: Session, company: Company, sprint_id: int | None = None):
     sprint = resolve_sprint(session, company.id, sprint_id)
-    counts = board_counts(session, sprint.id) if sprint else dict.fromkeys(COUNT_KEYS, 0)
+    counts = (
+        board_counts(session, sprint.id) if sprint else dict.fromkeys(COUNT_KEYS, 0)
+    )
     return {
         "company": {"id": company.id, "name": company.company_name},
         "sprint": (
@@ -306,7 +305,7 @@ def status_speech(snapshot: dict, language: str | None) -> str:
     speech = say(
         language,
         f"Sprint {sprint['id']} «{sprint['name']}» está {state_es}: {numbers_es}.",
-        f"Sprint {sprint['id']} \"{sprint['name']}\" is {state_en}: {numbers_en}.",
+        f'Sprint {sprint["id"]} "{sprint["name"]}" is {state_en}: {numbers_en}.',
     )
 
     blocked = snapshot["blocked"]
@@ -338,7 +337,7 @@ def sprint_name_for_speech(name: str | None, objective: str = "") -> str:
     text = str(name or "").strip()
     for prefix in ("Sprint - ", "Sprint: ", "Sprint — "):
         if text[: len(prefix)].lower() == prefix.lower():
-            text = text[len(prefix):].strip()
+            text = text[len(prefix) :].strip()
             break
     if not text:
         text = str(objective or "").strip() or "Execution"
@@ -357,7 +356,7 @@ def plan_speech(plan: dict, language: str | None) -> str:
         f"He preparado el sprint «{plan.get('sprint_name', '')}» con {len(tasks)} "
         f"tareas: {titles}{suffix_es}. "
         f"Objetivo: {plan.get('goal', '')}. ¿Lo creo?",
-        f"I have planned the sprint \"{plan.get('sprint_name', '')}\" with {len(tasks)} "
+        f'I have planned the sprint "{plan.get("sprint_name", "")}" with {len(tasks)} '
         f"tasks: {titles}{suffix_en}. "
         f"Goal: {plan.get('goal', '')}. Shall I create it?",
     )
@@ -370,9 +369,9 @@ def created_speech(sprint_id: int, plan: dict, language: str | None) -> str:
         f"{len(plan.get('tasks') or [])} tareas, pero lo he dejado EN PAUSA para "
         "que nada empiece sin tu permiso. Di «reanuda la fábrica» cuando quieras "
         "que los agentes se pongan a trabajar.",
-        f"I created sprint {sprint_id} \"{plan.get('sprint_name', '')}\" with "
+        f'I created sprint {sprint_id} "{plan.get("sprint_name", "")}" with '
         f"{len(plan.get('tasks') or [])} tasks, but left it PAUSED so nothing "
-        "starts without your permission. Say \"resume the factory\" when you want "
+        'starts without your permission. Say "resume the factory" when you want '
         "the agents to begin.",
     )
 
@@ -387,8 +386,8 @@ def help_speech(language: str | None) -> str:
         "«crea un sprint para el login con Google», «pausa la fábrica».",
         "I can report on the factory, plan a sprint from an objective, create it, "
         "dispatch the tasks, pause and resume, approve or reject deliveries, and "
-        "list the sprints and the team. For example: \"how is the factory doing?\", "
-        "\"create a sprint for Google login\", \"pause the factory\".",
+        'list the sprints and the team. For example: "how is the factory doing?", '
+        '"create a sprint for Google login", "pause the factory".',
     )
 
 

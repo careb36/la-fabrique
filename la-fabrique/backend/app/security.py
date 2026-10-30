@@ -40,59 +40,66 @@ def frame_ancestors() -> list[str]:
     return [o.strip().rstrip("/") for o in raw.replace(",", " ").split() if o.strip()]
 
 
+def apply_security_headers(path: str, response):
+    """Set the security headers on *response* for a request to *path*.
+
+    The middleware calls it on every response; the 500 handler calls it too,
+    because Starlette sends an unhandled error from outside every middleware.
+    """
+
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Prevent clickjacking. An explicit embedder allowlist replaces the
+    # blanket DENY, because frame-ancestors is the only header browsers
+    # still honour for that.
+    ancestors = frame_ancestors()
+    if not ancestors:
+        response.headers["X-Frame-Options"] = "DENY"
+
+    # XSS protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Strict transport security (HTTPS only)
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
+
+    # Content security policy. A route that set its own (the generated
+    # project previews, which are sandboxed) keeps it: this middleware is
+    # outermost, so overwriting would silently drop the sandbox.
+    existing = response.headers.get("Content-Security-Policy")
+    if existing:
+        csp = existing
+    elif path in {"/docs", "/redoc", "/openapi.json"}:
+        csp = (
+            "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net "
+            "'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net "
+            "https://fonts.googleapis.com 'unsafe-inline'; "
+            "font-src https://fonts.gstatic.com; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; worker-src blob:"
+        )
+    else:
+        csp = "default-src 'self'"
+    if ancestors:
+        csp += "; frame-ancestors 'self' " + " ".join(ancestors)
+    response.headers["Content-Security-Policy"] = csp
+
+    # Referrer policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions policy
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    return response
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-
-        # Prevent MIME type sniffing
-        response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # Prevent clickjacking. An explicit embedder allowlist replaces the
-        # blanket DENY, because frame-ancestors is the only header browsers
-        # still honour for that.
-        ancestors = frame_ancestors()
-        if not ancestors:
-            response.headers["X-Frame-Options"] = "DENY"
-
-        # XSS protection
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-
-        # Strict transport security (HTTPS only)
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
-
-        # Content security policy. A route that set its own (the generated
-        # project previews, which are sandboxed) keeps it: this middleware is
-        # outermost, so overwriting would silently drop the sandbox.
-        existing = response.headers.get("Content-Security-Policy")
-        if existing:
-            csp = existing
-        elif request.url.path in {"/docs", "/redoc", "/openapi.json"}:
-            csp = (
-                "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net "
-                "'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net "
-                "https://fonts.googleapis.com 'unsafe-inline'; "
-                "font-src https://fonts.gstatic.com; "
-                "img-src 'self' data: https://fastapi.tiangolo.com; worker-src blob:"
-            )
-        else:
-            csp = "default-src 'self'"
-        if ancestors:
-            csp += "; frame-ancestors 'self' " + " ".join(ancestors)
-        response.headers["Content-Security-Policy"] = csp
-
-        # Referrer policy
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Permissions policy
-        response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=()"
-        )
-
-        return response
+        return apply_security_headers(request.url.path, response)
 
 
 def setup_security(app):

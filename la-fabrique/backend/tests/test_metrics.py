@@ -2,6 +2,8 @@
 Tests for Prometheus metrics.
 """
 
+from metrics import endpoint_label
+
 
 def test_metrics_endpoint_accessible(test_client):
     """Verify /metrics endpoint is accessible."""
@@ -89,3 +91,22 @@ def test_memory_search_caps_its_limit(test_client):
         "/v1/memory/search", params={"query": "x", "limit": 100000}
     )
     assert response.status_code == 422
+
+
+def test_a_matched_path_that_captured_a_parameter_never_publishes_it():
+    """With no template to fall back on, the id must stay out of /metrics."""
+    scope = {
+        "endpoint": object(),
+        "method": "GET",
+        "path": "/v1/tickets/42",
+        "path_params": {"ticket_id": "42"},
+    }
+    assert endpoint_label(scope) == "unmatched"
+
+
+def test_a_fixed_route_uses_its_own_path_as_label():
+    """``/docs`` has no template and no parameters: its path is the label."""
+    assert (
+        endpoint_label({"endpoint": object(), "method": "GET", "path": "/docs"})
+        == "/docs"
+    )

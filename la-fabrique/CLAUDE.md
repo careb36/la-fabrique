@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-**Le Fabrique** is an AI-powered autonomous software development platform. It orchestrates a multi-agent team (PO, Architect, ScrumMaster, Developer, QA, SecOps, TechWriter) using LangGraph to execute software sprints — from backlog to code generation and execution — inside a user's VS Code workspace.
+**La Fabrique** is an AI-powered autonomous software development platform. It orchestrates a multi-agent team (PO, Architect, ScrumMaster, Developer, QA, SecOps, TechWriter) using LangGraph to execute software sprints — from backlog to code generation and execution — inside a user's VS Code workspace.
 
 > **Direction adopted (2026-09-19).** The repositioning in
 > [`docs/POSITIONING.md`](docs/POSITIONING.md), tracked in issue #38, is the
@@ -113,6 +113,31 @@ Copy `.env.example` to `.env` and fill in:
   a deleted, inserted, reordered, altered or moved row breaks it). Without a
   key the chain is unkeyed and says so.
   Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`
+- `VOICE_API_KEY` — optional. The shared key the desktop assistant sends as
+  `X-Voice-Key` to `/v1/voice/*` (`routers/voice.py`, actions in
+  `routers/voice_actions.py`) and to `POST /v1/auth/desktop`, which trades it
+  for a session of the desktop operator (an Owner of the key's company; the
+  `@fabrica.local` domain cannot be registered and the operator's password is
+  rotated on every exchange). The key reaches one company only,
+  `VOICE_COMPANY_ID` (empty: the oldest); a signed-in user reaches the
+  companies they belong to, as a Viewer to read and a Manager to change
+  anything or build. Approvals by key are recorded as `voice-key`, never under
+  a name the assistant sends. Unset, those routes answer 503 while
+  `AUTH_REQUIRED` is on and the desktop exchange refuses; they never open
+  anonymously.
+- `FABRICA_BUILDS_DIR` — where `POST /v1/voice/build` (`routers/build.py`,
+  `services/codegen.py`) writes a project asked for in one sentence, served
+  back sandboxed under `/v1/voice/build/<slug>/<file>`; default
+  `/workspace/builds`.
+- `NVIDIA_API_KEY` / `NVIDIA_PROXY_URL` — optional. NVIDIA's own gateway for
+  the same `nvidia/` ids Nebius serves; the proxy tries it first when its key
+  is set. `AGENT_MODEL` is the model of every role `NEMOTRON_ROLES` does not
+  name. `NEO4J_DISABLED=true` skips Neo4j on an install without it.
+- `AUTH_RATE_LIMIT` — optional, default `10/minute`: per client address, on
+  login, registration and `POST /v1/auth/desktop`.
+- `DAEMON_UID` / `DAEMON_GID` — only for the optional daemon container: the
+  owner of the mounted projects folder (default 1000). Every container runs as
+  a non-root user.
 - `NATS_BIND` — optional, default `127.0.0.1`. The host address NATS listens on;
   the workspace daemon on this computer connects there. `0.0.0.0` exposes it to
   other machines, which can then ask the daemon to run commands.
@@ -142,13 +167,13 @@ FastAPI Backend  ←→  LangGraph Agent Orchestration
 
 ### Key Components
 
-**`backend/app/main.py`** — The FastAPI app: lifespan (workers, JetStream, schema backfills), middleware and the routers it includes. The routes live in `backend/app/routers/` (`sprint`, `agents`, `agent_runs`, `inbox`, `messages`, `procedures`, `support`, `workspace`, `github`, `auth`, `enterprise`).
+**`backend/app/main.py`** — The FastAPI app: lifespan (workers, JetStream, schema backfills), middleware and the routers it includes. The routes live in `backend/app/routers/` (`sprint`, `agents`, `agent_runs`, `inbox`, `messages`, `procedures`, `support`, `workspace`, `github`, `auth`, `enterprise`, `voice`, `build`). When `frontend/dist` exists the backend also serves the web UI same-origin (`ui_static.py`); the frontend's API base defaults to its own origin (`frontend/src/lib/apiBase.ts`), the Vite dev server proxies `/v1` to `VITE_PROXY_TARGET`, and `VITE_API_URL` still wins.
 
 **`backend/agents/graph.py`** — Optional LangGraph producer, disabled unless `AGENT_GRAPH_ENABLED=true`. Its runs are ingested as `AgentRun` records with `producer: "le-fabrique-graph"`.
 
-**`backend/app/llm_proxy_client.py`** — Thin HTTP client wrapping the LLM proxy for token-budget-aware requests. Use `model_preference="fast"` (flash models) or `"powerful"` (pro models).
+**`backend/app/llm_proxy_client.py`** — Thin HTTP client wrapping the LLM proxy for token-budget-aware requests. `chat()` / `chat_async()` take a `model` id (default `"gemini-pro"`), a `role`, and an optional `bu_id`.
 
-**`llm-proxy/app.py`** — Flask gateway that enforces per-company token budgets, routes to Gemini or DeepSeek based on the model name prefix, and refreshes available Gemini models hourly. Each answer says how its token count is known (`llm-proxy/usage.py`): `usage_status: reported` with the provider's figure in `usage`, or `estimated` with a characters/4 estimate apart in `usage_estimate` (charged to the quota, never shown as usage); the backend's `usage_status` keeps estimates out of the KPI averages.
+**`llm-proxy/app.py`** — Flask gateway that enforces per-company token budgets, routes by model-id prefix to the wired providers (NVIDIA's gateway, Nebius Token Factory, Gemini, DeepSeek, Qwen), checks every id against the provider's live catalogue before sending it, and refreshes each provider's catalogue hourly. Each answer says how its token count is known (`llm-proxy/usage.py`): `usage_status: reported` with the provider's figure in `usage`, or `estimated` with a characters/4 estimate apart in `usage_estimate` (charged to the quota, never shown as usage); the backend's `usage_status` keeps estimates out of the KPI averages.
 
 **`vscode-daemon/daemon.py`** — The workspace daemon: a Python process that runs natively on the user's macOS, Linux or Windows machine (started by `scripts/start-daemon.*`, reconnects to NATS on its own). It answers `workspace.generate` (write files, reply with the sha256 read back from disk), `workspace.execute` (run a command), `workspace.capabilities`, `workspace.status`, `workspace.browse` (folder picker) and `workspace.inspect` (canonical path, git remote/branch, file snapshot for stack detection), and consumes the JetStream queue `workspace.deliver` for files queued while it was offline, reporting on `workspace.delivered`. Its `requirements.txt` is `nats-py` only.
 
@@ -157,6 +182,10 @@ FastAPI Backend  ←→  LangGraph Agent Orchestration
 **`backend/app/services/board.py`** — The pure readers of a task's comment thread, shared by the task worker, `routers/inbox.py` and `services/carry_over.py`: which comment is the deliverable to review, the pending `NEEDS WORK:` requests, whether a blocked task waits for a person (`blocked_item_next_step`, `item_is_settled`) and its `block_reason`. No engine, no I/O; the gate author names (`Quality gate`, `Verifier`) live here too. The advice a task got (the worker's console-advice note, the Architect's `ARCHITECT_CONSULTED:` brief) is never a verdict, and the phrases that keep a task blocked count only from the system, a gate or a person (`BLOCK_VERDICT_AUTHORS`), never from a deliverable.
 
 **`backend/app/services/console_assistants.py`** — The terminal assistants the daemon can run (GitHub Copilot CLI, Claude CLI): which ones to ask for a task (`select_assistants`), the command with the prompt shell-quoted, `collect_advice` through `workspace.execute`, and the per-company cooldown persisted in `AssistantRuntimeState` when one is out of quota or missing on the host. Their advice is prompt context and a board note, never evidence; `GET /v1/sprints` counts tasks with and without it (`console_advice`: done and rework per group), so the Sprints page shows whether it helps. The Architect's briefs are counted the same way (`architect_advice`, rework from the first brief on), and `services/architect.py` tells the Architect, when it is asked again, how the company's briefed tasks went in its completed sprints against the rest. `services/glassroom.py` holds `publish_glassroom`, the best-effort publisher every worker uses for the sprint's SSE stream.
+
+**`asistente-b1/`** — The desktop voice assistant (Apache-2.0; standard library at its core, PyQt6, faster-whisper and Piper optional). It drives the factory through `/v1/voice/*` with `VOICE_API_KEY`; its own tests run with `cd asistente-b1 && python -m pytest tests -q`.
+
+**`demo/coding_agent.py`** — The write, run, test loop on its own: files from the model as JSON, written to an empty directory, `unittest` run, a failing output sent back until green. `--offline` replays recorded answers; with `NEBIUS_API_KEY` it runs on Nemotron. `tools/hackathon_check.py` checks the hackathon requirements it can check offline. `.github/workflows/assistant-tests.yml` runs the assistant's tests, `tests/` (the demo) and the checker.
 
 **`backend/app/nats_client.py`** — `enable_jetstream()` declares the work-queue streams in `DURABLE_STREAMS` (`task.assign`, `workspace.deliver`, `workspace.delivered`); `publish()` stores durable subjects with a `Nats-Msg-Id`, `consume()` is a durable pull consumer with explicit acks. Without JetStream both fall back to core NATS with a warning; `/health` reports `jetstream`.
 
@@ -297,7 +326,7 @@ the LangGraph graph is only an optional kickoff conversation.
 
 - Company-scoped: all data (agents, sprints, memory, budgets) is namespaced by `company_id`
 - RBAC covers both human roles (manager, developer) and AI agent roles (PO, Architect, etc.)
-- Passwords hashed with passlib/bcrypt. `POST /v1/auth/login` issues an HS256 JWT (`JWT_SECRET_KEY`); `auth_deps.get_current_user` resolves it. Authentication enforcement is on by default; set `AUTH_REQUIRED=false` only for a local demo without a login. Configure `JWT_SECRET_KEY`, then register and log in through the frontend. Protected routes require a JWT and company roles follow Owner > Manager > Viewer. A company's agents (`/v1/agents`) and its token usage are read by its Viewers; only its Managers create, change or delete an agent, since its prompt, model and budget decide what it does (the agents page is read-only for a Viewer). Likewise only a Manager records the folder a company's agents write to (`POST /v1/discover_team` with a `company_id`; the New company wizard calls it without one), and `/v1/generate` bills only a business unit of the company itself; a sprint's token total counts only its own company's audit rows. Company initialization creates the caller's Owner membership; invitations require Owner, and inviting an existing member is a 409.
+- Passwords hashed with bcrypt directly (`backend/app/passwords.py`); the schema rejects a password over bcrypt's 72-byte limit, and login re-hashes a stored hash whose cost is below the current one. `POST /v1/auth/login` issues an HS256 JWT (`JWT_SECRET_KEY`); `auth_deps.get_current_user` resolves it. Authentication enforcement is on by default; set `AUTH_REQUIRED=false` only for a local demo without a login. Configure `JWT_SECRET_KEY`, then register and log in through the frontend. Protected routes require a JWT and company roles follow Owner > Manager > Viewer. A company's agents (`/v1/agents`) and its token usage are read by its Viewers; only its Managers create, change or delete an agent, since its prompt, model and budget decide what it does (the agents page is read-only for a Viewer). Likewise only a Manager records the folder a company's agents write to (`POST /v1/discover_team` with a `company_id`; the New company wizard calls it without one), and `/v1/generate` bills only a business unit of the company itself; a sprint's token total counts only its own company's audit rows. Company initialization creates the caller's Owner membership; invitations require Owner, and inviting an existing member is a 409.
 - Always public: `/health`, registration/login, the HMAC-signed GitHub webhook, support bug reporting/chat, `/v1/models`, `/v1/capabilities` (feature flags only, no company data), and the retired `/v1/approve_task` (410). Glassroom SSE cannot take an Authorization header (EventSource sends none): with `AUTH_REQUIRED` it takes a five-minute `ticket` for one sprint from `POST /v1/sprints/{id}/stream_ticket` (Viewer), and checks the holder's membership again when it is used; the frontend asks for a new one on every connection. `/v1/auth/me` always requires a JWT. Audit writes and memory stores resolve company ownership from authorized membership and existing interactions, never payload metadata; callers with multiple memberships should select a `company_id` query parameter. Audit verification, memory search, and lineage use column-backed Viewer scoping. Legacy NULL-company evidence is flagged and included only without a company filter (authenticated when `AUTH_REQUIRED=true`). Startup backfills historical company metadata into the audit/vector columns and Neo4j properties. Help-desk tickets are not company data: support admins (`SUPPORT_ADMIN_EMAILS`) see and update all of them and download the logs; other authenticated users see only their own (matched by account email, 403 for another reporter, 404 for another's ticket). With `AUTH_REQUIRED=false` and no token, the desk stays open as in a local demo. When `SUPPORT_AGENT_ENABLED`, the Support agent triages open tickets first (`suggested_severity`, `suggested_category`, `agent_reply`, `triaged_by`), and a support admin decides.
 
 ## Test Suite
@@ -353,6 +382,10 @@ Test files:
 | `test_workspace_host.py` | Daemon folder browsing, git remote/branch inspection, snapshots, Windows shell/roots; `/v1/workspace/*` relay and discovery through the daemon |
 | `test_audit_chain.py` | The audit hash chain per company: numbered and linked rows, each company its own chain, a deleted, altered or moved row breaks it where it was, a chain rewritten without the key does not verify, unkeyed chains say so, rows without a company stay unchained, KPI turn rows are signed and chained too |
 | `test_tenant_scoping.py` | Every table carries a required `company_id` that references `companies`, or is listed with its reason (the tenant, users, help-desk tickets, the outbox, backlog items through their sprint); `audit_log` alone may hold rows without a company; the lists hold no stale names |
+| `test_exception_handlers.py` | The catch-all 500: it says a report was sent only when the support webhook took it, names the installation from `FABRIQUE_VENDOR_ID`, and publishes the incident ticket on NATS |
+| `test_voice_control.py` / `test_voice_build.py` | The voice façade: the shared key or a real user, never anonymous; each spoken action calls the same endpoint as the web; a voice-created sprint starts paused; a project from one sentence is written inside `FABRICA_BUILDS_DIR` and served sandboxed; an empty `VOICE_COMPANY_ID` is unset |
+| `test_voice_access.py` | Who may use the voice routes: a user only in their own companies (Viewer reads, Manager changes or builds), the key only in its company, a non-ASCII key refused rather than a 500, approvals by key recorded as the key, the desktop email not registrable and a planted copy losing its password |
+| `test_auth_desktop.py` / `test_ui_static.py` | The desktop session exchange (refused without the key); the built UI served same-origin without swallowing API routes |
 | `test_metrics.py` | `/metrics` labels requests by route template, a fixed route by its path, a CORS preflight as `preflight` and a path no route answered as `unmatched`; memory search caps its `limit` |
 
 **End to end, against a real stack:** `scripts/e2e/run.sh` starts the backend,
@@ -397,7 +430,7 @@ Run it with the backend's interpreter (`E2E_PYTHON` pointing at the venv's
 only when every check passed and leaves the logs in `E2E_WORKDIR`. CI runs it
 too (`.github/workflows/e2e.yml`) on every pull request that touches
 `backend/`, `vscode-daemon/`, `scripts/e2e/` or the workflow itself, and on
-pushes to `main` and `develop`, against a `pgvector/pgvector:pg15` service and
+pushes to `main`, against a `pgvector/pgvector:pg15` service and
 a NATS container started with JetStream; the logs are kept as the `e2e-logs`
 artifact.
 
@@ -414,25 +447,25 @@ repo root with the proxy's Poetry environment plus
 `llm-proxy/requirements-dev.txt`: `python -m pytest llm-proxy/tests -q`. CI
 runs it after the backend tests.
 
-CI jobs run on the self-hosted runner labelled `lafabrique`
-(`runs-on: [self-hosted, linux, x64, lafabrique]`), not on GitHub-hosted
-machines; only the SLSA release generator stays on `ubuntu-latest`. The
-runner keeps its state between jobs, so a job cleans up what it starts (the
-e2e removes its NATS container) and avoids the ports a local stack uses.
+CI jobs run on GitHub-hosted runners (`runs-on: ubuntu-latest`). The
+repository is public, so a self-hosted runner would run code from any fork's
+pull request on that machine; keep every workflow on hosted runners. The e2e
+still names its containers per run and lets Docker pick their ports, so it
+is safe wherever it runs.
 
 CI runs this suite on every pull request that touches `backend/` or the
-workflow itself, and on pushes to `main` and `develop`
+workflow itself, and on pushes to `main`
 (`.github/workflows/backend-tests.yml`), installing dependencies with Poetry
 from `backend/poetry.lock`. The lint step runs the ruff version the workflow
 pins (`pip install "ruff==0.17.1"`); lint locally with that same version, since
 ruff's default rule set moves between releases. Feature-branch pushes do not trigger it; open a
 pull request to get a run. Add new backend dependencies to
-`backend/pyproject.toml` and commit the refreshed lock file, or CI will fail
-the `poetry check --lock` step.
+`backend/pyproject.toml` and commit the refreshed lock file; CI installs from
+`backend/poetry.lock`.
 
 Frontend changes are checked separately by
 `.github/workflows/frontend-build.yml` on every pull request that touches
-`frontend/` or the workflow itself, and on pushes to `main` and `develop`.
+`frontend/` or the workflow itself, and on pushes to `main`.
 That job runs `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run test:run`,
 and `npm run build` from the `frontend/` directory, using
 `frontend/package-lock.json` as the cache key.
@@ -493,21 +526,21 @@ Use the `useTranslation` hook from i18next; never hardcode English strings in JS
 
 ## LLM Proxy Model Routing
 
-When adding new LLM calls in agents, pass `model_preference` to the proxy client:
-- `"fast"` → Gemini Flash or DeepSeek V2 (default for most agent nodes)
-- `"powerful"` → Gemini Pro (reserved for Architect and high-stakes reasoning)
+Every LLM call goes through the proxy client (`backend/app/llm_proxy_client.py`).
+`LLMProxyClient.chat()` / `chat_async()` take a `model` id (default
+`"gemini-pro"`), a `role`, and an optional `bu_id`. There is no
+`model_preference` parameter: the `fast` / `powerful` tiers are an internal
+fallback in the proxy (`_PREFERENCE_TIERS`). Role→model defaults live in
+`backend/llm/model_factory.py` (`ModelFactory.ROLE_MODEL_MAP`).
 
-Token budgets are enforced per company at the proxy layer — the backend never calls Gemini/DeepSeek directly.
+Token budgets are enforced per company at the proxy layer — the backend never calls a model provider directly.
 
 ## Documentation
 
 - [`README.md`](README.md) — Project overview, architecture, setup, and API reference
-- Branches: pull requests for the web product land on `develop`; a release pull request promotes `develop` to `main`, and a person merges it (`CONTRIBUTING.md`, Branches).
+- Branches: trunk-based. Each change is a branch cut from `main` with one pull request into `main`, merged once the head is green (`CONTRIBUTING.md`, Branches). There is no `develop` integration branch.
 - The Glassroom VR entry for the Meta VR Start Developer Competition lives on
   the `main_meta` branch (`vr/`, `docs/VR_ENTRY.md`); `main` is the web product.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Development standards and workflows
 - [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
 - [`docs/POSITIONING.md`](docs/POSITIONING.md) — Project direction and design rules
-- [`docs/IMPROVEMENT_PLAN.md`](docs/IMPROVEMENT_PLAN.md) — Improvement plan for the web product, from a reading of block/buzz and gentle-ai
-- [`runbook.md`](runbook.md) — Production hardening guide
-- [`REFACTORING_PLAN.md`](REFACTORING_PLAN.md) — Current refactoring strategy

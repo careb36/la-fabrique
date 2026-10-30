@@ -12,9 +12,17 @@ Usage::
         ...
 """
 
+import sys
+from pathlib import Path
 from unittest import mock
 
 import pytest
+
+# The daemon tests load ``vscode-daemon/daemon.py`` by path, which does not put
+# its directory on ``sys.path`` the way ``python daemon.py`` does at runtime.
+# Without this, the daemon cannot import its sibling ``nats_scope``.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vscode-daemon"))
+
 from config import settings
 from fastapi.testclient import TestClient
 from models.agent_message import AgentMessage
@@ -56,9 +64,29 @@ _engine = create_engine(
 
 
 @pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    # The suite logs in far more often than a person could; the limit itself
+    # is tested on its own in test_rate_limits.py.
+    from security import limiter
+
+    monkeypatch.setattr(limiter, "enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def disable_auth_for_legacy_tests(monkeypatch):
     # The legacy suite predates authentication enforcement.
     monkeypatch.setattr(settings, "AUTH_REQUIRED", False)
+
+
+@pytest.fixture(autouse=True)
+def no_nats_namespace(monkeypatch):
+    """Tests assert on the plain subjects, so they must not inherit a prefix.
+
+    ``NATS_NAMESPACE`` is read at publish/consume time; a developer who exported
+    it for an e2e run would otherwise see every durable-subject assertion fail
+    with a namespaced subject.
+    """
+    monkeypatch.delenv("NATS_NAMESPACE", raising=False)
 
 
 @pytest.fixture(autouse=True)

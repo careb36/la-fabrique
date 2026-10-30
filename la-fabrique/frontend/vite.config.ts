@@ -23,8 +23,10 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     proxy: {
+      // The UI calls /v1 on its own origin; in docker compose the backend is
+      // the `backend` service, not this container's localhost.
       '/v1': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
     },

@@ -14,7 +14,8 @@ Naming convention:
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from passwords import BCRYPT_MAX_BYTES
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Request schemas (Pydantic — not persisted directly, used for API validation)
@@ -181,6 +182,20 @@ class UserCreateRequest(BaseModel):
     email: str
     full_name: str
     password: str  # Plain-text; hashed with bcrypt before storage
+
+    @field_validator("password")
+    @classmethod
+    def _reject_password_beyond_bcrypt_limit(cls, value: str) -> str:
+        # bcrypt ignores everything past 72 bytes. Counting bytes, not
+        # characters: "ñ" is two. Refused here so a long password is rejected
+        # outright instead of being silently shortened to a different one.
+        length = len(value.encode("utf-8"))
+        if length > BCRYPT_MAX_BYTES:
+            raise ValueError(
+                f"password must be at most {BCRYPT_MAX_BYTES} bytes in UTF-8 "
+                f"(got {length})"
+            )
+        return value
 
 
 class LoginRequest(BaseModel):

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import stat
 import sys
 import threading
 import time
@@ -99,9 +100,17 @@ def test_the_dashboard_is_allowed_to_embed_the_factory(monkeypatch):
     env = run_fusion._child_env(voice_key="k", use_sqlite=True, announce=False)
 
     origins = env["FRAME_ANCESTORS"].split()
-    assert "http://127.0.0.1:*" in origins
-    assert "https://localhost:*" in origins
-    assert all(o.startswith(("http://", "https://")) for o in origins)
+    assert origins == ["http://127.0.0.1:8770", "http://localhost:8770"]
+    # Not every loopback port: any local page could frame the signed-in UI.
+    assert not any("*" in o for o in origins)
+
+
+def test_auth_cannot_be_switched_off_from_the_environment(monkeypatch):
+    monkeypatch.setenv("AUTH_REQUIRED", "false")
+
+    env = run_fusion._child_env(voice_key="k", use_sqlite=True, announce=False)
+
+    assert env["AUTH_REQUIRED"] == "true"
 
 
 def test_a_chosen_frame_ancestors_list_is_respected(monkeypatch):
@@ -271,16 +280,24 @@ class _PanelHandler(BaseHTTPRequestHandler):
 def test_the_ui_opens_once_the_factory_answers(monkeypatch):
     server, url = _serve(_PanelHandler)
     opened: list[str] = []
+    asked: list[tuple[str, str]] = []
+
+    def handoff(u, k):
+        asked.append((u, k))
+        return "code-123"
+
+    monkeypatch.setattr(run_fusion, "_desktop_handoff", handoff)
     monkeypatch.setattr(run_fusion.webbrowser, "open", opened.append)
     monkeypatch.setattr(run_fusion, "_panel_answers", lambda *a, **k: False)
     try:
-        run_fusion._open_panel(url, "tok-123", 86400, timeout=5.0,
-                            panel_timeout=0.0)
+        run_fusion._open_panel(url, "voice-key", timeout=5.0, panel_timeout=0.0)
     finally:
         server.shutdown()
         server.server_close()
 
-    assert opened == [f"{url}/#sesion=tok-123&caduca=86400"]
+    # A single-use code, asked for when the browser opens; never the session.
+    assert opened == [f"{url}/#codigo=code-123"]
+    assert asked == [(url, "voice-key")]
 
 
 def test_without_a_session_the_ui_still_opens(monkeypatch):
@@ -312,15 +329,14 @@ def test_the_launch_opens_the_new_panel_not_the_old_board(monkeypatch, capsys):
     """The user's complaint: a launch showed the factory's old skin.
 
     The panel carries the new identity and embeds the factory, so it must be
-    the window that opens — not `/#sesion=…` on the factory.
+    the window that opens — not the factory's own UI.
     """
     server, url = _serve(_PanelHandler)
     opened: list[str] = []
     monkeypatch.setattr(run_fusion.webbrowser, "open", opened.append)
     monkeypatch.setattr(run_fusion, "_panel_answers", lambda *a, **k: True)
     try:
-        run_fusion._open_panel(url, "tok-123", 86400, timeout=5.0,
-                                panel_timeout=2.0)
+        run_fusion._open_panel(url, "voice-key", timeout=5.0, panel_timeout=2.0)
     finally:
         server.shutdown()
         server.server_close()
@@ -706,3 +722,20 @@ def test_without_any_capable_interpreter_the_proxy_venv_is_built(monkeypatch):
 
     assert run_fusion._proxy_python(argparse.Namespace(backend_python=None)) == "python-x"
     assert built == ["si"]
+
+
+def test_a_handoff_needs_the_key():
+    assert run_fusion._desktop_handoff("http://127.0.0.1:9", "") == ""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_the_env_file_is_private_from_its_first_byte(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("# ajustes\n", encoding="utf-8")
+    env_file.chmod(0o644)
+    monkeypatch.setattr(run_fusion, "FACTORY", tmp_path)
+
+    run_fusion._write_env_file({"JWT_SECRET_KEY": "s"})
+
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    assert "JWT_SECRET_KEY=s" in env_file.read_text(encoding="utf-8")

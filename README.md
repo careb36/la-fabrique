@@ -654,17 +654,21 @@ without the other produces a 400.
 ## Factory Board
 
 When the stack starts, the launcher opens the **factory's own React UI** in the
-browser with a desktop session already signed in. The token travels in the URL
-fragment (`#sesion=…`), which never reaches a server or a log, and the app
-removes it from the address bar as soon as it adopts it.
+browser with a desktop session already signed in. The address carries only a
+single-use code (`#codigo=…`) that expires in 60 seconds; the app trades it for
+the session with a POST to `/v1/auth/desktop/redeem`, removes it from the
+address bar, and never replaces a session already open in that browser. A
+session token never travels in a URL, where it would sit in the browser's
+history and on its command line.
 
 The shipped assistant (`asistente-b1`) has no embedded web panel. If the
 reference `profesor3` checkout is running, its panel at
 `http://127.0.0.1:8770` is opened first; that panel embeds the same React UI in
 its **Fábrica** tab. `GET /fabrica` is the doorway: it asks
-`/v1/auth/desktop` for a session with the assistant's own key and redirects.
-Because embedding crosses origins, the backend declares `FRAME_ANCESTORS`
-(loopback, any port) so the iframe is not blocked by `X-Frame-Options: DENY`.
+`/v1/auth/desktop/handoff` for a single-use code with the assistant's own key
+and redirects with `#codigo=…`. Because embedding crosses origins, the backend
+declares `FRAME_ANCESTORS` (only the panel's origin, `127.0.0.1:8770` and
+`localhost:8770`) so the iframe is not blocked by `X-Frame-Options: DENY`.
 
 That panel never talks to the factory directly. Its buttons go through the
 assistant, which keeps the shared key out of the browser:

@@ -1,6 +1,6 @@
 ---
 name: Ciberseguridad y OWASP
-description: Desarrollo seguro en cualquier proyecto de Dev: OWASP Top 10, modelado de amenazas con OWASP pytm, bandit/pip-audit o equivalentes, validación de entradas, rutas, red, secretos, salidas, LLM y evidencias.
+description: Desarrollo seguro en cualquier proyecto: OWASP Top 10, modelado de amenazas con OWASP pytm, bandit/pip-audit o equivalentes, validación de entradas, rutas, red, secretos, salidas, LLM y evidencias.
 ---
 
 # Ciberseguridad y OWASP
@@ -9,7 +9,7 @@ Usar esta skill al agregar o cambiar entradas, archivos, red, dependencias,
 autenticación, APIs, prompts/LLM, contenedores o despliegue. Las compuertas se
 ejecutan y se revisan; no se silencian.
 
-Esta es la versión **portable** para los proyectos de `/home/caro/Dev`. Si el
+Esta es la versión **portable**, válida para cualquier proyecto. Si el
 proyecto tiene una skill local `ciberseguridad`, esa prevalece y esta sirve de
 base.
 
@@ -27,8 +27,8 @@ grep -nE '^(security|threat-model|test|check):' Makefile 2>/dev/null
 - Si existe `make security`, usarlo.
 - Si no existen, usar los equivalentes de la sección 2 y dejar registrado el
   comando exacto.
-- El triaje va en `docs/threat_triage.md` (o `SECURITY_TRIAGE.md` si el
-  proyecto ya usa esa convención). Si no existe, crearlo.
+- El triaje va en `SECURITY_TRIAGE.md` (o la convención que el proyecto ya
+  use). Si no existe, crearlo.
 
 ## 2. Compuertas mínimas
 
@@ -85,7 +85,7 @@ actores, límites de confianza, procesos, almacenes y flujos.
 3. Generar el modelo y revisar el diff:
    ```bash
    python scripts/threat_model.py
-   git diff -- docs/threat_model.json docs/threat_model.md docs/threat_triage.md
+   git diff -- docs/threat_model.md
    ```
 4. Clasificar **cada amenaza nueva** en el triaje como **Aplicable**,
    **Parcial** o **No aplicable**, con mitigación o justificación.
