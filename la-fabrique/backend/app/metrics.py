@@ -4,7 +4,9 @@ Prometheus metrics for the Fabrique Enterprise API.
 Exposes application metrics at /metrics endpoint.
 """
 
-from fastapi import Request, Response
+import time
+
+from fastapi import Response
 from logging_config import logger
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -13,7 +15,7 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # Request metrics
 REQUEST_COUNT = Counter(
@@ -68,52 +70,70 @@ ERRORS_TOTAL = Counter(
 )
 
 
-def endpoint_label(request: Request) -> str:
+def endpoint_label(scope: Scope) -> str:
     """The matched route's template, e.g. ``/v1/sprints/{sprint_id}/board``.
 
     The raw path would put sprint, task and ticket ids on a public endpoint
-    and give every scanned URL its own series. A plain Starlette route
-    (``/docs``, ``/openapi.json``) has a fixed path, so that is its label; a
-    CORS preflight is answered before any route and counted as ``preflight``;
-    only a path no route answered is ``unmatched``.
+    and give every scanned URL its own series, so it is only used when the
+    match captured no parameter — that is the case of a plain Starlette route
+    (``/docs``, ``/openapi.json``), whose path is fixed and is its own label.
+    A request whose match captured a parameter never publishes the path: if the
+    template is missing it is counted as ``unmatched``. A CORS preflight is
+    answered before any route and counted as ``preflight``.
     """
-    route = request.scope.get("route")
+    route = scope.get("route")
     if route is not None:
         return getattr(route, "path", None) or "unmatched"
-    if request.scope.get("endpoint") is not None:
-        return request.url.path
-    if request.method == "OPTIONS":
+    if scope.get("endpoint") is not None:
+        if scope.get("path_params"):
+            return "unmatched"
+        return scope.get("path") or "unmatched"
+    if scope.get("method") == "OPTIONS":
         return "preflight"
     return "unmatched"
 
 
-class MetricsMiddleware(BaseHTTPMiddleware):
-    """Middleware to collect request metrics."""
+class MetricsMiddleware:
+    """Records one count and one latency sample per HTTP response.
 
-    async def dispatch(self, request: Request, call_next):
-        import time
+    Plain ASGI on purpose. The route template lives on ``scope["route"]``,
+    which the router writes while serving the request; a ``BaseHTTPMiddleware``
+    reads that scope from another task after ``call_next`` returns and can miss
+    the write, which is what used to send labelled requests down the raw-path
+    fallback at random.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
         ACTIVE_CONNECTIONS.inc()
-        start_time = time.time()
+        start_time = time.perf_counter()
+        status = 500
+
+        async def capture_status(message) -> None:
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+            await send(message)
 
         try:
-            response = await call_next(request)
-            duration = time.time() - start_time
-            endpoint = endpoint_label(request)
-
-            REQUEST_COUNT.labels(
-                method=request.method,
-                endpoint=endpoint,
-                status=response.status_code,
-            ).inc()
-
-            REQUEST_LATENCY.labels(
-                method=request.method,
-                endpoint=endpoint,
-            ).observe(duration)
-
-            return response
+            await self.app(scope, receive, capture_status)
         finally:
+            endpoint = endpoint_label(scope)
+            REQUEST_COUNT.labels(
+                method=scope["method"],
+                endpoint=endpoint,
+                status=status,
+            ).inc()
+            REQUEST_LATENCY.labels(
+                method=scope["method"],
+                endpoint=endpoint,
+            ).observe(time.perf_counter() - start_time)
             ACTIVE_CONNECTIONS.dec()
 
 

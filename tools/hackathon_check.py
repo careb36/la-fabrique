@@ -112,7 +112,7 @@ def check_demo(report: Report) -> None:
 
 
 def check_secrets(report: Report) -> None:
-    done = subprocess.run(["git", "ls-files", "la-fabrique/.env"],
+    done = subprocess.run(["git", "ls-files", ".env", "la-fabrique/.env"],
                           cwd=str(ROOT), capture_output=True, text=True)
     tracked = done.stdout.strip()
     report.check(not tracked, "no hay claves versionadas en el repositorio",

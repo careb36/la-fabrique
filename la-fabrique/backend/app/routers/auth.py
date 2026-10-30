@@ -6,13 +6,16 @@ Endpoints:
 - ``POST /v1/auth/login``     — authenticate and issue an access token.
 - ``GET /v1/auth/me``         — return the authenticated user's profile.
 - ``POST /v1/auth/desktop``   — trade the desktop's voice key for an owner session.
+- ``POST /v1/auth/desktop/handoff`` / ``redeem`` — a single-use code that opens the browser signed in.
 - ``POST /v1/company/invite`` — invite an existing user to collaborate on a company.
 
-Passwords are hashed with bcrypt via ``passlib`` before storage.
+Passwords are hashed with bcrypt directly (``app.passwords``) before storage.
 Sensitive-route enforcement is gated by AUTH_REQUIRED.
 """
 
+import hashlib
 import secrets
+import time
 from datetime import timedelta
 
 import auth_tokens
@@ -21,20 +24,22 @@ from auth_policy import current_user_if_required, is_support_admin, require_comp
 from config import settings
 from database import get_session
 from fastapi import APIRouter, Depends, HTTPException, Request
-from models import Company, CompanyMember, User
-from passlib.context import CryptContext
+from models import CompanyMember, User
+from passwords import hash_password, needs_rehash, rehash_password, verify_password
+from pydantic import BaseModel, Field
 from schemas import InviteMemberRequest, LoginRequest, UserCreateRequest
+from security import limiter
 from sqlmodel import Session, select
+
+from routers.voice_support import key_company
 
 router = APIRouter(prefix="/v1", tags=["Auth"])
 
-# bcrypt context — "deprecated='auto'" automatically re-hashes old entries
-# when a stronger algorithm becomes the default in future passlib releases.
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 @router.post("/auth/register")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
 async def register_user(
+    request: Request,
     req: UserCreateRequest,
     session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
 ):
@@ -46,13 +51,17 @@ async def register_user(
 
     Returns the new user's ``user_id`` and ``email``.
     """
+    if req.email.strip().lower().endswith(RESERVED_EMAIL_DOMAIN):
+        # The desktop operator lives on this domain; an account registered
+        # there would be handed Owner rights by POST /v1/auth/desktop.
+        raise HTTPException(status_code=400, detail="This email domain is reserved.")
     existing = session.exec(select(User).where(User.email == req.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered.")
     user = User(
         email=req.email,
         full_name=req.full_name,
-        password_hash=pwd_context.hash(req.password),
+        password_hash=hash_password(req.password),
     )
     session.add(user)
     session.commit()
@@ -61,14 +70,26 @@ async def register_user(
 
 
 @router.post("/auth/login")
-async def login(req: LoginRequest, session: Session = Depends(get_session)):  # noqa: B008 - FastAPI dependency marker.
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def login(
+    request: Request,
+    req: LoginRequest,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
     """Authenticate a human user and return a signed access token."""
     if not auth_tokens.is_auth_configured():
         raise HTTPException(status_code=503, detail="Authentication is not configured")
 
     user = session.exec(select(User).where(User.email == req.email)).first()
-    if user is None or not pwd_context.verify(req.password, user.password_hash):
+    if user is None or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Upgrade a hash written with a lower cost, now that the password is known
+    # to be right. Replaces what passlib's deprecated="auto" did.
+    if needs_rehash(user.password_hash):
+        user.password_hash = rehash_password(req.password)
+        session.add(user)
+        session.commit()
 
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = auth_tokens.create_access_token(
@@ -83,7 +104,8 @@ async def login(req: LoginRequest, session: Session = Depends(get_session)):  # 
     }
 
 
-DESKTOP_EMAIL = "escritorio@fabrica.local"
+RESERVED_EMAIL_DOMAIN = "@fabrica.local"
+DESKTOP_EMAIL = "escritorio" + RESERVED_EMAIL_DOMAIN
 
 
 def _desktop_owner(session: Session) -> User:
@@ -94,17 +116,24 @@ def _desktop_owner(session: Session) -> User:
     key the launcher already holds.
     """
     user = session.exec(select(User).where(User.email == DESKTOP_EMAIL)).first()
-    if user is None:
+    if user is not None:
+        # Nobody may hold a password for this account: a copy registered
+        # before the domain was reserved loses whatever password it had.
+        user.password_hash = hash_password(secrets.token_urlsafe(32))
+        session.add(user)
+        session.commit()
+    else:
         user = User(
             email=DESKTOP_EMAIL,
             full_name="Operador de escritorio",
-            password_hash=pwd_context.hash(secrets.token_urlsafe(32)),
+            password_hash=hash_password(secrets.token_urlsafe(32)),
         )
         session.add(user)
         session.commit()
         session.refresh(user)
 
-    company = session.exec(select(Company).order_by(Company.id)).first()
+    # The same company the voice key reaches, never any other.
+    company = key_company(session)
     if company is not None:
         member = session.exec(
             select(CompanyMember).where(
@@ -122,22 +151,12 @@ def _desktop_owner(session: Session) -> User:
     return user
 
 
-@router.post("/auth/desktop")
-async def desktop_session(
-    request: Request,
-    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
-):
-    """
-    Exchange the desktop's voice key for an owner session for the web UI.
-
-    The fused product has one operator and the assistant already holds
-    ``VOICE_API_KEY``, which can create and dispatch sprints; minting that same
-    operator's web session is therefore not an escalation. Without a configured
-    key this refuses rather than opening the UI to anything on the machine.
-    """
+def _require_voice_key(request: Request) -> None:
     configured = (settings.VOICE_API_KEY or "").strip()
     provided = (request.headers.get("X-Voice-Key") or "").strip()
-    if not configured or not secrets.compare_digest(provided, configured):
+    if not configured or not secrets.compare_digest(
+        provided.encode(), configured.encode()
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-Voice-Key",
@@ -146,6 +165,8 @@ async def desktop_session(
     if not auth_tokens.is_auth_configured():
         raise HTTPException(status_code=503, detail="Authentication is not configured")
 
+
+def _operator_session(session: Session) -> dict:
     user = _desktop_owner(session)
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = auth_tokens.create_access_token(
@@ -159,6 +180,69 @@ async def desktop_session(
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "email": user.email,
     }
+
+
+@router.post("/auth/desktop")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def desktop_session(
+    request: Request,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
+    """
+    Exchange the desktop's voice key for an owner session for the web UI.
+
+    The fused product has one operator and the assistant already holds
+    ``VOICE_API_KEY``, which can create and dispatch sprints; minting that same
+    operator's web session is therefore not an escalation. Without a configured
+    key this refuses rather than opening the UI to anything on the machine.
+    """
+    _require_voice_key(request)
+    return _operator_session(session)
+
+
+# One-time codes for opening the browser signed in. A session token in a URL
+# lands on the browser's command line and in its history; a code that works
+# once, within a minute, is worthless by the time anyone could read it there.
+HANDOFF_SECONDS = 60
+_handoffs: dict[str, float] = {}
+
+
+def _code_digest(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+@router.post("/auth/desktop/handoff")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def desktop_handoff(request: Request):
+    """A single-use code the launcher puts in the browser's URL (``#codigo=``)."""
+    _require_voice_key(request)
+    now = time.monotonic()
+    for digest, expires in list(_handoffs.items()):
+        if expires < now:
+            _handoffs.pop(digest, None)
+    code = secrets.token_urlsafe(32)
+    _handoffs[_code_digest(code)] = now + HANDOFF_SECONDS
+    return {"code": code, "expires_in": HANDOFF_SECONDS}
+
+
+class HandoffRedeem(BaseModel):
+    code: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/auth/desktop/redeem")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def desktop_redeem(
+    request: Request,
+    req: HandoffRedeem,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
+    """Trade a handoff code for the operator's session, once."""
+    expires = _handoffs.pop(_code_digest(req.code), None)
+    if expires is None or expires < time.monotonic():
+        raise HTTPException(status_code=401, detail="Invalid or expired code")
+    if not auth_tokens.is_auth_configured():
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    return _operator_session(session)
 
 
 @router.get("/auth/me")

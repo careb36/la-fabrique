@@ -8,6 +8,8 @@ leak, but it travels apart as ``usage_estimate`` with ``usage_status:
 estimated`` and is never presented as usage.
 """
 
+import math
+
 USAGE_REPORTED = "reported"
 USAGE_ESTIMATED = "estimated"
 
@@ -58,3 +60,13 @@ def with_usage(result: dict, reported: int | None, messages, text_out: str) -> t
     result.pop("usage", None)
     result.update(estimated_usage(estimate))
     return result, estimate
+
+
+def fallback_embedding(text: str, dims: int = 1536) -> list[float]:
+    """Deterministic local embedding fallback used only when provider embedding fails."""
+    vector = [0.0] * dims
+    for index, byte in enumerate(text.encode("utf-8")):
+        slot = (index * 131 + byte) % dims
+        vector[slot] += (byte % 17) + 1
+    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+    return [value / norm for value in vector]

@@ -5,18 +5,55 @@ import { FileSearch, RefreshCw } from 'lucide-react'
 import { useAgentRuns } from '../hooks/useQueries'
 import { useAppStore } from '../store/useAppStore'
 import { Verdict, VERDICT_PRESENTATION } from '../components/Verdict'
-import type { AgentRunListItem } from '../services/api'
+import type { AgentRunListItem, AgentRunStatus } from '../services/api'
+
+const STATUSES = Object.keys(VERDICT_PRESENTATION) as AgentRunStatus[]
+
+/** A clickable count that filters the list by one verdict. The "refuted" chip
+ *  keeps its red ring even when inactive, so the number that needs a person
+ *  never gets lost among the rest (isolation effect). */
+function SummaryChip({ label, count, active, variant, onClick }: {
+  label: string
+  count: number
+  active: boolean
+  variant: AgentRunStatus | 'all'
+  onClick: () => void
+}) {
+  const attention = variant === 'refuted'
+  const classes = active
+    ? 'border-brand-500 bg-brand-950/40 text-white ring-1 ring-brand-500'
+    : attention
+      ? 'border-red-800/60 bg-red-950/40 text-red-200 hover:border-red-700/60'
+      : 'border-surface-700 bg-surface-800 text-gray-300 hover:border-surface-600'
+  return (
+    <button
+      type="button"
+      data-testid={`summary-${variant}`}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex flex-col items-center gap-0.5 rounded-lg border px-2 py-3 transition-colors ${classes}`}
+    >
+      <span className="text-xl font-bold leading-none">{count}</span>
+      <span className="text-xs font-medium">{label}</span>
+    </button>
+  )
+}
 
 function EvidenceRuns({ companyId }: { companyId: number }) {
   const { t } = useTranslation()
   const { data, isLoading, isError, refetch } = useAgentRuns(companyId, { limit: 500 })
   const [producer, setProducer] = useState('')
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState<AgentRunStatus | ''>('')
   const [from, setFrom] = useState('')
   const [until, setUntil] = useState('')
 
   const runs = data?.agent_runs ?? []
   const producers = useMemo(() => [...new Set(runs.map(run => run.producer))].sort(), [runs])
+  const counts = useMemo(() => {
+    const result: Record<AgentRunStatus, number> = { verified: 0, refuted: 0, unverifiable: 0, ingested: 0 }
+    runs.forEach(run => { result[run.status] += 1 })
+    return result
+  }, [runs])
   const filteredRuns = runs.filter(run => {
     const date = run.ingested_at.slice(0, 10)
     return (!producer || run.producer === producer)
@@ -24,6 +61,14 @@ function EvidenceRuns({ companyId }: { companyId: number }) {
       && (!from || date >= from)
       && (!until || date <= until)
   })
+  const hasFilters = Boolean(producer || status || from || until)
+
+  function clearFilters() {
+    setProducer('')
+    setStatus('')
+    setFrom('')
+    setUntil('')
+  }
 
   if (isLoading) {
     return <div role="status" className="space-y-3" aria-label={t('evidence.loading')}>
@@ -44,32 +89,59 @@ function EvidenceRuns({ companyId }: { companyId: number }) {
 
   return (
     <>
-      <div className="card mb-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="text-sm text-gray-400">
-          {t('evidence.producer')}
-          <select className="input mt-1 w-full" value={producer} onChange={event => setProducer(event.target.value)}>
-            <option value="">{t('evidence.allProducers')}</option>
-            {producers.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
-        <label className="text-sm text-gray-400">
-          {t('evidence.verdictLabel')}
-          <select className="input mt-1 w-full" value={status} onChange={event => setStatus(event.target.value)}>
-            <option value="">{t('evidence.allVerdicts')}</option>
-            {Object.keys(VERDICT_PRESENTATION).map(value => (
-              <option key={value} value={value}>{t(`evidence.verdict.${value}`)}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-gray-400">
-          {t('evidence.ingestedAfter')}
-          <input className="input mt-1 w-full" type="date" value={from} onChange={event => setFrom(event.target.value)} />
-        </label>
-        <label className="text-sm text-gray-400">
-          {t('evidence.ingestedBefore')}
-          <input className="input mt-1 w-full" type="date" value={until} onChange={event => setUntil(event.target.value)} />
-        </label>
+      {runs.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label={t('evidence.summary.aria')}>
+          <SummaryChip
+            label={t('evidence.summary.all')}
+            count={runs.length}
+            active={status === ''}
+            variant="all"
+            onClick={() => setStatus('')}
+          />
+          {STATUSES.map(value => (
+            <SummaryChip
+              key={value}
+              label={t(`evidence.verdict.${value}`)}
+              count={counts[value]}
+              active={status === value}
+              variant={value}
+              onClick={() => setStatus(status === value ? '' : value)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-400">
+        {runs.length > 0
+          ? <span>{t('evidence.showing', { shown: filteredRuns.length, total: runs.length })}</span>
+          : <span aria-hidden="true" />}
+        {hasFilters && (
+          <button type="button" onClick={clearFilters} className="btn btn-ghost btn-sm">
+            {t('evidence.clearFilters')}
+          </button>
+        )}
       </div>
+
+      <details className="card mb-5 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-gray-300">{t('evidence.filters')}</summary>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="text-sm text-gray-400">
+            {t('evidence.producer')}
+            <select className="input mt-1 w-full" value={producer} onChange={event => setProducer(event.target.value)}>
+              <option value="">{t('evidence.allProducers')}</option>
+              {producers.map(value => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-gray-400">
+            {t('evidence.ingestedAfter')}
+            <input className="input mt-1 w-full" type="date" value={from} onChange={event => setFrom(event.target.value)} />
+          </label>
+          <label className="text-sm text-gray-400">
+            {t('evidence.ingestedBefore')}
+            <input className="input mt-1 w-full" type="date" value={until} onChange={event => setUntil(event.target.value)} />
+          </label>
+        </div>
+      </details>
 
       {filteredRuns.length === 0 ? (
         <div className="empty-state py-16">
@@ -79,7 +151,11 @@ function EvidenceRuns({ companyId }: { companyId: number }) {
       ) : (
         <div className="space-y-3">
           {filteredRuns.map((run: AgentRunListItem) => (
-            <article key={run.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              key={run.id}
+              to={`/evidence/${run.id}`}
+              className="card card-hover flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <Verdict status={run.status} />
@@ -96,10 +172,8 @@ function EvidenceRuns({ companyId }: { companyId: number }) {
                   </p>
                 )}
               </div>
-              <Link to={`/evidence/${run.id}`} className="btn btn-ghost btn-sm self-start sm:self-auto">
-                {t('evidence.viewDetails')}
-              </Link>
-            </article>
+              <span className="self-start text-sm font-medium text-brand-300 sm:self-auto">{t('evidence.viewDetails')} →</span>
+            </Link>
           ))}
         </div>
       )}

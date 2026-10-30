@@ -38,7 +38,7 @@ def dist_dir() -> Path:
     override = os.getenv("FABRICA_UI_DIST")
     if override:
         return Path(override).expanduser().resolve()
-    return (Path(__file__).resolve().parents[2] / "frontend" / "dist")
+    return Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 _MISSING = """<!doctype html>
@@ -81,7 +81,7 @@ def mount_ui(app: FastAPI) -> None:
         app.mount("/assets", StaticFiles(directory=assets), name="ui-assets")
 
     @app.middleware("http")
-    async def serve_ui(request: Request, call_next):  # noqa: ANN001,ANN202
+    async def serve_ui(request: Request, call_next):
         response = await call_next(request)
         if response.status_code != 404 or request.method not in ("GET", "HEAD"):
             return response

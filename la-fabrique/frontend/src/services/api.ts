@@ -1,7 +1,6 @@
 import { API_BASE } from '../lib/apiBase'
 import { useAuthStore } from '../store/useAuthStore'
 
-export { API_BASE } from '../lib/apiBase'
 const TIMEOUT_MS = 90_000
 const MAX_RETRIES = 2
 

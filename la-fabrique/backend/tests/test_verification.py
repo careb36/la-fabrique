@@ -2,7 +2,11 @@ import pytest
 from models.agent_run import AgentRun, Verification
 from models.audit import AuditLog
 from models.company import Company
-from services.verification import extract_claimed_paths, extract_test_claims
+from services.verification import (
+    check_tests_run,
+    extract_claimed_paths,
+    extract_test_claims,
+)
 from sqlmodel import select
 
 
@@ -363,6 +367,18 @@ def test_claimed_path_extraction_walks_nested_claims_and_ignores_urls():
     ]
 
 
+def test_claimed_path_extraction_keeps_jsx_and_tsx_extensions_whole():
+    claims = {
+        "body": "Touched frontend/src/Login.tsx and src/App.jsx, plus src/vite.config.ts."
+    }
+
+    assert extract_claimed_paths(claims) == [
+        "frontend/src/Login.tsx",
+        "src/App.jsx",
+        "src/vite.config.ts",
+    ]
+
+
 def test_test_claim_extraction_matches_claims_without_keyword_false_positives():
     claims = {
         "one": "75 passed",
@@ -511,3 +527,137 @@ def test_cross_tenant_verification_returns_404_without_writes(
         ).all()
         if audit.details.get("company_id") == str(company_a)
     ] == []
+
+
+# --- a test run the daemon could not finish, or could not fit in the tail -----
+
+
+def test_timed_out_test_run_refutes_instead_of_leaving_the_claim_unverifiable():
+    """A suite that hung was asked to finish and did not: that is a refutation."""
+    check = check_tests_run(
+        {
+            "test_run": {
+                "command": "python -m pytest -q",
+                "timed_out": True,
+                "timeout_seconds": 120,
+                "reason": "command timed out after 120s",
+            }
+        }
+    )
+
+    assert check["outcome"] == "refuted"
+    assert "did not finish within 120s" in check["observation"]
+    assert "timed out" in check["observation"]
+
+
+def test_timed_out_without_the_limit_still_refutes():
+    check = check_tests_run({"test_run": {"command": "npm test", "timed_out": True}})
+
+    assert check["outcome"] == "refuted"
+    assert "timed out and was killed" in check["observation"]
+
+
+def test_truncated_output_is_declared_in_the_observation():
+    """A cut log must never read as the whole story."""
+    check = check_tests_run(
+        {
+            "test_run": {
+                "command": "python -m pytest -q",
+                "exit_code": 1,
+                "output_tail": "1 failed",
+                "output_bytes": 90000,
+                "output_truncated": True,
+                "output_limit": 2000,
+            }
+        }
+    )
+
+    assert check["outcome"] == "refuted"
+    assert "exited 1" in check["observation"]
+    assert "output truncated to the last 2000 bytes of 90000" in check["observation"]
+
+
+def test_truncation_without_byte_counts_still_says_truncated():
+    check = check_tests_run(
+        {"test_run": {"command": "npm test", "exit_code": 0, "output_truncated": True}}
+    )
+
+    assert check["outcome"] == "pass"
+    assert check["observation"].endswith("[output truncated]")
+
+
+def test_untruncated_pass_carries_no_truncation_note():
+    check = check_tests_run(
+        {
+            "test_run": {
+                "command": "npm test",
+                "exit_code": 0,
+                "output_bytes": 12,
+                "output_truncated": False,
+            }
+        }
+    )
+
+    assert check["outcome"] == "pass"
+    assert "truncated" not in check["observation"]
+
+
+def test_daemon_silence_stays_unverifiable():
+    """The new refutations must not swallow the genuine 'never ran' case."""
+    check = check_tests_run(
+        {"test_run": {"command": "npm test", "reason": "the daemon did not reply"}}
+    )
+
+    assert check["outcome"] == "unverifiable"
+    assert "not run" in check["observation"]
+
+
+def test_posted_evidence_omitting_the_daemon_report_cannot_verify_writes(
+    sqlite_session, test_client, monkeypatch, tmp_path
+):
+    """A caller must not get a verified run by leaving the daemon's report out.
+
+    ``POST /v1/agent_runs/{id}/verify`` takes evidence from whoever calls it.
+    Gating the disk check on the *presence* of ``workspace_writes`` let an
+    omitted key read as "nothing to check"; the claim alone must open the check
+    so its absence settles as unverifiable.
+    """
+    company_id = _make_company(sqlite_session)
+    run = _ingest(
+        test_client,
+        monkeypatch,
+        tmp_path,
+        _payload(
+            company_id,
+            artifact="diff --git a/app/api.py b/app/api.py\n+++ b/app/api.py\n",
+            claims={"summary": "created the endpoint", "files": ["app/api.py"]},
+        ),
+    ).json()
+
+    response = _verify(
+        test_client, run["id"], company_id, evidence={"reason": "nothing to report"}
+    )
+
+    assert response.json()["verdict"] == "unverifiable"
+    file_check = next(
+        c for c in response.json()["checks"] if c["name"] == "files_written"
+    )
+    assert file_check["outcome"] == "unverifiable"
+
+
+def test_a_run_that_claims_no_files_is_unaffected_by_the_gate(
+    sqlite_session, test_client, monkeypatch, tmp_path
+):
+    """The gate change must not raise a disk check where no file was claimed."""
+    company_id = _make_company(sqlite_session)
+    run = _ingest(
+        test_client,
+        monkeypatch,
+        tmp_path,
+        _payload(company_id, claims={"summary": "looked at the repository"}),
+    ).json()
+
+    response = _verify(test_client, run["id"], company_id)
+
+    assert response.json()["verdict"] == "verified"
+    assert not [c for c in response.json()["checks"] if c["name"] == "files_written"]

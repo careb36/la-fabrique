@@ -30,6 +30,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -66,10 +67,49 @@ DURABLE_SUBJECTS = frozenset(
 )
 
 
+def _namespace() -> str:
+    """
+    Prefix that separates this deployment's JetStream state from another's.
+
+    Stream and consumer names are global to a NATS server, and these streams
+    use work-queue retention: each message goes to exactly one consumer. Two
+    deployments pointed at the same broker with the same names therefore do not
+    merely duplicate work — they swallow each other's messages, and the loser
+    sees a task that was published and never handled. That is what happened
+    when the e2e run shared the compose stack's broker.
+
+    Set ``NATS_NAMESPACE`` (for example ``e2e``) to keep the two apart. Empty —
+    the default — keeps the historical names, so a single stack is unchanged.
+    """
+    raw = os.getenv("NATS_NAMESPACE", "").strip()
+    if not raw:
+        return ""
+    # Stream names allow alphanumerics, ``-`` and ``_`` only.
+    return re.sub(r"[^A-Za-z0-9_-]", "_", raw).strip("_")
+
+
+def _scoped(name: str) -> str:
+    """Return *name* prefixed with the deployment namespace, if one is set."""
+    namespace = _namespace()
+    return f"{namespace}_{name}" if namespace else name
+
+
+def _scoped_subject(subject: str) -> str:
+    """
+    Namespace a durable subject, or leave it alone when no namespace is set.
+
+    Streaming only the *names* would not isolate anything: two work-queue
+    streams bound to the same subject each store every message, so both stacks
+    would still process it. The subject has to differ too.
+    """
+    namespace = _namespace()
+    return f"{namespace}.{subject}" if namespace else subject
+
+
 def _stream_config(stream: DurableStream) -> js_api.StreamConfig:
     return js_api.StreamConfig(
-        name=stream.name,
-        subjects=list(stream.subjects),
+        name=_scoped(stream.name),
+        subjects=[_scoped_subject(subject) for subject in stream.subjects],
         retention=js_api.RetentionPolicy.WORK_QUEUE,
         storage=js_api.StorageType.FILE,
         max_age=stream.max_age_seconds,
@@ -179,7 +219,7 @@ class NATSClient:
         data = json.dumps(payload).encode()
         if self.js is not None and subject in DURABLE_SUBJECTS:
             headers = {"Nats-Msg-Id": msg_id} if msg_id else None
-            ack = await self.js.publish(subject, data, headers=headers)
+            ack = await self.js.publish(_scoped_subject(subject), data, headers=headers)
             # Durable payloads can carry whole files; log the receipt only.
             logger.info(
                 "Stored %s in %s (seq=%s%s)",
@@ -205,7 +245,8 @@ class NATSClient:
         Process every message on a durable *subject*, including ones published
         while this process was down.
 
-        With JetStream this is a durable pull consumer named *durable*: replicas
+        With JetStream this is a durable pull consumer named *durable* (prefixed
+        with ``NATS_NAMESPACE`` when set): replicas
         sharing the name split the work, a message is acknowledged after
         *callback* returns, and one whose callback raises is redelivered (up to
         *max_deliver* times).  While *callback* runs the message is kept
@@ -216,25 +257,29 @@ class NATSClient:
             raise RuntimeError("NATS not connected")
         stream = next((s.name for s in DURABLE_STREAMS if subject in s.subjects), None)
         if self.js is None or stream is None:
-            await self.subscribe(subject, callback, queue=durable)
+            await self.subscribe(subject, callback, queue=_scoped(durable))
             return
 
+        scoped_stream, scoped_durable = _scoped(stream), _scoped(durable)
+        scoped_subject = _scoped_subject(subject)
         config = js_api.ConsumerConfig(
-            durable_name=durable,
+            durable_name=scoped_durable,
             deliver_policy=js_api.DeliverPolicy.ALL,
             ack_policy=js_api.AckPolicy.EXPLICIT,
             ack_wait=ack_wait_seconds,
             max_deliver=max_deliver,
-            filter_subject=subject,
+            filter_subject=scoped_subject,
         )
         psub = await self.js.pull_subscribe(
-            subject, durable=durable, stream=stream, config=config
+            scoped_subject, durable=scoped_durable, stream=scoped_stream, config=config
         )
         task = asyncio.create_task(
             self._consume(psub, callback, ack_wait_seconds, max_deliver)
         )
-        self.subscriptions[f"{subject}#{durable}"] = task
-        logger.info("Consuming %s from %s as %s", subject, stream, durable)
+        self.subscriptions[f"{scoped_subject}#{scoped_durable}"] = task
+        logger.info(
+            "Consuming %s from %s as %s", scoped_subject, scoped_stream, scoped_durable
+        )
 
     async def _consume(self, psub, callback, ack_wait_seconds, max_deliver):
         while True:

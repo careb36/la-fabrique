@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import time
 import unicodedata
 from pathlib import Path
@@ -56,11 +57,52 @@ class CodegenError(RuntimeError):
 
 # Filler that says nothing about the project: "quiero que hagas una página".
 _FILLER = {
-    "quiero", "necesito", "que", "me", "hagas", "haga", "hacer", "hace", "hacé",
-    "crees", "cree", "crear", "crea", "creá", "fabricá", "fabrique", "un", "una",
-    "unos", "unas", "el", "la", "los", "las", "de", "del", "con", "para", "por",
-    "favor", "en", "y", "o", "mi", "mio", "fábrica", "fabrica", "fábrica,",
-    "che", "dale", "oye", "ey", "bueno", "hola", "amigo", "porfa",
+    "quiero",
+    "necesito",
+    "que",
+    "me",
+    "hagas",
+    "haga",
+    "hacer",
+    "hace",
+    "hacé",
+    "crees",
+    "cree",
+    "crear",
+    "crea",
+    "creá",
+    "fabricá",
+    "fabrique",
+    "un",
+    "una",
+    "unos",
+    "unas",
+    "el",
+    "la",
+    "los",
+    "las",
+    "de",
+    "del",
+    "con",
+    "para",
+    "por",
+    "favor",
+    "en",
+    "y",
+    "o",
+    "mi",
+    "mio",
+    "fábrica",
+    "fabrica",
+    "fábrica,",
+    "che",
+    "dale",
+    "oye",
+    "ey",
+    "bueno",
+    "hola",
+    "amigo",
+    "porfa",
 }
 
 
@@ -94,19 +136,19 @@ def parse_files(text: str) -> list[dict]:
     the largest object that decodes — models that add a greeting still work.
     """
     raw = str(text or "").strip()
-    fence = re.search(r"```(?:json)?\s*(.+?)```", raw, re.S)
+    fence = re.search(r"```(?:json)?\s*(.+?)```", raw, re.DOTALL)
     if fence:
         raw = fence.group(1).strip()
     candidates: list[dict] = []
     try:
         candidates.append(json.loads(raw))
-    except Exception:
+    except ValueError:
         decoder = json.JSONDecoder()
         for start in (i for i, ch in enumerate(raw) if ch == "{"):
             try:
                 obj, _ = decoder.raw_decode(raw[start:])
-            except Exception:
-                continue
+            except ValueError:
+                continue  # not a JSON object at this brace; try the next one
             if isinstance(obj, dict):
                 candidates.append(obj)
     best: list[dict] = []
@@ -118,8 +160,9 @@ def parse_files(text: str) -> list[dict]:
 
 
 def _score(files: list) -> int:
-    return sum(len(str(item.get("content") or ""))
-               for item in files if isinstance(item, dict))
+    return sum(
+        len(str(item.get("content") or "")) for item in files if isinstance(item, dict)
+    )
 
 
 def write_files(root: Path, files: list[dict]) -> list[str]:
@@ -132,8 +175,9 @@ def write_files(root: Path, files: list[dict]) -> list[str]:
         content = str(item.get("content") or "")[:MAX_FILE_CHARS]
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content if content.endswith("\n") else content + "\n",
-                          encoding="utf-8")
+        target.write_text(
+            content if content.endswith("\n") else content + "\n", encoding="utf-8"
+        )
         written.append(relative)
     return written
 
@@ -195,7 +239,7 @@ def build(root: Path, request_text: str, chat, *, now: float | None = None) -> d
             answer = chat(messages)
         except CodegenError:
             raise
-        except Exception as exc:  # noqa: BLE001 - the caller needs a sentence
+        except Exception as exc:
             raise CodegenError(f"No pude hablar con el modelo: {exc}") from exc
 
         files = parse_files(answer)
@@ -205,17 +249,25 @@ def build(root: Path, request_text: str, chat, *, now: float | None = None) -> d
         # one stricter request rather than telling the person to try again.
         messages = messages[:2] + [
             {"role": "assistant", "content": answer[:2000]},
-            {"role": "user", "content": "Eso no es JSON válido. Devolvé SOLO el "
-                                        "objeto {\"files\": [...]} completo, sin "
-                                        "texto alrededor ni bloques de código."},
+            {
+                "role": "user",
+                "content": "Eso no es JSON válido. Devolvé SOLO el "
+                'objeto {"files": [...]} completo, sin '
+                "texto alrededor ni bloques de código.",
+            },
         ]
 
     if not files:
         raise CodegenError(
             "El modelo no devolvió archivos: contestó algo que no es el proyecto. "
-            "Probá de nuevo o pedí algo más concreto.")
+            "Probá de nuevo o pedí algo más concreto."
+        )
 
-    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    # A random part keeps the preview URL from being guessed: the folder name
+    # is otherwise the request's first words and the second it was built.
+    stamp = (
+        time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + "-" + secrets.token_hex(4)
+    )
     base = slugify(request_text)
     slug, attempt = f"{base}-{stamp}", 1
     while (root / slug).exists():
@@ -228,7 +280,8 @@ def build(root: Path, request_text: str, chat, *, now: float | None = None) -> d
     if not written:
         raise CodegenError(
             "Los archivos que propuso el modelo no tenían nombres válidos: no "
-            "escribí nada. Probá de nuevo.")
+            "escribí nada. Probá de nuevo."
+        )
     entry = pick_entry(written)
     return {
         "slug": slug,

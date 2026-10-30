@@ -5,8 +5,8 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4318:4318"     # OTLP/HTTP receiver
+      - "${BIND_ADDRESS:-127.0.0.1}:16686:16686"   # Jaeger UI
+      - "${BIND_ADDRESS:-127.0.0.1}:4318:4318"     # OTLP/HTTP receiver
     networks:
       - factory-network
     healthcheck:
@@ -43,7 +43,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-factory}
     ports:
-      - "5432:5432"
+      - "${BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./db/init-db:/docker-entrypoint-initdb.d
@@ -66,8 +66,8 @@ services:
       NEO4J_dbms_memory_heap_initial__size: 512M
       NEO4J_dbms_memory_heap_max__size: 2G
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "${BIND_ADDRESS:-127.0.0.1}:7474:7474"
+      - "${BIND_ADDRESS:-127.0.0.1}:7687:7687"
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -102,7 +102,7 @@ services:
       PROXY_PORT: 5100
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
-      - "5100:5100"
+      - "${BIND_ADDRESS:-127.0.0.1}:5100:5100"
     volumes:
       - ./llm-proxy/app.py:/app/app.py
       - ./llm-proxy/usage.py:/app/usage.py
@@ -139,6 +139,7 @@ services:
       SUPPORT_ADMIN_EMAILS: ${SUPPORT_ADMIN_EMAILS:-}
       SUPPORT_AGENT_ENABLED: ${SUPPORT_AGENT_ENABLED:-false}
       NATS_URL: nats://nats:4222
+      NATS_NAMESPACE: ${NATS_NAMESPACE:-}
       LLM_PROXY_URL: http://llm-proxy:5100
       AUDIT_LOG_PATH: /app/.factory/logs
       AGENT_WORKSPACE_ROOT: ${CONTAINER_WORKSPACE_ROOT:-/workspace}
@@ -149,11 +150,16 @@ services:
       NEMOTRON_MODEL: ${NEMOTRON_MODEL:-}
       NEMOTRON_MODEL_STRATEGIC: ${NEMOTRON_MODEL_STRATEGIC:-}
       NEMOTRON_MODEL_FAST: ${NEMOTRON_MODEL_FAST:-}
+      AGENT_MODEL: ${AGENT_MODEL:-}
+      # The desktop assistant's shared key for /v1/voice/*; empty keeps the
+      # voice routes closed while AUTH_REQUIRED is on.
+      VOICE_API_KEY: ${VOICE_API_KEY:-}
+      VOICE_COMPANY_ID: ${VOICE_COMPANY_ID:-}
       # Projects the factory writes from a chat sentence (/v1/voice/build).
       FABRICA_BUILDS_DIR: ${FABRICA_BUILDS_DIR:-/workspace/builds}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
-      - "8000:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
     volumes:
       - ./backend/app:/app/app
       - ./backend/agents:/app/agents
@@ -189,15 +195,23 @@ services:
     profiles: ["docker-daemon"]
     environment:
       NATS_URL: nats://nats:4222
+      NATS_NAMESPACE: ${NATS_NAMESPACE:-}
       WORKSPACE_ROOT: ${CONTAINER_WORKSPACE_ROOT:-/workspace}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # The non-root user below has no home in the image; pip --user and git
+      # need a writable one.
+      HOME: /tmp
     working_dir: /app
-    command: sh -lc "pip install --no-cache-dir -r /app/requirements.txt && python /app/daemon.py"
+    # Not root: it runs commands agents asked for and writes into your
+    # projects, so it runs as the owner of that folder (set DAEMON_UID and
+    # DAEMON_GID to `id -u` / `id -g` if yours is not 1000).
+    user: "${DAEMON_UID:-1000}:${DAEMON_GID:-1000}"
+    command: sh -lc "pip install --no-cache-dir --user -r /app/requirements.txt && python /app/daemon.py"
     volumes:
       - ./:${CONTAINER_WORKSPACE_ROOT:-/workspace}
       - ${PROJECTS_ROOT:-${HOME:-/tmp}}:${PROJECTS_ROOT:-${HOME:-/tmp}}:rw
-      - ./vscode-daemon/daemon.py:/app/daemon.py:ro
-      - ./vscode-daemon/requirements.txt:/app/requirements.txt:ro
+      # The whole folder: daemon.py imports nats_scope.py and shell_exec.py.
+      - ./vscode-daemon:/app:ro
     networks:
       - factory-network
     depends_on:
@@ -226,8 +240,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: factory-frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
     ports:
-      - "5173:5173"
+      - "${BIND_ADDRESS:-127.0.0.1}:5173:5173"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public

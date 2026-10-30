@@ -6,7 +6,7 @@ first-class observability.
 
 This document is the single source of truth for **proposing, reviewing, and
 merging changes** — for humans and for AI agents. If you are an agent, read
-§10 before you open a PR.
+§2 and `AGENTS.md` before you open a PR.
 
 - Normative: `CONTRIBUTING.md`, `SECURITY.md`, `CODEOWNERS`, accepted ADRs.
 - Precedence: `SECURITY.md` > accepted ADR > `CONTRIBUTING.md` > tooling default.
@@ -24,8 +24,8 @@ merging changes** — for humans and for AI agents. If you are an agent, read
 | Security | Threat model, secrets, dependency & data-handling review | Yes (security-sensitive) |
 | Developers | Implementation, tests, observability | Yes (own area, after review) |
 | QA | Verification against acceptance criteria | No |
-| AI agents | Draft specs, implement, review, verify — per §10 | **Never** (see §10.2) |
-| Human Owner | Final authority on `main` | Yes |
+| AI agents | Draft specs, implement, review, verify, merge — per `AGENTS.md` | Yes (any PR, head green only) |
+| Human Owner | Ownership, escalation, final call | Yes |
 
 ---
 
@@ -34,11 +34,16 @@ merging changes** — for humans and for AI agents. If you are an agent, read
 1. **No secrets in the repo.** Ever. Use the secret manager. No workflow scans
    for secrets, so nothing will catch a committed key: check before you commit.
 2. **Third-party IP.** Do not paste code, prompts, or designs from La Fabrique into
-   third-party tools without Security sign-off. No new dependency without §7.4.
+   third-party tools without Security sign-off. No new dependency without
+   Security review.
 3. **`main` is always releasable.** Nothing merges to `main` with a red pipeline.
 4. **Every change traces to an issue.** PRs without a linked issue are closed.
-5. **Agents do not merge to `main`.** A human merges every PR (§10.2).
-6. **Tests and observability ship with the change**, not after it (§12).
+5. **Agents merge pull requests** — their own and each other's — once every
+   check on the head commit is green. No PR waits for a human signature. What
+   still does not happen: merging a red or still-running head, merging a head
+   that moved after it was verified, or weakening branch protection to force a
+   merge through.
+6. **Tests and observability ship with the change**, not after it.
 
 ### Licensing of contributions
 
@@ -52,8 +57,9 @@ Apache 2.0, and keep third-party notices intact.
 
 ## 3. Local setup
 
-Not written yet: setup lives in `README.md` and `CLAUDE.md` until this
-section is.
+See [`README.md`](README.md) — Installation for the full stack and the
+workspace daemon. Per-project commands (backend tests, frontend gates, lint)
+are in [`CODING_STANDARDS.md`](CODING_STANDARDS.md) and [`AGENTS.md`](AGENTS.md).
 
 ---
 
@@ -61,12 +67,13 @@ section is.
 
 | Branch | What it is | Who merges into it |
 |--------|-----------|--------------------|
-| `develop` | Where web-product pull requests land | An agent or a person, with the pipeline green |
-| `main` | The released web product | A person, through a release pull request from `develop` (rule 5 above) |
-| `develop_meta`, `main_meta` | The Glassroom VR entry for the Meta VR Start Developer Competition, the same pair for `vr/` | As for `develop` and `main` |
+| `main` | The web product, and the default branch | An agent or a person, with the head green (rule 5) |
+| `main_meta`, `develop_meta` | The Glassroom VR entry for the Meta VR Start Developer Competition (`vr/`) | As for `main` |
 | `archive/*` | Old lines of work kept for reference; nothing merges into them | Nobody |
 
-A release pull request is merged with a merge commit, not a squash, so the
-next release stays a fast-forward. `main` and `develop` carry none of `vr/`.
-`archive/develop-2026-05-02` holds the `develop` of May 2026, whose useful
-work `main` had already rewritten.
+Work is trunk-based: one branch cut from `main`, one pull request into `main`,
+merged with a merge commit rather than a squash so the history keeps its shape.
+There is no `develop` integration branch — it only ever mirrored `main`, and it
+was retired on 2026-10-29 along with the release pull request it existed for.
+`archive/develop-2026-05-02` keeps the `develop` of May 2026, whose useful work
+`main` had already rewritten. `main` carries none of `vr/`.

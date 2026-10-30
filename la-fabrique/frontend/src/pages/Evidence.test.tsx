@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import i18n from 'i18next'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -99,5 +99,52 @@ describe('Evidence list', () => {
     expect(screen.getByTestId('verdict-refuted')).toHaveTextContent('Refutado')
     expect(screen.getByTestId('verdict-unverifiable')).toHaveTextContent('No verificable')
     expect(screen.getByTestId('verdict-ingested')).toHaveTextContent('Aún sin verificar')
+  })
+
+  it('chunks the runs by verdict with a count per status', () => {
+    mockRuns()
+    render(<MemoryRouter><Evidence /></MemoryRouter>)
+
+    expect(screen.getByTestId('summary-all')).toHaveTextContent('4')
+    expect(screen.getByTestId('summary-verified')).toHaveTextContent('1')
+    expect(screen.getByTestId('summary-refuted')).toHaveTextContent('1')
+    expect(screen.getByTestId('summary-unverifiable')).toHaveTextContent('1')
+    expect(screen.getByTestId('summary-ingested')).toHaveTextContent('1')
+  })
+
+  it('filters the list to one verdict and reports the narrowed count', () => {
+    mockRuns()
+    render(<MemoryRouter><Evidence /></MemoryRouter>)
+
+    fireEvent.click(screen.getByTestId('summary-refuted'))
+
+    expect(screen.getByTestId('verdict-refuted')).toBeInTheDocument()
+    expect(screen.queryByTestId('verdict-verified')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('verdict-unverifiable')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('verdict-ingested')).not.toBeInTheDocument()
+    expect(screen.getByText(/Showing 1 of 4 runs/)).toBeInTheDocument()
+  })
+
+  it('shows a clear-filters action while a filter is active and resets it', () => {
+    mockRuns()
+    render(<MemoryRouter><Evidence /></MemoryRouter>)
+
+    expect(screen.queryByRole('button', { name: /Clear filters/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('summary-refuted'))
+    const clear = screen.getByRole('button', { name: /Clear filters/ })
+    expect(clear).toBeInTheDocument()
+
+    fireEvent.click(clear)
+    expect(screen.queryByTestId('verdict-verified')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Clear filters/ })).not.toBeInTheDocument()
+  })
+
+  it('makes the whole row a link to the run detail', () => {
+    mockRuns()
+    render(<MemoryRouter><Evidence /></MemoryRouter>)
+
+    const links = screen.getAllByRole('link', { name: /run-verified/ })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0]).toHaveAttribute('href', '/evidence/1')
   })
 })

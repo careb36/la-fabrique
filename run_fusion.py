@@ -122,16 +122,20 @@ def _child_env(
     # instalment. _ensure_app_secrets() always writes a signing key; the session
     # itself is minted from the voice key by /v1/auth/desktop, so nobody types a
     # password and the factory is never left open anonymously.
-    env.setdefault("AUTH_REQUIRED", "true")
+    # Forced, not defaulted: an AUTH_REQUIRED=false left in the shell or in
+    # .env would open the whole API, approvals included, to any local process.
+    if env.get("AUTH_REQUIRED", "true").strip().lower() != "true" and announce:
+        print("⚠  AUTH_REQUIRED=false ignorado: la fábrica siempre pide sesión.",
+              flush=True)
+    env["AUTH_REQUIRED"] = "true"
     env.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
     # The assistant's dashboard embeds the factory's own UI in an iframe, which
     # is a different origin: `X-Frame-Options: DENY` (the API default) left that
-    # panel blank. Loopback with any port, because the panel moves to the next
-    # free port when 8770 is taken.
+    # panel blank. Only the panel's own origin, not every loopback port: any
+    # local page could otherwise frame the signed-in UI and click through it.
+    panel_port = urlsplit(ASSISTANT_PANEL_URL).port
     env.setdefault("FRAME_ANCESTORS", " ".join(
-        f"{scheme}://{host}:*"
-        for host in ("127.0.0.1", "localhost")
-        for scheme in ("http", "https")))
+        f"http://{host}:{panel_port}" for host in ("127.0.0.1", "localhost")))
     if announce and use_sqlite:
         print(
             "⚠  Modo local sin NATS: la voz mueve el tablero (crear, despachar, "
@@ -209,6 +213,42 @@ def _desktop_session(url: str, key: str) -> tuple[str, int]:
     return "", 0
 
 
+def _desktop_handoff(url: str, key: str) -> str:
+    """A single-use code the browser trades for a session, or ``""``.
+
+    The code goes in the address the launcher opens, so it lands on the
+    browser's command line and in its history; it expires in a minute and is
+    spent on first use, unlike a session token. Asked for right before the
+    browser opens so the minute is not spent waiting for the factory.
+    """
+    if not key:
+        return ""
+    status, body = _request(f"{url}/v1/auth/desktop/handoff", payload={}, key=key)
+    if status == 200 and body and body.get("code"):
+        return str(body["code"])
+    print(
+        f"⚠  No pude abrir sesión para la interfaz (HTTP {status}). "
+        "Se abrirá la pantalla de acceso.",
+        flush=True,
+    )
+    return ""
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write *text* to *path* readable by its owner only, from the first byte.
+
+    Writing first and chmod-ing after leaves a window where the keys inside
+    are world-readable; ``os.open`` with 0600 does not.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+    try:
+        path.chmod(0o600)  # an existing file keeps its old mode otherwise
+    except OSError:
+        pass
+
+
 def _ensure_company(url: str, key: str, name: str, token: str = "") -> int | None:
     status, body = _request(f"{url}/v1/voice/status", key=key)
     if status == 200 and body and body.get("ok"):
@@ -255,11 +295,7 @@ def _configure_assistant(url: str, key: str, company_id: int | None) -> None:
     if company_id is not None:
         plugin["company_id"] = str(company_id)
     plugin.setdefault("idioma", "auto")
-    config.write_text(json.dumps(data, indent=4), encoding="utf-8")
-    try:
-        config.chmod(0o600)
-    except OSError:
-        pass
+    _write_private(config, json.dumps(data, indent=4))
     print("✓  Plugin FÁBRICA configurado en el asistente.", flush=True)
 
 
@@ -303,11 +339,7 @@ def _configure_new_assistant(
                 "model_timeout": 300.0,
             }
         )
-    config.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    try:
-        config.chmod(0o600)
-    except OSError:
-        pass
+    _write_private(config, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print("✓  Asistente B1 configurado en el asistente.", flush=True)
 
 
@@ -565,7 +597,7 @@ def _write_env_file(values: dict[str, str]) -> None:
         else:
             merged.append(raw)
     merged.extend(f"{name}={value}" for name, value in values.items() if name not in written)
-    path.write_text("\n".join(merged).rstrip("\n") + "\n", encoding="utf-8")
+    _write_private(path, "\n".join(merged).rstrip("\n") + "\n")
 
 
 def _nvidia_key() -> str:
@@ -948,16 +980,16 @@ def _start_daemon(python: str, env: dict[str, str], agents_dir: Path) -> subproc
     )
 
 
-def _panel_url(url: str, token: str, expires_in: int) -> str:
-    """The UI's address, with the session handed over in the fragment.
+def _panel_url(url: str, code: str = "") -> str:
+    """The UI's address, with a single-use handoff code in the fragment.
 
-    The fragment is never sent to the server and `main.tsx` scrubs it from the
-    address bar as soon as it is adopted, so the token does not sit in history.
+    Never the session itself: `main.tsx` trades the code for one with a POST
+    and scrubs it from the address bar, and by then it is spent.
     """
     base = f"{url.rstrip('/')}/"
-    if not token:
+    if not code:
         return base
-    return f"{base}#sesion={token}&caduca={expires_in}"
+    return f"{base}#codigo={code}"
 
 
 def _panel_answers(url: str = ASSISTANT_PANEL_URL,
@@ -977,7 +1009,7 @@ def _panel_answers(url: str = ASSISTANT_PANEL_URL,
         return False
 
 
-def _open_panel(url: str, token: str = "", expires_in: int = 0,
+def _open_panel(url: str, key: str = "",
                 timeout: float = 45.0,
                 panel_timeout: float = PANEL_WAIT_SECONDS) -> None:
     """Open the assistant's panel, or the factory when it never comes up.
@@ -997,13 +1029,12 @@ def _open_panel(url: str, token: str = "", expires_in: int = 0,
             return
         time.sleep(1.0)
 
-    target = _panel_url(url, token, expires_in)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(f"{url.rstrip('/')}/", timeout=2) as response:
                 if response.status == 200:
-                    webbrowser.open(target)
+                    webbrowser.open(_panel_url(url, _desktop_handoff(url, key)))
                     return
         except Exception:
             pass
@@ -1306,7 +1337,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.no_browser:
                 threading.Thread(
                     target=_open_panel,
-                    args=(url, session_token, session_ttl),
+                    args=(url, key if key_ok else ""),
                     daemon=True,
                 ).start()
             started_at = time.monotonic()
@@ -1339,6 +1370,7 @@ def main(argv: list[str] | None = None) -> int:
         _stop(assistant, "el asistente")
         _stop(daemon, "el demonio")
         _stop(backend, "el backend")
+        _stop(proxy, "el proxy de modelos")
 
 
 if __name__ == "__main__":

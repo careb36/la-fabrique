@@ -508,7 +508,8 @@ function Get-DirectoryPythons {
     if ($env:LOCALAPPDATA) { $roots += (Join-Path $env:LOCALAPPDATA 'Programs\Python') }
     if ($env:ProgramFiles) { $roots += $env:ProgramFiles }
     if (${env:ProgramFiles(x86)}) { $roots += ${env:ProgramFiles(x86)} }
-    $roots += 'C:\'
+    # C:\ no: cualquier usuario puede crear carpetas en la raíz del disco, y
+    # una «C:\Python312» plantada ahí ejecutaría código con la clave de voz.
     foreach ($root in $roots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue)) {
@@ -912,7 +913,7 @@ function Copy-MissingModulesFrom([string]$SourceVenv, [string]$TargetVenv, [stri
 
 function Update-Pip([string]$PythonExe) {
     Write-Detalle "Actualizando pip…"
-    & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 --upgrade pip
+    & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 'pip==25.2'
     if ($LASTEXITCODE -ne 0) { Write-Aviso "No pude actualizar pip; sigo con el que hay." }
 }
 
@@ -930,7 +931,7 @@ function Install-BackendDependencies([string]$PythonExe) {
         Write-Detalle "Poetry ya está instalado"
     } else {
         Write-Detalle "Instalando Poetry…"
-        & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 poetry
+        & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 'poetry==2.5.1'
         if ($LASTEXITCODE -eq 0) { $hasPoetry = $true }
     }
     if ($hasPoetry) {
@@ -1055,10 +1056,13 @@ function Install-Frontend {
     Write-Paso "Compilando la interfaz de la fábrica (npm); la primera vez tarda unos minutos"
     Push-Location -LiteralPath $frontend
     try {
+        # Solo `npm ci`: instala exactamente las versiones del lockfile. Sin
+        # lockfile, `npm install` resolvería versiones nuevas sin revisar.
         if (Test-Path -LiteralPath (Join-Path $frontend 'package-lock.json')) {
             & $npm ci --no-audit --no-fund
         } else {
-            & $npm install --no-audit --no-fund
+            Write-Aviso "Falta frontend\package-lock.json; no instalo versiones sin fijar."
+            return
         }
         # Un fallo de npm no puede tumbar el arranque: la API y la voz no
         # dependen de la SPA, y el backend ya sirve una página que explica el
@@ -1296,7 +1300,9 @@ try {
     if ($SoloAsistente) { $launcherArgs += '--assistant-only' }
     if ($Url) { $launcherArgs += @('--url', $Url) }
     if ($Puerto -gt 0) { $launcherArgs += @('--port', "$Puerto") }
-    if ($Clave) { $launcherArgs += @('--voice-key', $Clave) }
+    # La clave va por el entorno, no por la línea de órdenes: cualquier proceso
+    # del equipo puede leer la línea de órdenes de otro.
+    if ($Clave) { $env:VOICE_API_KEY = $Clave }
     if ($Empresa) { $launcherArgs += @('--company', $Empresa) }
     if ($SinNavegador) { $launcherArgs += '--no-browser' }
     if ($Completa) { $launcherArgs += '--completa' }

@@ -541,9 +541,12 @@ casilla que el modelo pueda rellenar solo.
 
 Al arrancar, el lanzador abre la **interfaz React de la fábrica** en el
 navegador con una sesión de escritorio ya abierta (desactívalo con
-`--no-browser` o `-SinNavegador`). El token viaja en el fragmento (`#sesion=…`),
-que no llega al servidor ni a los registros, y la propia aplicación lo borra de
-la barra de direcciones en cuanto lo adopta. También se llega por voz («abre la
+`--no-browser` o `-SinNavegador`). La dirección lleva solo un código de un uso
+(`#codigo=…`) que caduca en 60 segundos: la aplicación lo canjea por la sesión
+con un POST a `/v1/auth/desktop/redeem`, lo borra de la barra de direcciones y
+nunca reemplaza una sesión ya abierta en ese navegador. El token de sesión no
+viaja nunca en una URL, donde quedaría en el historial y en la línea de órdenes
+del navegador. También se llega por voz («abre la
 fábrica») y con el botón **Fábrica** del asistente.
 
 Si está corriendo el checkout de referencia `profesor3`, el lanzador abre
@@ -554,10 +557,11 @@ la petición viene de loopback. Desde otro dispositivo manda la clave de
 emparejamiento de *Control remoto*, como siempre.
 
 `GET /fabrica` es la puerta del panel de referencia: pide una sesión a
-`/v1/auth/desktop` con la clave que el asistente ya tiene y redirige con
-`#sesion=…`. Como es otro origen, el backend declara `FRAME_ANCESTORS`
-(loopback, cualquier puerto) para que el iframe no se quede en blanco; sin esa
-variable `X-Frame-Options: DENY` lo bloquea.
+`/v1/auth/desktop/handoff` un código de un uso con la clave que el asistente ya
+tiene y redirige con `#codigo=…`. Como es otro origen, el backend declara
+`FRAME_ANCESTORS` (solo el origen del panel, `127.0.0.1:8770` y
+`localhost:8770`) para que el iframe no se quede en blanco; sin esa variable
+`X-Frame-Options: DENY` lo bloquea.
 
 Las órdenes que das con los botones de ese panel viajan al asistente, no a la
 fábrica:

@@ -81,7 +81,6 @@ def test_a_file_at_the_root_of_the_bundle_is_served(client):
 def test_a_scan_for_a_leaked_file_is_a_404_not_the_shell(client):
     """Otherwise every scanner hit is a 200 and the metrics stop meaning anything."""
     for path in ("/wp-login.php", "/.env", "/.git/config", "/backup.sql"):
-
         assert client.get(path).status_code == 404, path
 
 

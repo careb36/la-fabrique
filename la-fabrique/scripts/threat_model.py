@@ -189,8 +189,8 @@ def main() -> int:
         f"Total de amenazas identificadas: **{len(threats)}**.",
         "",
         ("El modelo describe la arquitectura del repositorio; no reemplaza la "
-         "revisión humana ni las pruebas de seguridad. Los residuales se triagean "
-         "en `docs/threat_triage.md`."),
+         "revisión humana ni las pruebas de seguridad. Los riesgos residuales se "
+         "documentan en `SECURITY.md`."),
         "",
     ]
     for severity in ("Critical", "Very High", "High", "Medium", "Low", "Very Low"):

@@ -56,14 +56,14 @@ def test_frame_ancestors_replace_the_blanket_deny(test_client, monkeypatch):
     X-Frame-Options: DENY blanked that panel; the allowlist is explicit and
     travels in frame-ancestors, which is what browsers still honour.
     """
-    monkeypatch.setenv(
-        "FRAME_ANCESTORS", "http://127.0.0.1:8770 http://localhost:8770")
+    monkeypatch.setenv("FRAME_ANCESTORS", "http://127.0.0.1:8770 http://localhost:8770")
     response = test_client.get("/health")
 
     assert "X-Frame-Options" not in response.headers
     assert response.headers["Content-Security-Policy"] == (
         "default-src 'self'; frame-ancestors 'self' "
-        "http://127.0.0.1:8770 http://localhost:8770")
+        "http://127.0.0.1:8770 http://localhost:8770"
+    )
 
 
 def test_the_spa_shell_carries_the_same_headers(test_client, monkeypatch):
@@ -73,7 +73,8 @@ def test_the_spa_shell_carries_the_same_headers(test_client, monkeypatch):
 
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Content-Security-Policy"] == (
-        "default-src 'self'; frame-ancestors 'self' http://127.0.0.1:*")
+        "default-src 'self'; frame-ancestors 'self' http://127.0.0.1:*"
+    )
 
 
 def test_frame_ancestors_ignores_a_blank_list(test_client, monkeypatch):

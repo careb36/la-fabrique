@@ -38,7 +38,7 @@ in; an agent leaves it empty. -->
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] Any dependent changes have been merged and published
-- [ ] The pull request targets `develop` (a release pull request targets `main`)
+- [ ] The pull request targets `main`, and its head is green
 
 ## Backend changes
 - [ ] Backend tests run: `cd backend && PYTHONPATH=.:app python3 -m pytest tests -q` (result under "What was run")

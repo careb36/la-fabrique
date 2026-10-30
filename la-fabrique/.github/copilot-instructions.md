@@ -1,6 +1,6 @@
 # Copilot Instructions
 
-Le Fabrique orchestrates AI agents (PO, Architect, Developer, QA, …) over a user's VS Code workspace. **Direction (see `docs/POSITIONING.md`, issue #38):** agents are interchangeable producers; the product is the layer that verifies their work and records evidence. Read that document before planning new work. `CLAUDE.md` has further detail.
+La Fabrique orchestrates AI agents (PO, Architect, Developer, QA, …) over a user's VS Code workspace. **Direction (see `docs/POSITIONING.md`, issue #38):** agents are interchangeable producers; the product is the layer that verifies their work and records evidence. Read that document before planning new work. `CLAUDE.md` has further detail.
 
 ## Build, test, lint
 
@@ -39,5 +39,5 @@ python vscode-daemon/daemon.py       # must run on the host, not in Docker
 - **Multi-tenancy/auth:** all data is scoped by `company_id`. Roles: Owner > Manager > Viewer. Audit writes and memory stores derive company ownership from authenticated membership, never from payload metadata. Auth is enforced by default (`AUTH_REQUIRED`); public routes are limited (`/health`, register/login, signed GitHub webhook, support bug/chat, `/v1/models`, Glassroom SSE, `/v1/approve_task` → 410).
 - **i18n:** every user-facing string goes in both `frontend/src/i18n/en.json` and `es.json` (CONTRIBUTING.md mentions `locales/`, but the real path is `i18n/`), via `useTranslation`. Use i18next `defaultValue`, not `t(key) || fallback` (a missing key returns the key, which is truthy).
 - **Tests:** new backend tests use fixtures from `backend/tests/conftest.py` (`sqlite_session`, `test_client`); register any new SQLModel table imports there so `create_all` sees them.
-- **Git:** GitFlow — branch `feature/*` / `bugfix/*` from `develop`, PRs target `develop`. Conventional Commits `type(scope): description`. Fill in `.github/PULL_REQUEST_TEMPLATE.md`, and only claim a green build/tests you actually ran.
+- **Git:** trunk-based — branch `feature/*` / `bugfix/*` / `docs/*` / `fix/*` from `main`, PRs target `main`, merge commit (not a squash). Conventional Commits `type(scope): description`. Fill in `.github/PULL_REQUEST_TEMPLATE.md`, and only claim a green build/tests you actually ran.
 - Secrets (`FERNET_SECRET_KEY`, `JWT_SECRET_KEY`, `AUDIT_SIGNING_KEY`, API keys) come from `.env` (see `.env.example`); never commit them.

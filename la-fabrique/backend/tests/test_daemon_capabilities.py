@@ -81,3 +81,75 @@ async def test_capabilities_ignores_paths_and_shell_syntax(daemon, monkeypatch):
     reply = await _ask(daemon, {"commands": ["/bin/sh", "../claude", "claude"]})
 
     assert reply == {"assistants": ["claude"]}
+
+
+# --- workspace.execute: a command the timeout killed --------------------------
+
+
+def _fake_run(daemon, monkeypatch, **kwargs):
+    seen = {}
+
+    def fake(*args, **inner):
+        seen.update(inner)
+        seen["argv"] = args[0] if args else None
+        outcome = kwargs.get("raises")
+        if outcome is not None:
+            raise outcome
+        return SimpleNamespace(
+            returncode=kwargs.get("returncode", 0), stdout="", stderr=""
+        )
+
+    monkeypatch.setattr(daemon.subprocess, "run", fake)
+    return seen
+
+
+def test_execute_reports_a_timeout_as_timed_out_with_its_output(daemon, monkeypatch):
+    """The backend must be able to tell 'hung' from 'ran and failed'."""
+    import subprocess
+
+    seen = _fake_run(
+        daemon,
+        monkeypatch,
+        raises=subprocess.TimeoutExpired(
+            cmd="sleep 999", timeout=120, output="partial"
+        ),
+    )
+
+    result = daemon.execute_shell_command("sleep 999", "/tmp")
+
+    assert result["success"] is False
+    assert result["timed_out"] is True
+    assert result["timeout_seconds"] == seen["timeout"]
+    assert result["stdout"] == "partial"
+    assert "timed out" in result["error"]
+
+
+def test_execute_reports_a_normal_failure_without_the_timed_out_flag(
+    daemon, monkeypatch
+):
+    _fake_run(daemon, monkeypatch, returncode=2)
+
+    result = daemon.execute_shell_command("false", "/tmp")
+
+    assert result["exit_code"] == 2
+    assert "timed_out" not in result
+
+
+def test_execute_uses_the_module_timeout_constant(daemon, monkeypatch):
+    """The daemon timeout must stay under the backend's 130s NATS wait."""
+    seen = _fake_run(daemon, monkeypatch, returncode=0)
+
+    daemon.execute_shell_command("true", "/tmp")
+
+    assert seen["timeout"] == daemon.COMMAND_TIMEOUT_SECONDS
+    assert daemon.COMMAND_TIMEOUT_SECONDS < 130
+
+
+def test_execute_keeps_other_errors_untyped(daemon, monkeypatch):
+    _fake_run(daemon, monkeypatch, raises=OSError("no such directory"))
+
+    result = daemon.execute_shell_command("true", "/nonexistent")
+
+    assert result["success"] is False
+    assert "timed_out" not in result
+    assert "no such directory" in result["error"]

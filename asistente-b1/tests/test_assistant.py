@@ -197,8 +197,10 @@ def test_build_url_is_opened_once(monkeypatch):
 
     registry = ToolRegistry()
 
+    preview = "http://x/v1/voice/build/pagina/index.html"
+
     def factory_build(texto: str) -> dict:
-        return {"ok": True, "speech": "Listo.", "data": {"url": "http://x/y"}}
+        return {"ok": True, "speech": "Listo.", "data": {"url": preview}}
 
     registry.register(
         "factory_build", "construye", object_schema({"texto": {"type": "string"}}, ["texto"]),
@@ -210,11 +212,40 @@ def test_build_url_is_opened_once(monkeypatch):
     )
     events: list[dict] = []
     assistant = make(
-        model, registry=registry, events=events, cfg=settings(open_build_in_browser=True)
+        model,
+        registry=registry,
+        events=events,
+        cfg=settings(open_build_in_browser=True),
+        factory=fabrica.FactoryClient("http://x"),
     )
     asyncio.run(assistant.handle("armá una página"))
-    assert opened == ["http://x/y"]
+    assert opened == [preview]
     assert any(event["type"] == "opened" for event in events)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["file:///etc/passwd", "http://evil.example/v1/voice/build/x", "\\\\host\\share\\x.exe"],
+)
+def test_only_the_factory_previews_are_opened(monkeypatch, url):
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda u, new=0: opened.append(u))
+    registry = ToolRegistry()
+    registry.register(
+        "factory_status", "estado", object_schema({}),
+        lambda: {"ok": True, "speech": "x", "data": {"url": url}},
+    )
+    model = ScriptedModel(
+        Reply(tool_calls=[ToolCall("c1", "factory_status", "{}")]), Reply(text="ok")
+    )
+    assistant = make(
+        model,
+        registry=registry,
+        cfg=settings(open_build_in_browser=True),
+        factory=fabrica.FactoryClient("http://x"),
+    )
+    asyncio.run(assistant.handle("estado"))
+    assert opened == []
 
 
 def test_build_url_is_not_opened_when_disabled(monkeypatch):

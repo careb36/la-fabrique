@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,23 @@ class ModelError(Exception):
     """El proveedor contestó algo que no se puede usar."""
 
 
+
+
+class _SameOriginRedirects(urllib.request.HTTPRedirectHandler):
+    """The key never follows a redirect to another scheme or host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old = urllib.parse.urlsplit(req.full_url)
+        new = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl))
+        if (old.scheme, old.netloc) != (new.scheme, new.netloc):
+            raise urllib.error.HTTPError(
+                newurl, code, "redirect to another origin refused", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SameOriginRedirects)
+
 def clean_key(value: str | None) -> str:
     """La clave como la quiere el encabezado, no como se pega."""
     key = str(value or "").strip().strip('"').strip("'")
@@ -60,9 +78,12 @@ def factory_dir() -> Path | None:
     if configured:
         candidates.append(Path(configured))
     here = Path(__file__).resolve()
+    # In this repository the factory is the root; a checkout that nests it
+    # under ``la-fabrique/`` is found too.
+    candidates.extend(here.parents)
     candidates.extend(parent / "la-fabrique" for parent in here.parents)
     cwd = Path.cwd()
-    candidates.extend((cwd / "la-fabrique", cwd.parent / "la-fabrique"))
+    candidates.extend((cwd, cwd / "la-fabrique", cwd.parent / "la-fabrique"))
     for folder in candidates:
         if (folder / "backend").is_dir():
             return folder
@@ -146,7 +167,7 @@ class ChatClient:
 
     def _json(self, request: urllib.request.Request, timeout: float) -> Any:
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _OPENER.open(request, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")[:300]

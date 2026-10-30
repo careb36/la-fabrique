@@ -163,3 +163,49 @@ def materialized_snapshot(snapshot: dict[str, Any]) -> Iterator[str]:
 
 def without_snapshot(project: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in project.items() if key != "snapshot"}
+
+
+# How much of a command's output is kept as evidence. The daemon's own timeout
+# can leave a long log; the tail is what explains a failure, and the byte count
+# lets the verifier say the tail is a tail.
+TEST_OUTPUT_TAIL_CHARS = 2000
+
+
+def record_test_run(evidence: dict[str, Any], command: str, result: Any) -> None:
+    """Store a ``workspace.execute`` reply as test evidence.
+
+    Keeps the command, exit code and output tail in ``test_run``; restates the
+    conclusion in the shape ``check_claimed_tests_evidenced`` reads in ``ci``.
+    The exit status comes from the daemon, never from the agent.
+
+    A command the daemon killed keeps ``timed_out`` and the output captured
+    before the kill: "it hung" is a result, and the verifier refutes it rather
+    than leaving the claim unsettled.
+    """
+    reply = result if isinstance(result, dict) else {}
+    exit_code = reply.get("exit_code")
+    timed_out = bool(reply.get("timed_out"))
+    output = f"{reply.get('stdout') or ''}{reply.get('stderr') or ''}"
+    test_run: dict[str, Any] = {
+        "command": command,
+        "exit_code": exit_code,
+        "output_tail": output[-TEST_OUTPUT_TAIL_CHARS:],
+        "output_bytes": len(output),
+        "output_truncated": len(output) > TEST_OUTPUT_TAIL_CHARS,
+        "timed_out": timed_out,
+        "reason": reply.get("error"),
+    }
+    if timed_out:
+        test_run["timeout_seconds"] = reply.get("timeout_seconds")
+        conclusion = "timed_out"
+    elif isinstance(exit_code, int):
+        conclusion = "success" if exit_code == 0 else "failure"
+    else:
+        evidence["test_run"] = test_run
+        return
+    evidence["test_run"] = test_run
+    evidence["ci"] = {
+        "source": "workspace daemon",
+        "ref": command,
+        "conclusion": conclusion,
+    }

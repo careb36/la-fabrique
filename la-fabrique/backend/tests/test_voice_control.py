@@ -154,7 +154,7 @@ def test_sprints_speaks_english_when_asked(sqlite_session, test_client):
 
 
 def test_plan_previews_without_writing(sqlite_session, test_client):
-    company = _company(sqlite_session)
+    _company(sqlite_session)
 
     body = _command(test_client, action="planear", text="Add Google login")
 
@@ -241,7 +241,13 @@ def test_dispatch_refuses_a_paused_sprint(sqlite_session, test_client):
 # ---------------------------------------------------------------------------
 
 
-def _agent(session, company_id, name="R2", role="Dev", model="nvidia/llama-3.3-nemotron-super-49b-v1"):
+def _agent(
+    session,
+    company_id,
+    name="R2",
+    role="Dev",
+    model="nvidia/llama-3.3-nemotron-super-49b-v1",
+):
     from models.company import Agent
 
     agent = Agent(company_id=company_id, name=name, role=role, model=model)
@@ -257,7 +263,9 @@ def test_assign_records_the_task_for_the_named_agent(sqlite_session, test_client
     sprint = _sprint(sqlite_session, test_client, company.id, items=1)
 
     body = _command(
-        test_client, action="asignar", agent="R2",
+        test_client,
+        action="asignar",
+        agent="R2",
         text="Arreglá el login que falla en Safari",
     )
 
@@ -313,11 +321,14 @@ def test_assign_to_a_paused_sprint_does_not_dispatch(sqlite_session, test_client
     assert body["ok"] is True
     assert body["data"]["dispatched"] is False
     assert "pausa" in body["speech"].lower()
-    assert sqlite_session.exec(
-        select(OutboxEvent).where(
-            OutboxEvent.aggregate_id == str(body["data"]["task"]["id"])
-        )
-    ).all() == []
+    assert (
+        sqlite_session.exec(
+            select(OutboxEvent).where(
+                OutboxEvent.aggregate_id == str(body["data"]["task"]["id"])
+            )
+        ).all()
+        == []
+    )
     assert sqlite_session.get(Sprint, sprint_id).status == "paused"
 
 
@@ -424,9 +435,7 @@ def test_voice_key_is_required_when_configured(test_client, monkeypatch):
 
     assert test_client.get("/v1/voice/status").status_code == 401
 
-    response = test_client.get(
-        "/v1/voice/status", headers={"X-Voice-Key": "s3cret"}
-    )
+    response = test_client.get("/v1/voice/status", headers={"X-Voice-Key": "s3cret"})
     assert response.status_code == 200
     assert response.json()["action"] == "estado"
 
@@ -450,3 +459,13 @@ def test_ping_confirms_the_key(test_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert response.json()["via_key"] is True
+
+
+def test_an_empty_voice_company_id_means_unset(monkeypatch):
+    # docker compose passes VOICE_COMPANY_ID through as an empty string.
+    from config import Settings
+
+    monkeypatch.setenv("VOICE_COMPANY_ID", "")
+    assert Settings().VOICE_COMPANY_ID is None
+    monkeypatch.setenv("VOICE_COMPANY_ID", "7")
+    assert Settings().VOICE_COMPANY_ID == 7

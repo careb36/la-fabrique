@@ -1,157 +1,121 @@
-# 👔 Le Fabrique: The Manager's Guide
+# La Fabrique — guide for managers
 
-Welcome to **Le Fabrique**, your autonomous AI engineering factory.
+For the person who owns the outcome rather than the code. It explains what the
+system does, what you decide, and what it will not do for you. No command line
+needed: everything here happens in the dashboard.
 
-This guide is designed for business owners, product managers, and non-technical leaders. You don't need to know how to code to use Le Fabrique. Once your IT team has installed the system, you will use a simple, visual dashboard to command an entire team of artificial intelligence professionals.
+For installation, see [`README.md`](README.md). For the technical design, see
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
 
----
+## The idea in one paragraph
 
-## 🌟 1. What is Fabrique?
+You set a goal for a sprint. A team of AI agents plans the work, writes it, and
+delivers it back to you with evidence of what it actually did: which files were
+written, with which content hash, and whether the tests ran. The product is not
+the code generation — any tool can generate code. The product is that every
+delivery is checked against evidence the delivering agent cannot forge, and that
+the result is recorded so you can audit it later.
 
-Think of Fabrique not as software, but as **digital employees**. 
-Instead of writing code yourself, you provide a business goal or a feature request. Fabrique then assigns this task to a specialized team of AI agents who will analyze the request, write the code, test it, and deliver the final product.
+That distinction decides how you use it. You are not asked to read code and trust
+it. You are asked to read a verdict.
 
-### 🚀 Killer Enterprise Features:
-*   🛡️ **SecOps Agent (Auto-SAST):** Every line of code is scanned by our dedicated Cybersecurity AI for OWASP vulnerabilities and exposed secrets before it is ever committed.
-*   📚 **Auto-Documentation (TechWriter):** As the code evolves, a dedicated AI Technical Writer automatically updates your API specifications, Swagger files, and Markdown documentation.
-*   ⏱️ **"Time Travel" Debugging:** Using our Neo4j Engram technology, you can click on any file and instantly see the complete history of *why* it was built that way, which agent wrote it, and the business ticket that justified the change.
+## What a sprint looks like
 
-### Three Ways to Work with Fabrique:
-*   🌱 **Genesis Mode (New Projects):** Build a new application from scratch. Fabrique handles the architecture, database design, and initial setup.
-*   🔄 **Continuity Mode (Ongoing Work):** Pick up where Fabrique left off. The AI remembers its previous decisions and continues evolving your existing product.
-*   🔌 **Integration Mode (Legacy Systems):** Bring your own code. Fabrique can ingest projects built by humans to fix bugs, add new features, and perform long-term maintenance.
+1. **Plan.** You describe the goal and a scope size. The planner turns it into
+   backlog items with acceptance criteria.
+2. **Dispatch.** The items go out as tasks. Each one is picked up by an agent
+   with a role: product owner, architect, developer, QA, technical writer.
+3. **Work.** The agent produces a change and hands it to the workspace daemon,
+   the small program on your machine that writes files into your project folder.
+4. **Verify.** Each claim in the delivery is compared with what the daemon
+   observed. The result is one of three verdicts:
+   - **Verified**: every claim is backed by evidence.
+   - **Refuted**: the evidence contradicts a claim.
+   - **Unverifiable**: there is nothing to check the claim against.
+5. **Review.** A reviewer agent reads the delivery against the task. If it finds
+   a problem, the task goes back with the specific finding.
+6. **Decide.** Depending on your setting, a person approves. Whatever is
+   decided is stored with a signature in the audit log.
 
-### 🤖 Auto-Organizing Teams (Discovery)
-Fabrique doesn't just give you a "generic" team. When you start a project, our **Solution Architect Agent** performs an initial scan of your needs or your existing code. 
+`Unverifiable` is not a soft pass. An agent that delivers work nobody witnessed
+has not shown its work, and the system says so rather than guessing.
 
-It then **suggests the ideal team configuration** for you:
-*   **Roles:** Does this project need a Cloud Expert? A Frontend Specialist?
-*   **Seniority:** Should we use a *Junior* developer for simple tasks or a *Staff* engineer for complex security features?
-*   **Specialty:** It detects if you use Python, Java, or React and hires agents with the specific "Engrams" for those technologies.
+## The screens
 
----
+| Screen | What you do there |
+|---|---|
+| **Evidence** (the landing page) | The list of agent runs with their verdicts. Start here. Click a run to see each check and its observation. |
+| **Sprints** | Every sprint with its state. Open one to see the board, the live stream and its analytics. |
+| **Board** | Tasks by column, with the verdict badge on each delivery. Move or stop work. |
+| **Live** | What the agents are doing right now, streamed as it happens. |
+| **Analytics** | Sprint health and the trend of the team's own learning. |
+| **Quotas** | Token budget per business unit, and how much of it is spent. |
+| **Members** | Who in your company has access, and with which role. |
+| **Procedures** | Rules the team learnt from its own retrospectives. It proposes, you adopt or reject. |
+| **Lineage** | Why a decision was taken: the chain of records behind it. |
+| **GitHub** | Which repository the company is bound to. |
+| **Help desk** | Support tickets. An agent triages them; a person decides. |
 
-## 🛡️ 2. Enterprise Governance & Security
+## What you decide
 
-Fabrique is built for scale. For large organizations, we provide tools to maintain total control:
+Three settings shape how much the team does on its own.
 
-### 🎚️ 3 Levels of AI Autonomy
-You decide how much freedom your AI team has:
-*   **Level 1 (Copilot):** Maximum human control. The AI suggests code, but a human must approve every single task and Pull Request.
-*   **Level 2 (Exception Manager):** The perfect balance. The AI handles everyday tasks autonomously but pauses for human approval before doing anything destructive (like dropping a database table or deploying to production).
-*   **Level 3 (Autonomous Factory):** Full automation. The AI analyzes, builds, tests, and depljs based entirely on its own rigorous testing protocols.
+- **Autonomy level** (1 to 3). Level 3 lets the team start a self-improvement
+  sprint by itself when a sprint closes with findings. Below 3, that only happens
+  when a person asks for it.
+- **Approvals.** A person with the Manager role decides on the runs that matter.
+  The decision carries your name, a category and, if you reject, a text the agent
+  reads as a correction.
+- **Quotas.** A token budget per business unit. The gateway enforces it before
+  each model call, so the ceiling holds during the sprint, not after the invoice.
 
-### 🔐 Infrastructure Permissions (Vault)
-To operate autonomously, the AI needs access. However, Fabrique uses the "Principle of Least Privilege." You can grant the AI *Read-Only* access to your Database while giving it *Write* access to your Git repository. The AI can never exceed the permissions you set.
+## Roles
 
-### 🏛️ Business Units (Multi-Tenancy)
-Separate your projects by department (Finance, HR, Engineering). Each unit has its own isolated memory and data, ensuring that sensitive information never leaks between teams.
+| Role | What it can do |
+|---|---|
+| **Owner** | Everything, including company settings and members |
+| **Manager** | Approve deliveries, verify runs, adopt procedures |
+| **Viewer** | Read the board, the evidence and the analytics |
 
-### 🧑‍🤝‍🧑 Multi-User Collaboration (Human RBAC)
-Fabrique is built for your entire company to use together. You can invite multiple human colleagues to your projects and assign them specialized roles that complement the AI:
-*   **Owner:** Business lead. Controls billing, security, and global factory settings.
-*   **AI Orchestrator (Project Managers):** Instead of micro-managing people, PMs manage the AI's objectives and priorities. They ensure the AI is focused on the right business value.
-*   **Engram Validator (Senior Devs/Architects):** The high-level experts. They review the AI's code for complex logic and provide the "final signature" before decisions are burned into corporate memory.
-*   **Implementation Engineer (Developers):** They work *with* the AI. They handle complex manual integrations, legacy hardware, or specific edge cases while using Fabrique to automate 80% of their coding and testing.
-*   **Viewer:** Stakeholders who monitor progress and ROI via analytics.
+Company data is scoped by company: a member of one company cannot see another's
+sprints, runs or evidence.
 
-### 🚦 Human-in-the-Loop (Approvals)
-You are always in control. For high-impact decisions—like changing a database schema or pushing code to production—Fabrique will pause and wait for a **Human Manager** to click "Approve" in the dashboard.
+## What it will not do
 
-### 💰 Token Quotas (Cost Control)
-Avoid surprise bills. Set monthly token budgets for each department. Fabrique will monitor usage in real-time and stop or alert you before you exceed your limits.
+Being clear about this is part of the product.
 
-### 📈 AI Scrum Master (Business Intelligence)
-Forget about manually analyzing complex charts. Le Fabrique includes an **AI Scrum Master** that analyzes sprint data and internal logs to give you:
-*   **Executive Summaries:** Plain-English reports on project health and progress.
-*   **Predictive Deadlines:** AI forecasts on whether your sprint will finish on time.
-*   **ROI Analysis:** Detailed reports on the "computing cost" of every feature developed.
+- **It does not scan your code for security problems on its own.** There is a
+  SecOps role prompt, but no vulnerability scanner runs as part of a sprint. Use
+  a scanner.
+- **It does not deploy.** It writes files and runs the commands the daemon is
+  allowed to run in the workspace you opened. Releasing is yours.
+- **It does not promise tests pass because an agent says so.** A claim about
+  tests counts only with independent evidence, such as the result of a CI run.
+- **It does not grade work with a model.** The checks are deterministic
+  comparisons. A model writes the work; it never decides whether the work holds.
+- **It is not free-running by default.** Autonomy 3 still writes an audit row per
+  action, and the evidence page still shows every verdict.
 
-### 🧹 AI Janitor (Self-Maintenance)
-Enterprise systems generate massive amounts of data. Fabrique includes an automated background worker (The AI Janitor) that runs daily. It silently optimizes the pgvector database for faster AI search, clears out old processed queues, and archives stale data to ensure your servers never run out of space or RAM.
+## Reading a verdict
 
----
+Open a run and read the checks in order. Each has a name, an outcome and one
+sentence of observation.
 
-## 💡 Real-World Use Case: Fixing a "Mystery Bug"
+- `artifact_nonempty`: was anything delivered at all.
+- `claimed_files_present`: do the files the agent named appear in what it sent.
+- `claimed_tests_evidenced`: does independent evidence support the claim about
+  tests.
+- `files_written`: did the daemon report writing those files, with the same
+  content hash the backend sent.
+- `tests_run`: what the test command actually returned.
+- `risk_tier`: how much a person should look at this, from low to high, with the
+  reasons.
 
-Imagine your company has an old e-commerce website built 5 years ago. Suddenly, customers start reporting that the "Discount Code" button stopped working. The original developer is gone, and no one knows how the code works.
+If a check is `unverifiable`, the observation says what was missing. That is
+usually a wire that is not connected, not a bug in the agent.
 
-**How Fabrique solves it:**
-1.  **Ingestion:** You point Fabrique to your existing code. 
-2.  **Analysis:** The **Architect Agent** scans the entire system and "learns" how it was built. It finds the exact file where the discount logic is located.
-3.  **Task Creation:** The **PO Agent** creates a task ticket on the Kanban board: *"Fix broken discount validation in checkout.js"*.
-4.  **Repair:** The **Developer Agent** identifies that a third-party service changed its rules. It rewrites the code to match the new rules.
-5.  **Verification:** The **QA Agent** runs a simulated purchase to ensure the discount now works and that nothing else was broken.
-6.  **Delivery:** The bug is fixed, the ticket is marked as "Done," and you receive a notification. 
+## Getting help
 
-**Result:** A problem that would have taken a human days of "investigation" is solved by your AI team in minutes, with full documentation of what was changed.
-
----
-
-## 🤝 3. Meet Your AI Team
-
-Fabrique comes pre-configured with digital specialists. They talk to each other, review each other's work, and collaborate just like human employees:
-
-*   👑 **The Product Owner (PO):** Your direct point of contact. You tell the PO what you want to build in plain English. The PO translates your vision into detailed, organized "tickets" (work packages).
-*   🏗️ **The Architect:** Reviews the big picture. Ensures that the new features won't break the existing system and that the foundation is solid.
-*   💻 **The Developer:** The builder. Takes the tickets created by the PO and writes the actual software code.
-*   🕵️ **The QA (Quality Assurance):** The tester. Reviews the Developer's code to find bugs and ensures everything works perfectly before it is considered "done."
-
----
-
-## 🗺️ 4. How to Run Your Project (Step-by-Step)
-
-Using Fabrique is like using standard project management tools (like Trello or Jira).
-
-### Step 1: Initialize Your Company
-When you first log in, you will set up your "Company" profile. You define the length of your work cycles (Sprints) and tell the system which AI agents you want to hire for your team.
-
-### Step 2: Write Your Backlog (Wishlist)
-Go to the **Dashboard**. Here, you simply type out what you want to achieve. 
-*Example: "I want a login page where users can sign in with their email and a password."*
-
-### Step 3: Start the Sprint
-A "Sprint" is a focused work period (e.g., 2 weeks). When you click **Start Sprint**, the system wakes up:
-1. The **PO Agent** reads your wishlist and automatically generates professional task tickets in the Kanban board.
-2. The **Developer Agent** immediately picks up the first task and starts coding.
-
-### Step 4: Review the Kanban Board
-You can watch the progress in real-time. Tickets will automatically move from *To Do* ➡️ *In Progress* ➡️ *Testing* ➡️ *Done* as the AI completes the work.
-
----
-
-## 🪟 5. The Glassroom: Watching the Magic Happen
-
-One of Fabrique's most powerful features is the **Glassroom**. 
-
-It is exactly what it sounds like: a transparent room where you can watch your AI team work. If you open the Glassroom tab during a Sprint, you will see a live chat interface showing the AI agents talking to each other. 
-
-*   *You will see the PO explaining rules to the Developer.*
-*   *You will see the Developer submitting code.*
-*   *You will see the QA agent pointing out a mistake and asking the Developer to fix it.*
-
-You don't need to read the code; just watch the conversation to know your project is moving forward.
-
----
-
-## 🧠 6. The "Engram" Corporate Memory
-
-Fabrique never forgets. Every decision, every piece of code, and every bug fix is saved into the system's "Long-Term Memory" (called Engrams). 
-
-If you ask the AI to build a new feature next month, it will remember the architecture it built today. It learns your company's specific style and rules over time, becoming faster and more efficient the longer you use it.
-
----
-
-## ❓ 7. Frequently Asked Questions
-
-**Do I need to know how to code?**
-No. You only need to know what you want your business to achieve. You manage the AI just like you would manage a human contractor.
-
-**What happens if the AI makes a mistake or the system crashes?**
-The system has built-in **Auto-Healing**. If a background process fails or an unexpected error occurs, Le Fabrique catches the exception and automatically creates a high-priority **Maintenance Task** on the Kanban board. It assigns this task to the AI Architect, meaning the system literally creates a task to fix itself before a human even notices the crash. Additionally, the AI tests its own work during normal sprints; if a test fails, it rewrites the code until it passes.
-
-**Who owns the code generated by Fabrique?**
-You do. Your AI team's output belongs entirely to your organization. Fabrique itself is open source under the [Apache 2.0 license](LICENSE) — you run it, and you can modify and redistribute it.
-
----
-*Need help setting up the system for the first time? Please provide the [Main Technical README](README.md) to your IT administrator.*
+Open a ticket from the help desk screen. The support agent attaches a first
+reading; a support admin sees every ticket and can download the logs. Include
+what you were doing and what you expected.

@@ -2,7 +2,7 @@
 
 Total de amenazas identificadas: **113**.
 
-El modelo describe la arquitectura del repositorio; no reemplaza la revisión humana ni las pruebas de seguridad. Los residuales se triagean en `docs/threat_triage.md`.
+El modelo describe la arquitectura del repositorio; no reemplaza la revisión humana ni las pruebas de seguridad. Los riesgos residuales se documentan en [`SECURITY.md`](../SECURITY.md).
 
 ## Very High (21)
 

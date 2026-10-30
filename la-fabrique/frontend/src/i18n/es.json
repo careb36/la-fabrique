@@ -802,6 +802,9 @@
     "empty": "Ninguna evidencia coincide con estos filtros.",
     "producer": "Productor",
     "allProducers": "Todos los productores",
+    "showing": "Mostrando {{shown}} de {{total}} ejecuciones",
+    "filters": "Filtros",
+    "clearFilters": "Quitar filtros",
     "verdictLabel": "Veredicto",
     "allVerdicts": "Todos los veredictos",
     "ingestedAfter": "Incorporado después de",
@@ -875,7 +878,11 @@
     "taskFallback": "Tarea #{{id}}",
     "suggestionTitle": "La sugerencia del Reviewer agent",
     "suggestionNote": "Una afirmación leída del run y de su verificación, nunca una decisión: la revisión de abajo es tuya.",
-    "suggestionUnusable": "El Reviewer agent no pudo sugerir una decisión; queda para las personas."
+    "suggestionUnusable": "El Reviewer agent no pudo sugerir una decisión; queda para las personas.",
+    "summary": {
+      "aria": "Evidencia por veredicto",
+      "all": "Todas"
+    }
   },
   "analytics": {
     "title": "Analíticas",

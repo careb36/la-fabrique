@@ -3,6 +3,7 @@
 
 # La Fabrique
 
+[![CI](https://github.com/careb36/la-fabrique/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/careb36/la-fabrique/actions/workflows/backend-tests.yml)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -10,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/typescript-%23007acc?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Licencia: Apache 2.0](https://img.shields.io/badge/licencia-Apache%202.0-blue.svg?style=for-the-badge)](LICENSE)
 
-**Plataforma autónoma de desarrollo de software impulsada por IA**
+**Una capa de verificación y evidencia para código generado por IA**
 
 > **Idiomas:** [🇺🇸 English](README.md) | [🇪🇸 Español](README.es.md)
 
@@ -20,16 +21,69 @@
 
 ## Acerca de
 
-La Fabrique es una plataforma multiagente que orquesta equipos de IA a través de un ciclo de vida de sprint estructurado. El trabajo se organiza en **AI Sprints** — unidades de alcance acotado y verificable, no de duración fija.
+La Fabrique responde una sola pregunta sobre el trabajo que produjo un agente:
 
-La plataforma proporciona:
-- **Orquestación multiagente** mediante workflows de LangGraph
-- **Observabilidad en tiempo real** a través del stream SSE del GlassRoom
-- **Memoria en grafo de conocimiento** con nodos Engram de Neo4j
-- **Búsqueda semántica vectorial** mediante pgvector
-- **Gobernanza enterprise** con RBAC, presupuestos de tokens y auditoría
+> ¿De verdad hizo lo que dice que hizo?
+
+El código generado es abundante y barato. Lo escaso es una respuesta confiable a
+esa pregunta, y un registro de evidencia que resista una auditoría. La Fabrique
+ingiere el trabajo del agente, lo contrasta de forma determinista contra lo que
+hay en disco y lo que reporta CI, y guarda el resultado como evidencia —
+separado de lo que el agente afirma.
+
+Los agentes son intercambiables y no son el producto. Cualquier productor puede
+alimentar la capa: los roles de LangGraph incluidos (PO, Architect, ScrumMaster,
+Developer, QA, SecOps, TechWriter), un agente de código externo, o una persona.
+Lo que la capa aporta es lo mismo en todos los casos.
+
+**Qué registra:**
+
+- **Afirmaciones y observaciones nunca comparten campo.** "El agente afirmó X;
+  nosotros observamos Y" es justamente el punto, y fusionarlos lo destruye.
+- **Tres veredictos, no dos.** `verified`, `refuted` y `unverifiable`.
+  `unverifiable` es un resultado real: la respuesta honesta sobre trabajo de
+  agentes de terceros casi siempre es esa, y un sistema que no puede decirlo
+  miente para seguir siendo útil.
+- **Ningún modelo decide si una afirmación se sostiene.** La verificación es
+  determinista: ficheros en disco, códigos de salida, check-runs de CI. Un
+  modelo puede resumir una refutación para una persona después; nunca la
+  adjudica.
+- **La refutación es estructural.** El camino que hace fallar una corrida se
+  construye primero; ver `backend/app/services/verification.py`.
+
+El trabajo se organiza en **AI Sprints** — unidades de alcance acotado y
+verificable, no de duración fija. Alrededor de la capa de evidencia, la
+plataforma aporta RBAC y alcance por `company_id`, presupuestos de tokens por
+empresa en un único punto de control, un log de auditoría de solo agregado, y
+nodos Engram de Neo4j para el linaje de cada decisión.
+
+> **Por qué esa postura.** El razonamiento, la historia que la motiva y las
+> reglas de diseño que restringen el trabajo nuevo están en
+> [`docs/POSITIONING.md`](docs/POSITIONING.md).
 
 > **¿No eres desarrollador o usuario técnico?** Lee la [**Guía de Negocio para Managers**](USER_GUIDE.es.md) para entender cómo usar La Fabrique para automatizar la ingeniería de tu empresa.
+
+## Capturas de pantalla
+
+La página de evidencia es donde empieza cualquier revisión: cada ejecución llega
+con uno de tres veredictos, producidos de forma determinista — nunca por un
+modelo — y distinguibles de un vistazo.
+
+![Vista general de evidencia: tres ejecuciones, una por veredicto — verificado, refutado e inverificable — con los filtros de veredicto arriba](docs/img/evidence-overview.png)
+
+![Una ejecución refutada: la afirmación del agente a un lado, las observaciones independientes al otro, y el veredicto que se desprende de ellas](docs/img/evidence-detail.png)
+
+Un sprint es un tablero Kanban, una Glassroom en vivo y un panel de analítica:
+
+![Tablero de sprint: columnas por estado — pendiente, en curso, en revisión, hecho, bloqueado](docs/img/sprint-board.png)
+
+![Glassroom en vivo: la vista en tres columnas con el roster de agentes y el flujo de mensajes](docs/img/sprint-live.png)
+
+![Analítica del sprint: los KPIs que una empresa lee al cerrar un sprint](docs/img/sprint-analytics.png)
+
+Estas capturas muestran una demo sembrada (una ejecución por veredicto, sin
+claves de API). Para reproducirlas, ejecuta `scripts/seed_demo_evidence.py`
+contra un stack en marcha y abre `/evidence`.
 
 ---
 
@@ -54,7 +108,7 @@ La plataforma proporciona:
 
 ## Descripción General
 
-La Fabrique es una plataforma multiagente que orquesta equipos de IA a través de un ciclo de vida de sprint estructurado. El trabajo se organiza en **AI Sprints** — unidades de alcance acotado y verificable, no de duración fija.
+El trabajo se organiza en **AI Sprints** — unidades de alcance acotado y verificable, no de duración fija. Cada ítem del backlog se convierte en un `AgentRun`: la afirmación del agente sobre lo que hizo, más las observaciones que la plataforma reúne por su cuenta. Una corrida solo queda cerrada cuando la verificación le produjo un veredicto.
 
 **Niveles de alcance por sprint:**
 
@@ -139,7 +193,7 @@ sequenceDiagram
 
 - **Docker** 24.0+ con Docker Compose v2
 - **Python** 3.12+ (para desarrollo local)
-- **Node.js** 20+ (para desarrollo frontend)
+- **Node.js** 24+ (para desarrollo frontend) — `engines.node >=24` y CI usa Node 24
 - **API Keys:** Google AI Studio (Gemini), DeepSeek
 
 [⬆ Volver al inicio](#la-fabrique)
@@ -245,7 +299,7 @@ flowchart LR
 | Nodo | Agente | Responsabilidad |
 |------|--------|----------------|
 | `kickoff` | Sistema | Valida el brief del sprint, extrae ítems del backlog, emite evento de estado inicial |
-| `po` | Product Owner | Crea work package en OpenProject, prioriza el backlog, identifica el ítem de mayor riesgo |
+| `po` | Product Owner | Prioriza el backlog (OpenProject opcional), identifica el ítem de mayor riesgo |
 | `scrum_master` | Scrum Master | Secuencia el trabajo, detecta bloqueos, asigna el primer movimiento al Developer |
 | `developer` | Developer | Toma el primer ítem accionable, detalla el plan de implementación, señala dependencias |
 | `po_wrap` | Product Owner | Cierra el kickoff con resumen de 3 puntos: prioridad · dueño · próxima acción |
@@ -396,6 +450,49 @@ Consulta [SECURITY.md](SECURITY.md) para la política de seguridad y el proceso 
 
 ---
 
+## Uso responsable
+
+Los agentes de La Fabrique escriben archivos y ejecutan comandos en el equipo
+donde corre el **daemon del espacio de trabajo** — igual que haría un IDE.
+Apúntalo solo a carpetas que poseas o estés autorizado a modificar, y conecta
+únicamente repositorios que tengas derecho a cambiar. La salida del modelo es una
+ayuda para una persona, no una determinación: la verificación es determinista,
+pero la decisión de aprobar, reintentar o rechazar una tarea siempre es de una
+persona. Ver [SECURITY.md](SECURITY.md).
+
+[⬆ Volver al inicio](#la-fabrique)
+
+---
+
+## Hoja de ruta
+
+| Ítem | Estado |
+| --- | --- |
+| Verificación determinista (afirmaciones vs. observaciones) | Hecho |
+| Cadena de auditoría firmada y de solo anexado | Hecho |
+| Presupuestos de tokens por empresa en un único proxy de LLM | Hecho |
+| Enrutado a Nebius Token Factory / NVIDIA Nemotron | Hecho |
+| Orquestación de sprints con reintento y escalado del ScrumMaster | Hecho |
+| Página de evidencia con resumen por veredicto | Hecho |
+| Agente revisor que sugiere (nunca decide) sobre ejecuciones de otros productores | Hecho |
+| Cualificación de relaciones entre entidades en el grafo engram | Planificado |
+| Indicadores de calidad de datos por fuente | Planificado |
+| Procedimientos deterministas medidos contra su propia adopción | Planificado |
+
+[⬆ Volver al inicio](#la-fabrique)
+
+---
+
+## Documentación
+
+[Arquitectura](ARCHITECTURE.md) · [Posicionamiento](docs/POSITIONING.md) ·
+[Referencia de la API](docs/API.md) · [Modelo de amenazas](docs/threat_model.md) ·
+[Guía de usuario](USER_GUIDE.es.md) · [Contribuir](CONTRIBUTING.md) ·
+[Seguridad](SECURITY.md) · [Código de conducta](CODE_OF_CONDUCT.md) ·
+[Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)
+
+---
+
 ## Licencia
 
 **Apache License 2.0.** Ver [LICENSE](LICENSE).  
@@ -407,7 +504,7 @@ Copyright © 2026 Carolina Pereira.
 
 ## Soporte y Mantenimiento
 
-- **Soporte del Sistema:** La Fabrique es mantenido por **Carolina Pereira**. Los errores críticos se reportan automáticamente a la proveedora para su resolución.
+- **Reportes de errores:** un error no controlado queda en el log y abre un ticket de incidente en NATS. Con `FABRIQUE_VENDOR_SUPPORT_URL` (y `FABRIQUE_VENDOR_ID` para nombrar la instalación) además se envía cada reporte a un webhook de soporte; la respuesta de error dice si llegó.
 - **Soporte de Proyectos:** Para incidencias con el código generado por la IA en tus proyectos, usa el Bot de Soporte integrado.
 - **Contacto:** Para consultas sobre licencias y acuerdos SLA Enterprise, contacta directamente con la propietaria.
 

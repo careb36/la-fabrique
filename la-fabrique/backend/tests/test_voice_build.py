@@ -13,14 +13,15 @@ from pathlib import Path
 
 import pytest
 
-FRASE = ("quiero que hagas una pagina sencilla en html, css, javascript "
-         "con la fabrica")
+FRASE = "quiero que hagas una pagina sencilla en html, css, javascript con la fabrica"
 
 PROYECTO = {
     "files": [
-        {"path": "index.html",
-         "content": "<!doctype html><link rel=\"stylesheet\" href=\"styles.css\">"
-                    "<h1>Hola</h1><script src=\"app.js\"></script>"},
+        {
+            "path": "index.html",
+            "content": '<!doctype html><link rel="stylesheet" href="styles.css">'
+            '<h1>Hola</h1><script src="app.js"></script>',
+        },
         {"path": "styles.css", "content": "h1 { color: teal; }"},
         {"path": "app.js", "content": "console.log('hola');"},
     ],
@@ -39,8 +40,7 @@ def asistente(monkeypatch):
     """El modelo contesta ``PROYECTO``; nada sale a la red."""
     from routers import build as build_router
 
-    monkeypatch.setattr(
-        build_router, "_chat", lambda messages: json.dumps(PROYECTO))
+    monkeypatch.setattr(build_router, "_chat", lambda messages: json.dumps(PROYECTO))
     return build_router
 
 
@@ -83,12 +83,15 @@ def test_la_raiz_del_proyecto_sirve_el_index(test_client, builds, asistente):
     assert "Hola" in respuesta.text
 
 
-@pytest.mark.parametrize("ruta", [
-    "/v1/voice/build/pagina-20260101-120000/../../etc/passwd",
-    "/v1/voice/build/../builds/index.html",
-    "/v1/voice/build/no-existe/index.html",
-    "/v1/voice/build/MAYUS/index.html",
-])
+@pytest.mark.parametrize(
+    "ruta",
+    [
+        "/v1/voice/build/pagina-20260101-120000/../../etc/passwd",
+        "/v1/voice/build/../builds/index.html",
+        "/v1/voice/build/no-existe/index.html",
+        "/v1/voice/build/MAYUS/index.html",
+    ],
+)
 def test_no_se_puede_leer_fuera_del_proyecto(test_client, builds, asistente, ruta):
     assert test_client.get(ruta).status_code == 404
 
@@ -119,8 +122,9 @@ def test_un_modelo_que_falla_vuelve_como_frase(test_client, builds, monkeypatch)
     assert list(builds.iterdir()) == []
 
 
-def test_un_modelo_que_contesta_cualquier_cosa_no_deja_archivos(test_client, builds,
-                                                               monkeypatch):
+def test_un_modelo_que_contesta_cualquier_cosa_no_deja_archivos(
+    test_client, builds, monkeypatch
+):
     from routers import build as build_router
 
     monkeypatch.setattr(build_router, "_chat", lambda _m: "no pienso")
@@ -131,8 +135,9 @@ def test_un_modelo_que_contesta_cualquier_cosa_no_deja_archivos(test_client, bui
     assert list(builds.iterdir()) == []
 
 
-def test_la_carpeta_sale_de_la_variable_de_entorno(test_client, builds, asistente,
-                                                   monkeypatch, tmp_path):
+def test_la_carpeta_sale_de_la_variable_de_entorno(
+    test_client, builds, asistente, monkeypatch, tmp_path
+):
     otro = tmp_path / "otro"
     otro.mkdir()
     monkeypatch.setenv("FABRICA_BUILDS_DIR", str(otro))

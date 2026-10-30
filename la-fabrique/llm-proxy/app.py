@@ -13,53 +13,26 @@ import os
 import time
 import threading
 import logging
-import math
 from flask import Flask, request, jsonify
 import requests
 from sqlalchemy import create_engine, text
 import upstream
-from catalogue import fetch_model_ids
+from catalogue import GEMINI_ALIASES as _GEMINI_ALIASES
+from catalogue import GEMINI_DEPRECATED as _GEMINI_DEPRECATED
+from catalogue import classify_model as _classify_model
+from catalogue import fetch_model_ids, open_model_tier
 from provider_keys import validate_api_keys
+from usage import fallback_embedding as _fallback_embedding
 from usage import estimated_usage, openai_reported_count, openai_text, reported_count, with_usage
 
 # --- OpenTelemetry ---
-from opentelemetry import trace
+from tracing import instrument
 from opentelemetry.trace import StatusCode
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 app = Flask(__name__)
 
 
-def _is_truthy(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _resolve_otlp_endpoint() -> str | None:
-    if _is_truthy(os.getenv("OTEL_SDK_DISABLED")):
-        return None
-    explicit_endpoint = os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    if explicit_endpoint:
-        return explicit_endpoint.rstrip("/")
-    if _is_truthy(os.getenv("OTEL_EXPORTER_OTLP_ENABLED")):
-        return "http://localhost:4318"
-    return None
-
-resource = Resource.create({SERVICE_NAME: "llm-proxy"})
-tracer_provider = TracerProvider(resource=resource)
-endpoint_base = _resolve_otlp_endpoint()
-if endpoint_base:
-    otlp_exporter = OTLPSpanExporter(endpoint=endpoint_base + "/v1/traces")
-    span_processor = BatchSpanProcessor(otlp_exporter)
-    tracer_provider.add_span_processor(span_processor)
-trace.set_tracer_provider(tracer_provider)
-FlaskInstrumentor().instrument_app(app)
-RequestsInstrumentor().instrument()
-_tracer = trace.get_tracer(__name__)
+_tracer = instrument(app)
 
 # --- Config & Logging ---
 def _env(name: str, default: str = "") -> str:
@@ -99,10 +72,6 @@ LLM_UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("LLM_UPSTREAM_TIMEOUT_SECONDS", "
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("llm-proxy")
-if endpoint_base:
-    logger.info("OpenTelemetry exporter enabled for llm-proxy: %s/v1/traces", endpoint_base)
-else:
-    logger.info("OpenTelemetry exporter disabled for llm-proxy")
 
 
 # --- API Key Validation ---
@@ -129,15 +98,6 @@ def _validate_api_keys():
 _validate_api_keys()
 
 
-def _fallback_embedding(text: str, dims: int = 1536) -> list[float]:
-    """Deterministic local embedding fallback used only when provider embedding fails."""
-    vector = [0.0] * dims
-    for index, byte in enumerate(text.encode("utf-8")):
-        slot = (index * 131 + byte) % dims
-        vector[slot] += (byte % 17) + 1
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [value / norm for value in vector]
-
 # --- Database ---
 def _build_database_url() -> str:
     host = os.getenv("POSTGRES_HOST", "localhost")
@@ -160,18 +120,6 @@ _PREFERENCE_TIERS = {
                  "gemini-2.5-pro"],
 }
 
-# Tier classification rules applied in order — first match wins.
-# Tuple: (substring_tests, tier_name, description)
-_TIER_RULES: list[tuple[list[str], str, str]] = [
-    (["preview"],            "preview",    "Experimental preview — may be unstable"),
-    (["flash-lite", "lite"], "fast",       "Lightweight, fastest responses"),
-    (["2.5-pro", "3-pro"],   "strategic",  "Deep reasoning, architecture, stakeholder decisions"),
-    (["pro"],                "strategic",  "Deep reasoning, architecture, stakeholder decisions"),
-    (["flash"],              "balanced",   "Fast reasoning, coordination, reviews"),
-    (["coder"],              "code",       "Specialised code generation & refactoring (~10x cheaper)"),
-    (["chat"],               "balanced",   "General-purpose reasoning and conversation"),
-]
-
 _available_models: set[str] = set()
 _available_deepseek_models: set[str] = set()
 _available_qwen_models: set[str] = set()
@@ -183,15 +131,6 @@ _deepseek_last_refresh: float = 0
 _qwen_last_refresh: float = 0
 _nebius_last_refresh: float = 0
 _nvidia_last_refresh: float = 0
-
-
-def _classify_model(model_id: str) -> tuple[str, str]:
-    """Return (tier, description) for a model ID based on naming conventions."""
-    lower = model_id.lower()
-    for substrings, tier, desc in _TIER_RULES:
-        if any(s in lower for s in substrings):
-            return tier, desc
-    return "balanced", "General-purpose model"
 
 
 def _refresh_gemini_models():
@@ -239,16 +178,6 @@ def _refresh(provider, key, base_url, current, last_refresh):
     logger.info(f"{provider} models refreshed: {sorted(ids)}")
     return ids, time.time()
 
-
-# Deprecated Gemini ids mapped to their working equivalents.
-_GEMINI_ALIASES = {
-    "gemini-2.5-flash": "gemini-3.8-flash",
-    "gemini-2.5-pro": "gemini-3.1-pro-preview",
-    "gemini-2.0-flash": "gemini-3.8-flash",
-}
-
-# Models that are no longer available to new users (Google deprecation).
-_GEMINI_DEPRECATED = {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"}
 
 # A model id names its provider by prefix.  The id must also be in that
 # provider's fetched catalogue before a request is sent anywhere.
@@ -483,29 +412,16 @@ def list_models():
             models.append({"id": mid, "provider": "qwen", "tier": tier,
                            "description": f"Qwen {mid}"})
 
-    # NVIDIA's own gateway serves the Nemotron family; listed before Nebius so
-    # an id both could serve is presented under the provider that would answer.
-    if NVIDIA_API_KEY:
-        for mid in sorted(_provider_catalogue("nvidia")):
-            lower = mid.lower()
-            tier = "strategic" if "ultra" in lower else ("fast" if "nano" in lower else "balanced")
-            models.append({"id": mid, "provider": "nvidia", "tier": tier,
-                           "description": f"NVIDIA {mid}"})
-
-    # Nebius models host the same open models (Nemotron) and are available
-    # only when the API key is configured.
-    if NEBIUS_API_KEY:
-        served_elsewhere = _provider_catalogue("nvidia") if NVIDIA_API_KEY else set()
-        for mid in sorted(_provider_catalogue("nebius") - served_elsewhere):
-            lower = mid.lower()
-            if "nano" in lower:
-                tier = "fast"
-            elif "ultra" in lower or "253b" in lower or "340b" in lower:
-                tier = "strategic"
-            else:
-                tier = "balanced"
-            models.append({"id": mid, "provider": "nebius", "tier": tier,
-                           "description": f"NVIDIA/Nebius {mid}"})
+    # NVIDIA's own gateway, then Nebius, serve the open models (Nemotron); an
+    # id both serve is listed once, under the provider that would answer it.
+    listed: set[str] = set()
+    for provider, key, label in (("nvidia", NVIDIA_API_KEY, "NVIDIA"), ("nebius", NEBIUS_API_KEY, "NVIDIA/Nebius")):
+        if not key:
+            continue
+        for mid in sorted(_provider_catalogue(provider) - listed):
+            models.append({"id": mid, "provider": provider, "tier": open_model_tier(mid),
+                           "description": f"{label} {mid}"})
+            listed.add(mid)
 
     # Pick the best non-preview balanced/fast model for orchestration tasks
     # (team suggestion, routing decisions) — prefer stability over power.
@@ -639,7 +555,8 @@ def _flatten_extra_body(data: dict) -> dict:
 
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat_completions():
-    data = request.get_json(silent=True) or {}
+    # Flatten first, so a ``stream`` nested in ``extra_body`` is refused too.
+    data = _flatten_extra_body(request.get_json(silent=True) or {})
     requested = str(data.get("model") or "").strip()
     bu_id = request.headers.get("X-Business-Unit-ID")
 
@@ -652,7 +569,6 @@ def chat_completions():
             "message": "stream=true is not supported here; send stream=false "
                        "(or call the provider endpoint directly to stream)",
         }), 400
-    data = _flatten_extra_body(data)
 
     if not requested:
         return jsonify({

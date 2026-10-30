@@ -264,9 +264,13 @@ def test_assignment_carries_the_agent_name(server):
 
 def test_every_action_the_factory_accepts_is_offered_to_the_model():
     """The tool schema must not hide a verb the factory implements."""
-    backend = Path(__file__).resolve().parents[2] / "la-fabrique" / "backend"
-    source = backend / "app" / "services" / "voice_control.py"
-    if not source.is_file():
+    repo = Path(__file__).resolve().parents[2]
+    sources = [
+        root / "backend" / "app" / "services" / "voice_control.py"
+        for root in (repo, repo / "la-fabrique")
+    ]
+    source = next((s for s in sources if s.is_file()), None)
+    if source is None:
         pytest.skip("no está el árbol de la fábrica")
 
     namespace: dict = {}

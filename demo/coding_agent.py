@@ -88,6 +88,14 @@ def write_files(root: Path, files: list[dict]) -> list[str]:
     return written
 
 
+def _clean_env() -> dict[str, str]:
+    """Only what a test run needs; nothing that could carry a secret."""
+    keep = ("PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL")
+    env = {name: os.environ[name] for name in keep if name in os.environ}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
 def run_tests(root: Path, timeout: float = 120.0) -> tuple[bool, str]:
     """Ejecuta la suite. La salida real es la que decide, no el modelo.
 
@@ -95,10 +103,14 @@ def run_tests(root: Path, timeout: float = 120.0) -> tuple[bool, str]:
     máquina recién clonada, sin instalar nada.
     """
     try:
-        done = subprocess.run([sys.executable, "-m", "unittest", "discover",
+        # The tests are code the model wrote: they run without this
+        # process's environment (no API keys, no tokens) and with Python in
+        # isolated mode. It is still this user on this machine; run the live
+        # demo in a container or a throwaway VM, ``--offline`` anywhere.
+        done = subprocess.run([sys.executable, "-I", "-m", "unittest", "discover",
                                "-q", "-t", str(root)],
                               cwd=str(root), capture_output=True, text=True,
-                              timeout=timeout)
+                              timeout=timeout, env=_clean_env())
     except subprocess.TimeoutExpired:
         return False, f"the test run timed out after {timeout:.0f}s"
     output = ((done.stdout or "") + (done.stderr or "")).strip()

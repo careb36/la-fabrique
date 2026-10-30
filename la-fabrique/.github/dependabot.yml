@@ -81,6 +81,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/react"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
       - dependency-name: "vitest"
@@ -89,6 +93,25 @@ updates:
       frontend-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
+        # Sin esto, un bump minor de react-dom cae aqui y un bump mayor de
+        # react cae en el grupo `react`: llegan en PRs distintos y el par
+        # queda desalineado, que es exactamente lo que rompio `npm ci` en #252.
+        exclude-patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+
+      # React y React DOM se mueven siempre juntos: subir react-dom solo deja
+      # react en el major anterior y `npm ci` muere con ERESOLVE. Los paquetes
+      # @types tienen que seguir a su contraparte de runtime por lo mismo.
+      react:
+        applies-to: version-updates
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
 
   # Docker — un directorio por Dockerfile.
   - package-ecosystem: docker

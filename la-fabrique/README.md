@@ -3,6 +3,7 @@
 
 # La Fabrique
 
+[![CI](https://github.com/careb36/la-fabrique/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/careb36/la-fabrique/actions/workflows/backend-tests.yml)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -10,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/typescript-%23007acc?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=for-the-badge)](LICENSE)
 
-**AI-powered autonomous software development platform**
+**A verification and evidence layer for AI-generated code**
 
 > **Languages:** [🇺🇸 English](README.md) | [🇪🇸 Español](README.es.md)
 
@@ -20,21 +21,74 @@
 
 ## About
 
-La Fabrique is a multi-agent platform that orchestrates AI agents through a structured sprint lifecycle. Work is organized into **AI Sprints** — units of bounded, verifiable scope rather than fixed durations.
+La Fabrique answers one question about work that an AI agent produced:
 
-The platform provides:
-- **Multi-agent orchestration** via LangGraph workflows
-- **Real-time observability** through the GlassRoom SSE stream
-- **Knowledge graph memory** with Neo4j Engram nodes
-- **Vector semantic search** via pgvector
-- **Enterprise governance** with RBAC, token budgets, and audit trails
+> Did this agent actually do what it says it did?
+
+Generated code is abundant and cheap. What is scarce is a trustworthy answer to
+that question, and an evidentiary record that survives an audit. La Fabrique
+ingests agent work, checks it deterministically against what is on disk and what
+CI reports, and stores the result as evidence — separately from the agent's own
+claims.
+
+The agents are interchangeable and are not the product. Any producer can feed
+the layer: the bundled LangGraph roles (PO, Architect, ScrumMaster, Developer,
+QA, SecOps, TechWriter), an external coding agent, or a human. What the layer
+adds is the same in every case.
+
+**What it records:**
+
+- **Claims and observations stay in separate fields.** "The agent asserted X; we
+  observed Y" is the whole point, and merging them destroys it.
+- **Three verdicts, not two.** `verified`, `refuted`, and `unverifiable`.
+  `unverifiable` is a real outcome: most honest answers about third-party agent
+  work are exactly that, and a system that cannot say so will lie to stay
+  useful.
+- **No model decides whether a claim holds.** Verification is deterministic —
+  files on disk, exit statuses, CI check-runs. A model may summarise a
+  refutation for a human afterwards; it never adjudicates one.
+- **Refutation is load-bearing.** The path that fails a run is built first;
+  see `backend/app/services/verification.py`.
+
+Work is organised into **AI Sprints** — units of bounded, verifiable scope
+rather than fixed durations. Around the evidence layer, the platform provides
+RBAC and `company_id` scoping, per-company token budgets at a single proxy
+chokepoint, an append-only audit log, and Neo4j Engram nodes for per-decision
+lineage.
+
+> **Why the position above.** The reasoning, the history that motivates it, and
+> the design rules that constrain new work are in
+> [`docs/POSITIONING.md`](docs/POSITIONING.md).
 
 > **Not a developer or technical user?** Please read the [**Manager's Business Guide**](USER_GUIDE.md) to understand how to use La Fabrique to automate your company's engineering.
+
+## Screenshots
+
+The evidence page is where any review starts: every run lands with one of three
+verdicts, produced deterministically — not by a model — and distinguishable at a
+glance.
+
+![Evidence overview: three runs, one per verdict — verified, refuted and unverifiable — with the verdict filters at the top](docs/img/evidence-overview.png)
+
+![A single refuted run: the agent's claim on one side, the independent observations on the other, and the verdict that follows from them](docs/img/evidence-detail.png)
+
+A sprint is a Kanban board, a live Glassroom and an analytics dashboard:
+
+![Sprint board: backlog columns by status — todo, in progress, in review, done, blocked](docs/img/sprint-board.png)
+
+![Glassroom live: the three-column real-time view with the agent roster and the message feed](docs/img/sprint-live.png)
+
+![Sprint analytics: the KPIs a company reads after a sprint](docs/img/sprint-analytics.png)
+
+These screenshots show a seeded demo (one run per verdict, no API keys). To
+reproduce them, run `scripts/seed_demo_evidence.py` against a running stack and
+open `/evidence`.
 
 ---
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [System Overview](#system-overview)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
@@ -43,19 +97,23 @@ The platform provides:
 - [Getting Started](#getting-started)
 - [Agent Orchestration](#agent-orchestration)
 - [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
+- [Voice assistant and coding-agent demo](#voice-assistant-and-coding-agent-demo)
 - [GlassRoom](#glassroom)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
 - [Testing](#testing)
 - [Contributing](#contributing)
 - [Security](#security)
+- [Responsible use](#responsible-use)
+- [Roadmap](#roadmap)
+- [Documentation](#documentation)
 - [License](#license)
 
 ---
 
 ## System Overview
 
-La Fabrique is a multi-agent platform that orchestrates AI agents through a structured sprint lifecycle. Work is organized into **AI Sprints** — units of bounded, verifiable scope rather than fixed durations.
+Work is organized into **AI Sprints** — units of bounded, verifiable scope rather than fixed durations. Each backlog item becomes an `AgentRun`: the agent's claim about what it did, plus the observations the platform gathers independently. A run is settled only when verification has produced a verdict for it.
 
 **Sprint scope tiers:**
 
@@ -117,7 +175,7 @@ sequenceDiagram
     D-->>TW: sha256 of each file read back (observation)
     TW->>DB: AgentRun + Verification (claims kept apart from observations)
     TW->>LLM: QA review (only APPROVED: closes the task)
-    TW->>DB: done / rework / blocked for a person; AgentMessages at each hand-over
+    TW->>DB: done, rework or blocked for a person, AgentMessages at each hand-over
     TW->>LLM: ScrumMaster triage of a blocked task, shown how earlier second attempts went (another attempt with a brief, or a person)
     TW->>DB: sprint closes when every task is settled → retrospective, procedures measured and proposed knowing what earlier ones did
     BE-->>U: GET /v1/inbox: what needs a person
@@ -134,7 +192,7 @@ sequenceDiagram
 | **Backend** | Python 3.12, FastAPI, LangGraph, SQLModel |
 | **Frontend** | React 18, TypeScript, TailwindCSS, Vite, Zustand |
 | **Vector Memory** | PostgreSQL 15 + pgvector |
-| **Knowledge Graph** | Neo4j 5.15 Enterprise + APOC |
+| **Knowledge Graph** | Neo4j 5.25 Enterprise + APOC |
 | **Message Broker** | NATS JetStream |
 | **AI Models** | NVIDIA Nemotron on Nebius Token Factory + Gemini + DeepSeek + Qwen |
 | **Infrastructure** | Docker Compose (8 services), VS Code CLI |
@@ -147,7 +205,8 @@ sequenceDiagram
 
 - **Docker** 24.0+ with Docker Compose v2
 - **Python** 3.12+ (for local development)
-- **Node.js** 20+ (for frontend development)
+- **Node.js** 24+ (for frontend development; `frontend/package.json` sets
+  `engines.node >=24` and CI runs Node 24)
 - **API Keys:** Nebius Token Factory (NVIDIA Nemotron), Google AI Studio (Gemini), DeepSeek, Qwen
 
 [⬆ Back to Top](#la-fabrique)
@@ -161,14 +220,16 @@ The canonical way to start a clean local environment is `reset_infra.sh`:
 ```bash
 # 1. Copy and configure environment
 cp .env.example .env
-# Edit .env — fill in GEMINI_API_KEY, DEEPSEEK_API_KEY,
-# POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET_KEY
+# Edit .env — fill in NEBIUS_API_KEY (as shipped, every agent role runs on
+# NVIDIA Nemotron through Nebius Token Factory), POSTGRES_PASSWORD,
+# NEO4J_PASSWORD, JWT_SECRET_KEY. GEMINI_API_KEY, DEEPSEEK_API_KEY and
+# QWEN_API_KEY matter only if you clear NEMOTRON_ROLES.
 
 # 2. Full clean start
 ./reset_infra.sh
 ```
 
-The script runs 6 steps: `down -v` → Docker prune → `build --no-cache` → `up -d` → health-check wait → `ps`. After it completes:
+The script runs 6 steps: `down -v` → Docker prune → `build --no-cache` → `up -d` → 5-second wait → `ps`. After it completes:
 
 - **Frontend:** `http://localhost:5173`
 - **Backend API + Swagger:** `http://localhost:8000/docs`
@@ -266,7 +327,7 @@ flowchart LR
 | Node | Agent | Responsibility |
 |------|-------|----------------|
 | `kickoff` | System | Validates sprint brief, extracts backlog items, emits opening status event |
-| `po` | Product Owner | Creates OpenProject work package, prioritizes backlog, identifies riskiest item |
+| `po` | Product Owner | Prioritizes backlog (OpenProject optional), identifies riskiest item |
 | `scrum_master` | Scrum Master | Sequences work, surfaces blockers, assigns first execution move to Developer |
 | `developer` | Developer | Claims first actionable item, states implementation plan, flags dependencies |
 | `po_wrap` | Product Owner | Closes kickoff with 3-bullet summary: priority · owner · next action |
@@ -323,19 +384,29 @@ curl -s localhost:5100/v1/models | jq -r '.models[] | select(.provider=="nebius"
 
 ### Giving agent roles an NVIDIA model
 
-The role defaults in `backend/llm/model_factory.py` are Qwen and DeepSeek. To
-run specific roles on Nemotron, opt them in — unset means nothing changes:
+`NEMOTRON_ROLES` names the roles that run on Nemotron. The shipped
+`.env.example` opts every role in, so a stack started from it runs on Nemotron
+as soon as `NEBIUS_API_KEY` is set; clear the variable and the roles fall back
+to the Qwen/DeepSeek defaults in `backend/llm/model_factory.py`:
 
 ```bash
 # Comma-separated role names (case-insensitive).
-NEMOTRON_ROLES=PO,Architect,SecOps,Developer,QA,TechWriter
+NEMOTRON_ROLES=po,architect,scrummaster,developer,qa,secops,techwriter,engramprocessor
 
 # The model those roles get. The _STRATEGIC and _FAST variants override it
 # per role: PO, Architect and SecOps read _STRATEGIC; TechWriter reads _FAST.
 NEMOTRON_MODEL=nvidia/nemotron-3-super-120b-a12b
-NEMOTRON_MODEL_STRATEGIC=nvidia/Nemotron-3-Ultra-550b-a55b
-NEMOTRON_MODEL_FAST=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+NEMOTRON_MODEL_STRATEGIC=nvidia/nemotron-3-ultra-550b-a55b
+NEMOTRON_MODEL_FAST=nvidia/nemotron-3-super-120b-a12b
+# Any role NEMOTRON_ROLES does not name.
+AGENT_MODEL=nvidia/nemotron-3-super-120b-a12b
 ```
+
+The proxy checks every id against the provider's live catalogue before a
+request goes out, so a retired or mistyped id fails at the door with its
+reason. With `NVIDIA_API_KEY` (an `nvapi-` key) the same `nvidia/` ids are
+served by NVIDIA's own gateway (`NVIDIA_PROXY_URL`); when both keys are set,
+the first provider whose key works and whose catalogue lists the id answers.
 
 ### Checking the integration end to end
 
@@ -364,9 +435,64 @@ the choice reaches every LangGraph node. Requests still carry
 `X-Agent-Role` and `X-Business-Unit-ID`, so per-role and per-company token
 budgets apply to Nemotron calls exactly as they do to the others.
 
+### Nebius services used, and what Token Factory changed
+
+**Nebius Token Factory is the only Nebius service this project uses.** The
+`nebius` provider in `llm-proxy/` talks to its OpenAI-compatible endpoint, and
+`NEBIUS_PROXY_URL` can point the same provider at a Nebius Serverless Endpoint
+instead. No other Nebius service (compute, storage, managed databases) is part
+of the stack: the rest runs on the project's own PostgreSQL, NATS and Neo4j.
+
+What Token Factory did for the project, concretely:
+
+- **The whole NVIDIA open-model line behind one key.** Nemotron 3 Ultra
+  (550B), Super (120B) and Nano (30B) are served from the same endpoint, so the
+  project never had to host or quantize a model to give the strategic roles a
+  larger one and the TechWriter a smaller one. The tiering in
+  `backend/llm/model_factory.py` is a configuration choice, not infrastructure.
+- **A live catalogue instead of a hardcoded list.** The proxy fetches what
+  Token Factory serves at startup and hourly and refuses any id that is not in
+  it. A new Nemotron release becomes available by changing an environment
+  variable, with no release of La Fabrique.
+- **The proxy's existing controls applied unchanged.** Per-company token
+  budgets, per-role routing, and the `reported` / `estimated` marking of each
+  answer's token count work on Nemotron calls as on every other provider,
+  because Token Factory speaks the same OpenAI-compatible protocol.
+- **A reproducible check.** `scripts/verify-nebius.sh` proves the key, the
+  catalogue and a completion separately, so the integration can be verified in
+  a minute on any machine with a key.
+
 [⬆ Back to Top](#la-fabrique)
 
 ---
+
+## Voice assistant and coding-agent demo
+
+Hackathon category: **Coding & Agents Engineering**. Two pieces sit beside the
+factory and run without it:
+
+- **`demo/coding_agent.py`** — the write, run, test loop in one file: the model
+  proposes files as JSON, the agent writes them to an empty directory, runs
+  `unittest`, and hands a failing output back to the model until the tests
+  pass. With `NEBIUS_API_KEY` it runs on Nemotron through Token Factory
+  (`nvidia/nemotron-3-ultra-550b-a55b` by default); `--offline` replays two
+  recorded answers, one failing and one fixing, so it runs without a key.
+
+  ```bash
+  python demo/coding_agent.py --offline
+  NEBIUS_API_KEY=... python demo/coding_agent.py --task "slugify with unittest tests"
+  ```
+
+- **`asistente-b1/`** — a desktop assistant (Apache-2.0, standard library at
+  its core; PyQt6 window, faster-whisper and Piper are optional) that drives
+  the factory by voice through `/v1/voice/*`: the status, plan, create, dispatch,
+  pause, resume and decide actions, and `/v1/voice/build` for a project asked
+  for in one sentence. Set `VOICE_API_KEY` on the backend and the same key in
+  the assistant. See [`asistente-b1/README.md`](asistente-b1/README.md).
+
+`python tools/hackathon_check.py` checks the submission requirements it can
+check offline (licence, README, Token Factory and Nemotron defaults, the demo
+ending green, no committed keys) and, with a key, the live provider.
 
 ## GlassRoom
 
@@ -539,6 +665,48 @@ See [SECURITY.md](SECURITY.md) for the security policy and vulnerability reporti
 
 ---
 
+## Responsible use
+
+La Fabrique's agents write files and run commands on the computer where the
+**workspace daemon** runs — like an IDE would. Point the daemon only at folders
+you own or are authorised to modify, and only connect a repository you have the
+right to change. Model output is an aid for a person, not a determination:
+verification is deterministic, but the decision to approve, carry over or reject
+a task is always a person's. See [SECURITY.md](SECURITY.md).
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Roadmap
+
+| Item | Status |
+| --- | --- |
+| Deterministic verification (claims vs. observations) | Done |
+| Append-only, signed audit chain | Done |
+| Per-company token budgets at a single LLM proxy | Done |
+| Nebius Token Factory / NVIDIA Nemotron routing | Done |
+| Sprint orchestration with carry-over and ScrumMaster escalation | Done |
+| Evidence page with per-verdict summary | Done |
+| Reviewer agent that suggests (never decides) on other producers' runs | Done |
+| Qualification of relationships between entities in the engram graph | Planned |
+| Per-source data-quality indicators | Planned |
+| Deterministic procedures measured against their own adoption | Planned |
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Documentation
+
+[Architecture](ARCHITECTURE.md) · [Positioning](docs/POSITIONING.md) ·
+[API reference](docs/API.md) · [Threat model](docs/threat_model.md) ·
+[User guide](USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) ·
+[Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) ·
+[Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)
+
+---
+
 ## License
 
 **Apache License 2.0.** See [LICENSE](LICENSE).  
@@ -550,7 +718,7 @@ Copyright © 2026 Carolina Pereira.
 
 ## Support & Maintenance
 
-- **System Support:** La Fabrique is maintained by **Carolina Pereira**. Critical errors are automatically reported to the vendor for resolution.
+- **Error reports:** an unhandled error is logged and opens an incident ticket on NATS. Set `FABRIQUE_VENDOR_SUPPORT_URL` (and `FABRIQUE_VENDOR_ID` to name the installation) to also send each report to a support webhook; the error response says whether it got there.
 - **Project Support:** For issues with AI-generated code in your projects, use the built-in Support Bot.
 - **Contact:** For licensing and Enterprise SLA inquiries, please contact the owner directly.
 

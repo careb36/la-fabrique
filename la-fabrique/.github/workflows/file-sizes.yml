@@ -8,7 +8,7 @@ name: File Sizes
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     paths:
       - 'backend/**'
@@ -22,19 +22,19 @@ permissions:
   contents: read
 
 
-# One self-hosted runner takes jobs one at a time: a new push cancels the
-# runs of the commit it replaces instead of queueing behind them.
+# A new push cancels the runs of the commit it replaces instead of queueing
+# behind them.
 concurrency:
   group: file-sizes-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check:
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: No file over the limit grows
         run: python3 scripts/check_file_sizes.py

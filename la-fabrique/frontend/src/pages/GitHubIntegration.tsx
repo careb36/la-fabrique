@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Download, GitPullRequest, KeyRound, Loader2, Plug } from 'lucide-react'
 import { useBackfillGitHub, useCapabilities, useCreateGitHubBinding, useCurrentRole } from '../hooks/useQueries'
+import { API_BASE } from '../lib/apiBase'
 import {
-  API_BASE,
   ApiError,
   errorDetail,
   type GitHubBinding,
