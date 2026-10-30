@@ -76,3 +76,15 @@ def test_it_says_a_report_was_sent_only_when_the_webhook_took_it(
     assert ("sent to support" in detail) is sent
     assert posted[0]["vendor_id"] == "acme"
     assert posted[0]["error_type"] == "RuntimeError"
+
+
+def test_a_500_carries_the_security_headers(monkeypatch):
+    # Starlette sends an unhandled error from outside every middleware, so the
+    # handler sets the headers itself.
+    monkeypatch.delenv("FABRIQUE_VENDOR_SUPPORT_URL", raising=False)
+
+    response = _get_boom(_app(_FakeNATS()))
+
+    assert response.status_code == 500
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Content-Security-Policy"].startswith("default-src 'self'")

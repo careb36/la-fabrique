@@ -9,6 +9,7 @@ import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from logging_config import logger
+from security import apply_security_headers
 
 
 def register_exception_handlers(app):
@@ -80,14 +81,17 @@ def register_exception_handlers(app):
             except Exception:  # noqa: BLE001, S110 - Ticket publishing is best-effort during error handling.
                 pass
 
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Fabrique Engine Error. "
-                + (
-                    "A technical report has been sent to support."
-                    if reported
-                    else "The error has been logged."
-                )
-            },
+        return apply_security_headers(
+            request.url.path,
+            JSONResponse(
+                status_code=500,
+                content={
+                    "detail": "Fabrique Engine Error. "
+                    + (
+                        "A technical report has been sent to support."
+                        if reported
+                        else "The error has been logged."
+                    )
+                },
+            ),
         )

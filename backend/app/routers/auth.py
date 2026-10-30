@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from models import CompanyMember, User
 from passwords import hash_password, needs_rehash, rehash_password, verify_password
 from schemas import InviteMemberRequest, LoginRequest, UserCreateRequest
+from security import limiter
 from sqlmodel import Session, select
 
 from routers.voice_support import key_company
@@ -32,7 +33,9 @@ router = APIRouter(prefix="/v1", tags=["Auth"])
 
 
 @router.post("/auth/register")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
 async def register_user(
+    request: Request,
     req: UserCreateRequest,
     session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
 ):
@@ -63,7 +66,12 @@ async def register_user(
 
 
 @router.post("/auth/login")
-async def login(req: LoginRequest, session: Session = Depends(get_session)):  # noqa: B008 - FastAPI dependency marker.
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def login(
+    request: Request,
+    req: LoginRequest,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
     """Authenticate a human user and return a signed access token."""
     if not auth_tokens.is_auth_configured():
         raise HTTPException(status_code=503, detail="Authentication is not configured")
@@ -140,6 +148,7 @@ def _desktop_owner(session: Session) -> User:
 
 
 @router.post("/auth/desktop")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
 async def desktop_session(
     request: Request,
     session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.

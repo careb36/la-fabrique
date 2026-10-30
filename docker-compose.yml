@@ -198,13 +198,20 @@ services:
       NATS_NAMESPACE: ${NATS_NAMESPACE:-}
       WORKSPACE_ROOT: ${CONTAINER_WORKSPACE_ROOT:-/workspace}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # The non-root user below has no home in the image; pip --user and git
+      # need a writable one.
+      HOME: /tmp
     working_dir: /app
-    command: sh -lc "pip install --no-cache-dir -r /app/requirements.txt && python /app/daemon.py"
+    # Not root: it runs commands agents asked for and writes into your
+    # projects, so it runs as the owner of that folder (set DAEMON_UID and
+    # DAEMON_GID to `id -u` / `id -g` if yours is not 1000).
+    user: "${DAEMON_UID:-1000}:${DAEMON_GID:-1000}"
+    command: sh -lc "pip install --no-cache-dir --user -r /app/requirements.txt && python /app/daemon.py"
     volumes:
       - ./:${CONTAINER_WORKSPACE_ROOT:-/workspace}
       - ${PROJECTS_ROOT:-${HOME:-/tmp}}:${PROJECTS_ROOT:-${HOME:-/tmp}}:rw
-      - ./vscode-daemon/daemon.py:/app/daemon.py:ro
-      - ./vscode-daemon/requirements.txt:/app/requirements.txt:ro
+      # The whole folder: daemon.py imports nats_scope.py and shell_exec.py.
+      - ./vscode-daemon:/app:ro
     networks:
       - factory-network
     depends_on:

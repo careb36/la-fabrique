@@ -184,3 +184,36 @@ def test_the_settings_file_is_private(tmp_path):
     Settings(model_api_key="k", voice_key="v").save(target)
     assert stat.S_IMODE(os.stat(target).st_mode) == 0o600
     assert stat.S_IMODE(os.stat(target.parent).st_mode) == 0o700
+
+
+# --- keys over plain http ---------------------------------------------------
+
+
+def _request(url: str, key: bool = True) -> urllib.request.Request:
+    headers = {"X-Voice-Key": "secret"} if key else {}
+    return urllib.request.Request(url, headers=headers)
+
+
+def test_a_key_is_not_sent_over_http_to_another_machine(monkeypatch):
+    monkeypatch.delenv("B1_ALLOW_INSECURE_HTTP", raising=False)
+    with pytest.raises(net.InsecureTransport):
+        net.check_transport(_request("http://factory.example:8000/v1/voice/ping"))
+
+
+@pytest.mark.parametrize(
+    "url, key",
+    [
+        ("http://127.0.0.1:8000/v1/voice/ping", True),
+        ("http://localhost:8000/v1/voice/ping", True),
+        ("https://factory.example/v1/voice/ping", True),
+        ("http://factory.example/v1/voice/build/x/index.html", False),
+    ],
+)
+def test_loopback_https_or_no_key_are_fine(monkeypatch, url, key):
+    monkeypatch.delenv("B1_ALLOW_INSECURE_HTTP", raising=False)
+    net.check_transport(_request(url, key))
+
+
+def test_the_insecure_opt_in_allows_it(monkeypatch):
+    monkeypatch.setenv("B1_ALLOW_INSECURE_HTTP", "1")
+    net.check_transport(_request("http://factory.example:8000/v1/voice/ping"))

@@ -133,6 +133,11 @@ Copy `.env.example` to `.env` and fill in:
   the same `nvidia/` ids Nebius serves; the proxy tries it first when its key
   is set. `AGENT_MODEL` is the model of every role `NEMOTRON_ROLES` does not
   name. `NEO4J_DISABLED=true` skips Neo4j on an install without it.
+- `AUTH_RATE_LIMIT` — optional, default `10/minute`: per client address, on
+  login, registration and `POST /v1/auth/desktop`.
+- `DAEMON_UID` / `DAEMON_GID` — only for the optional daemon container: the
+  owner of the mounted projects folder (default 1000). Every container runs as
+  a non-root user.
 - `NATS_BIND` — optional, default `127.0.0.1`. The host address NATS listens on;
   the workspace daemon on this computer connects there. `0.0.0.0` exposes it to
   other machines, which can then ask the daemon to run commands.
