@@ -31,6 +31,11 @@ RUN pip install --no-cache-dir gunicorn 'setuptools<81'
 # A new top-level module in llm-proxy/ has to be added here too.
 COPY app.py usage.py upstream.py catalogue.py provider_keys.py telemetry.py tracing.py /app/
 
+# Run as an unprivileged user, never as root: a flaw in the app then cannot
+# rewrite the image or reach what root reaches on a shared volume.
+RUN useradd --create-home --uid 1000 --user-group app
+USER app
+
 EXPOSE 5100
 
 CMD ["gunicorn", "-b", "0.0.0.0:5100", "-w", "2", "--timeout", "120", "app:app"]

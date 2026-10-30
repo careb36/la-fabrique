@@ -73,7 +73,9 @@ error en una frase; nunca se simula que salió bien.
   nota de rechazo) no puede confirmarlas por vos.
 - **Solo abre las vistas previas de la fábrica** (`<fábrica>/v1/voice/build/...`),
   nunca otro enlace que aparezca en una respuesta.
-- **Las claves no siguen redirecciones a otro host.**
+- **Las claves no siguen redirecciones a otro host**, ni viajan por `http://`
+  sin cifrar a otra máquina: con la fábrica o el modelo en otro equipo usá
+  `https://` (o `B1_ALLOW_INSECURE_HTTP=1`, solo en una red de confianza).
 - **`config.json` se crea con permisos 0600** (la carpeta, 0700): guarda la
   clave del modelo y la de voz.
 - **La voz del sistema nunca ejecuta el texto que lee**: en Windows viaja como

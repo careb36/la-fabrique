@@ -64,6 +64,15 @@ _engine = create_engine(
 
 
 @pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    # The suite logs in far more often than a person could; the limit itself
+    # is tested on its own in test_rate_limits.py.
+    from security import limiter
+
+    monkeypatch.setattr(limiter, "enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def disable_auth_for_legacy_tests(monkeypatch):
     # The legacy suite predates authentication enforcement.
     monkeypatch.setattr(settings, "AUTH_REQUIRED", False)

@@ -30,6 +30,14 @@ COPY agents/  /app/agents/
 COPY memory/  /app/memory/
 COPY telemetry.py /app/telemetry.py
 
+# Run as an unprivileged user, never as root: a flaw in the app then cannot
+# rewrite the image or reach what root reaches on a shared volume.
+RUN useradd --create-home --uid 1000 --user-group app
+# The audit log volume (factory-logs) and the generated builds are written at
+# run time; a named volume mounted on an existing directory takes its owner.
+RUN mkdir -p /app/.factory/logs /workspace/builds && chown -R app:app /app/.factory /workspace
+USER app
+
 EXPOSE 8000
 
 # /app      — repo root (pyproject.toml, poetry.lock live here)
