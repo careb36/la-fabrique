@@ -28,6 +28,10 @@
 .PARAMETER SinNavegador
     No abre el panel del asistente (con la fábrica dentro) al arrancar.
 
+.PARAMETER Asistente
+    Quién abre la ventana: 'b1' (por defecto, el asistente original de este
+    repositorio) o 'profesor3' (el anterior).
+
 .PARAMETER Completa
     Fábrica completa: levanta Postgres, NATS y el proxy de modelos con Docker
     Desktop y arranca el demonio de trabajo, para que los agentes ejecuten los
@@ -84,6 +88,7 @@ param(
     [switch]$Recompilar,
     [switch]$SoloCompilar,
     [string]$Agentes,
+    [string]$Asistente,
     [string]$Python
 )
 
@@ -1216,6 +1221,19 @@ try {
             Write-Paso "Comprobando el entorno del asistente (pip check)"
             & $assistantPython -m pip check
             if ($LASTEXITCODE -ne 0) { Write-Aviso "'pip check' encontró conflictos; el asistente puede abrir igual." }
+
+            # Piper trae el motor pero no las voces. Se bajan una vez para que
+            # hable en español y en inglés sin depender de la voz del sistema;
+            # si no hay red, la voz del sistema cubre los dos idiomas igual.
+            Write-Paso "Preparando las voces del asistente (español e inglés)"
+            Push-Location $AssistantDir
+            try {
+                $voices = Invoke-Python -Exe $assistantPython -Arguments @('-m', 'b1', '--voices') -TimeoutSeconds 1800 -AllowDirectRetry
+            } finally {
+                Pop-Location
+            }
+            if ($voices.ExitCode -eq 0) { Write-Ok 'Voces del asistente listas' }
+            else { Write-Aviso 'Sin voces descargadas: el asistente usa la voz del sistema.' }
         }
     }
 
@@ -1282,6 +1300,7 @@ try {
     if ($Empresa) { $launcherArgs += @('--company', $Empresa) }
     if ($SinNavegador) { $launcherArgs += '--no-browser' }
     if ($Completa) { $launcherArgs += '--completa' }
+    if ($Asistente) { $launcherArgs += @('--asistente', $Asistente) }
     if ($Agentes) { $launcherArgs += @('--agentes', $Agentes) }
     if (-not $SoloAsistente) { $launcherArgs += @('--backend-python', $backendPython) }
     if ((-not $SoloBackend) -and $assistantPython) { $launcherArgs += @('--assistant-python', $assistantPython) }

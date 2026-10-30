@@ -44,6 +44,13 @@ ROOT = Path(__file__).resolve().parent
 FACTORY = ROOT / "la-fabrique"
 BACKEND = FACTORY / "backend"
 ASSISTANT = ROOT / "profesor3"
+# The original assistant written for this repository (Apache-2.0). It talks to
+# the same factory and needs no plugin: the voice API is its only contract.
+NEW_ASSISTANT = ROOT / "asistente-b1"
+NEW_ASSISTANT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+# The assistant's default provider when there is no local llm-proxy in front:
+# NVIDIA's catalog gateway, which serves the same Nemotron ids as Nebius.
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_PORT = 8000
 DEFAULT_COMPANY = "Mi fábrica"
 # An assistant that dies this fast never showed a window: usually a missing
@@ -256,6 +263,54 @@ def _configure_assistant(url: str, key: str, company_id: int | None) -> None:
     print("✓  Plugin FÁBRICA configurado en el asistente.", flush=True)
 
 
+def _configure_new_assistant(
+    url: str,
+    key: str,
+    company_id: int | None,
+    *,
+    proxy_url: str | None = None,
+    model_api_key: str = "",
+) -> None:
+    """Point the original assistant at this factory, keeping the rest of its file.
+
+    The model is the factory's own proxy when it is running: it already holds
+    the provider keys, so the assistant does not ask for a second credential.
+    """
+    home = Path(os.getenv("B1_HOME") or (Path.home() / ".asistente-b1"))
+    config = home / "config.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if config.is_file():
+        try:
+            data = json.loads(config.read_text(encoding="utf-8"))
+        except ValueError:
+            data = {}
+    data.update({"factory_url": url, "voice_key": key})
+    if company_id is not None:
+        data["factory_company_id"] = int(company_id)
+    if proxy_url or model_api_key:
+        # Nemotron reasons before answering: the thinking tokens are paid out of
+        # max_tokens, and a reasoning turn takes longer than a plain one.
+        data.update(
+            {
+                "model_base_url": proxy_url or NVIDIA_BASE_URL,
+                "model": NEW_ASSISTANT_MODEL,
+                "model_api_key": "" if proxy_url else model_api_key,
+                "model_thinking": True,
+                "model_temperature": 0.6,
+                "model_top_p": 0.95,
+                "model_max_tokens": 8192,
+                "model_timeout": 300.0,
+            }
+        )
+    config.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        config.chmod(0o600)
+    except OSError:
+        pass
+    print("✓  Asistente B1 configurado en el asistente.", flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Processes
 # ---------------------------------------------------------------------------
@@ -412,6 +467,17 @@ def _start_assistant(
     )
 
 
+def _start_new_assistant(
+    extra: list[str], python: str, env: dict[str, str] | None = None
+) -> subprocess.Popen:
+    print("→  Arrancando Asistente B1 …", flush=True)
+    return subprocess.Popen(
+        [python, "-m", "b1", *extra],
+        cwd=str(NEW_ASSISTANT),
+        env=dict(env or os.environ),
+    )
+
+
 def _stop(process: subprocess.Popen | None, name: str) -> None:
     if process is None or process.poll() is not None:
         return
@@ -502,6 +568,12 @@ def _write_env_file(values: dict[str, str]) -> None:
     path.write_text("\n".join(merged).rstrip("\n") + "\n", encoding="utf-8")
 
 
+def _nvidia_key() -> str:
+    """The ``nvapi-`` key from ``la-fabrique/.env`` or the environment, if any."""
+    from_file = _parse_env_file(FACTORY / ".env").get("NVIDIA_API_KEY") or ""
+    return (from_file or os.getenv("NVIDIA_API_KEY") or "").strip()
+
+
 def _assistant_gemini_key() -> str:
     """The key the assistant already uses, so the proxy does not ask for another."""
     config = ASSISTANT / "config" / "api_keys.json"
@@ -582,6 +654,21 @@ def _start_full_stack(docker: str, wait: float) -> bool:
             )
             return False
         print(f"✓  {name} escuchando en 127.0.0.1:{port}", flush=True)
+    # Docker publishes the port even when the app inside died, so a host-side
+    # connect proves nothing: the proxy has to serve its catalogue, or the first
+    # sentence fails with "no pude hablar con el proxy".
+    if not _wait_proxy_catalogue(wait):
+        print(
+            "✗  El puerto 5100 está publicado pero el proxy no responde en "
+            "/v1/models: el proceso de dentro se cayó. Últimas líneas de "
+            "`docker compose logs llm-proxy`:",
+            file=sys.stderr,
+        )
+        logs = _compose(docker, "logs", "--tail", "20", "llm-proxy")
+        for line in (logs.stdout or logs.stderr or "").strip().splitlines()[-15:]:
+            print(f"   {line}", file=sys.stderr)
+        return False
+    print("✓  Proxy de modelos sirviendo su catálogo", flush=True)
     return True
 
 
@@ -596,7 +683,7 @@ def _agent_model(secrets: dict[str, str]) -> str:
     explicit = (secrets.get("AGENT_MODEL") or "").strip()
     if explicit:
         return explicit
-    if secrets.get("NEBIUS_API_KEY"):
+    if secrets.get("NEBIUS_API_KEY") or secrets.get("NVIDIA_API_KEY"):
         # Nemotron: one id for every role, like the Gemini case. Kept in step
         # with profesor3/core/fabrica_env.DEFAULT_NEMOTRON_MODEL — the old
         # llama-3.3-nemotron-super-49b-v1 was retired (410 Gone) and every
@@ -605,6 +692,20 @@ def _agent_model(secrets: dict[str, str]) -> str:
     if secrets.get("QWEN_API_KEY") or secrets.get("DEEPSEEK_API_KEY"):
         return ""
     return "gemini-flash-latest" if secrets.get("GEMINI_API_KEY") else ""
+
+
+# The model proxy, when it runs here instead of in Docker.
+PROXY_DIR = FACTORY / "llm-proxy"
+PROXY_URL = f"http://127.0.0.1:{dict(FULL_PORTS)['llm-proxy']}"
+PROXY_LOG = FACTORY / ".fusion" / "llm-proxy.log"
+PROXY_VENV = PROXY_DIR / ".venv"
+PROVIDER_KEYS = (
+    "NVIDIA_API_KEY",
+    "NEBIUS_API_KEY",
+    "QWEN_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "GEMINI_API_KEY",
+)
 
 
 def _full_env(secrets: dict[str, str], agents_dir: Path) -> dict[str, str]:
@@ -616,7 +717,7 @@ def _full_env(secrets: dict[str, str], agents_dir: Path) -> dict[str, str]:
         "POSTGRES_PASSWORD": secrets.get("POSTGRES_PASSWORD", ""),
         "POSTGRES_DB": secrets.get("POSTGRES_DB", "factory"),
         "NATS_URL": "nats://127.0.0.1:4222",
-        "LLM_PROXY_URL": "http://127.0.0.1:5100",
+        "LLM_PROXY_URL": PROXY_URL,
         "NEO4J_DISABLED": "true",
         "AGENT_WORKSPACE_ROOT": str(agents_dir),
     }
@@ -624,6 +725,212 @@ def _full_env(secrets: dict[str, str], agents_dir: Path) -> dict[str, str]:
     if model:
         env["AGENT_MODEL"] = model
     return env
+
+
+# ---------------------------------------------------------------------------
+# Proxy de modelos sin Docker
+# ---------------------------------------------------------------------------
+
+def _proxy_answers(url: str = PROXY_URL, timeout: float = 2.0) -> bool:
+    """Whether a model proxy is serving a catalogue there.
+
+    ``/v1/models`` only answers once the provider keys were read, so a proxy
+    that is up but keyless is caught here instead of on the first sentence.
+    """
+    try:
+        with urllib.request.urlopen(f"{url}/v1/models", timeout=timeout) as response:
+            if response.status != 200:
+                return False
+            data = json.loads(response.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001 - any failure means "not usable yet"
+        return False
+    return bool((data or {}).get("models"))
+
+
+def _wait_proxy_catalogue(timeout: float) -> bool:
+    """Wait for the proxy to answer with models, not merely to hold the port."""
+    deadline = time.monotonic() + max(5.0, timeout)
+    while time.monotonic() < deadline:
+        if _proxy_answers():
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def _provider_key(env: dict[str, str]) -> str:
+    for name in PROVIDER_KEYS:
+        if (env.get(name) or "").strip():
+            return name
+    return ""
+
+
+def _proxy_python(args) -> str | None:
+    """An interpreter able to run the proxy, building ``llm-proxy/.venv`` if none is.
+
+    The backend venv does not carry Flask and the proxy is a separate Poetry
+    project with its own lock, so a desktop install without Docker had nobody
+    able to import it. The venv is built once, from the proxy's pinned lock.
+    """
+    explicit = getattr(args, "backend_python", None)
+    candidates = [
+        explicit,
+        *list(_venv_pythons([PROXY_VENV, ROOT / ".venv-backend"])),
+        *list(_venv_pythons([BACKEND / ".venv", BACKEND / "venv"])),
+        _poetry_python(PROXY_DIR),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if _can_import(candidate, "flask") and _can_import(candidate, "sqlalchemy"):
+            return candidate
+    return _build_proxy_venv()
+
+
+def _build_proxy_venv() -> str | None:
+    """``llm-proxy/.venv`` from ``poetry.lock``; the first start pays for it."""
+    exporter = ROOT / "tools" / "lock_requirements.py"
+    lock = PROXY_DIR / "poetry.lock"
+    if not exporter.is_file() or not lock.is_file():
+        return None
+    requirements = FACTORY / ".fusion" / "llm-proxy-requirements.txt"
+    requirements.parent.mkdir(parents=True, exist_ok=True)
+    print(
+        "→  Preparando el proxy de modelos (Flask y su telemetría) en "
+        f"{PROXY_VENV}.\n   Es una sola vez y puede tardar un par de minutos.",
+        flush=True,
+    )
+    export = subprocess.run(
+        [sys.executable, str(exporter), str(lock), "--groups", "main",
+         "--output", str(requirements)],
+        capture_output=True,
+        text=True,
+    )
+    if export.returncode != 0 or not requirements.is_file():
+        print(f"   No pude leer {lock}: {export.stderr.strip()[:300]}", file=sys.stderr)
+        return None
+    if not _proxy_venv_exists():
+        created = subprocess.run(
+            [sys.executable, "-m", "venv", str(PROXY_VENV)],
+            capture_output=True,
+            text=True,
+        )
+        if created.returncode != 0:
+            print(f"   No pude crear {PROXY_VENV}: {created.stderr.strip()[:300]}",
+                  file=sys.stderr)
+            return None
+    python = next(_venv_pythons([PROXY_VENV]), None)
+    if python is None:
+        return None
+    install = subprocess.run(
+        [python, "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+         "--retries", "3", "--timeout", "60", "-r", str(requirements)],
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        print(
+            f"   pip no pudo instalar el proxy desde {requirements}:\n"
+            f"   {(install.stderr or install.stdout).strip()[-400:]}",
+            file=sys.stderr,
+        )
+        return None
+    if _can_import(python, "flask") and _can_import(python, "sqlalchemy"):
+        print(f"✓  Proxy de modelos instalado en {PROXY_VENV}", flush=True)
+        return python
+    return None
+
+
+def _proxy_venv_exists() -> bool:
+    return any(True for _ in _venv_pythons([PROXY_VENV]))
+
+
+def _start_native_proxy(env: dict[str, str], args) -> subprocess.Popen | None:
+    """Run ``llm-proxy/app.py`` here, for installs that have no Docker.
+
+    The factory's agents and the voice build both speak to the proxy, so a
+    desktop install with a provider key but no Docker had nobody answering
+    ``/v1/chat/completions``: every task ended as "no pude hablar con el proxy".
+    Postgres is not needed — usage rows are only written when a business unit
+    arrives in the headers, which the voice path never sends.
+    """
+    python = _proxy_python(args)
+    if python is None:
+        print(
+            "⚠  Hay clave de proveedor pero no pude preparar el proxy de "
+            "modelos (Flask + SQLAlchemy).\n"
+            "   Con red, borrá la carpeta "
+            f"{PROXY_VENV} y volvé a arrancar;\n"
+            "   o usá el modo completo (Docker): .\\arrancar.ps1 -Completa",
+            file=sys.stderr,
+        )
+        return None
+
+    PROXY_LOG.parent.mkdir(parents=True, exist_ok=True)
+    log = open(PROXY_LOG, "a", encoding="utf-8", errors="replace")
+    log.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} llm-proxy ---\n")
+    log.flush()
+    proxy_env = dict(env)
+    proxy_env.setdefault("PYTHONUNBUFFERED", "1")
+    # Loopback only: this process holds the provider keys and never needs to be
+    # reachable from the network.
+    proxy_env["PROXY_HOST"] = "127.0.0.1"
+    proxy_env["PROXY_PORT"] = str(dict(FULL_PORTS)["llm-proxy"])
+    print(f"→  Arrancando el proxy de modelos en {PROXY_URL} (sin Docker) …", flush=True)
+    return subprocess.Popen(
+        [python, str(PROXY_DIR / "app.py")],
+        cwd=str(PROXY_DIR),
+        env=proxy_env,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+    )
+
+
+def _ensure_native_proxy(
+    env: dict[str, str], args
+) -> tuple[str, subprocess.Popen | None]:
+    """Guarantee something answers on 5100 when the install has a provider key.
+
+    Returns the URL to hand to the backend and the assistant — "" when there is
+    no proxy, with the reason printed, because "no pude hablar con el proxy"
+    told the person nothing about what to fix — and the process to stop later,
+    if this launcher is the one that started it.
+    """
+    if _proxy_answers():
+        print(f"✓  Proxy de modelos ya arriba en {PROXY_URL}.", flush=True)
+        return PROXY_URL, None
+    key_name = _provider_key(env)
+    if not key_name:
+        print(
+            "⚠  Sin claves de proveedor: la fábrica no podrá razonar ni escribir "
+            f"código hasta que pongas una en {FACTORY / '.env'}.",
+            flush=True,
+        )
+        return "", None
+    process = _start_native_proxy(env, args)
+    if process is None:
+        return "", None
+    deadline = time.monotonic() + 60.0
+    while time.monotonic() < deadline:
+        if _proxy_answers():
+            print(f"✓  Proxy de modelos listo con {key_name}.", flush=True)
+            return PROXY_URL, process
+        if process.poll() is not None:
+            break
+        time.sleep(1.0)
+    print(
+        "✗  El proxy de modelos no levantó. Las últimas líneas de "
+        f"{PROXY_LOG} dicen por qué:",
+        file=sys.stderr,
+    )
+    try:
+        tail = PROXY_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-8:]
+    except OSError:
+        tail = []
+    for line in tail:
+        print(f"   {line}", file=sys.stderr)
+    _stop(process, "el proxy de modelos")
+    return "", None
+
 
 
 def _start_daemon(python: str, env: dict[str, str], agents_dir: Path) -> subprocess.Popen:
@@ -730,6 +1037,12 @@ def main(argv: list[str] | None = None) -> int:
         default=os.getenv("FUSION_ASSISTANT_PYTHON"),
         help="interpreter with the assistant's dependencies (default: auto-detect)",
     )
+    parser.add_argument(
+        "--asistente",
+        choices=("b1", "profesor3"),
+        default=os.getenv("FUSION_ASSISTANT", "b1"),
+        help="qué asistente abre la ventana (por defecto: b1, el original)",
+    )
     parser.add_argument("--no-config", action="store_true", help="do not touch the assistant's settings")
     parser.add_argument("--no-bootstrap", action="store_true", help="do not create a company")
     parser.add_argument("--wait", type=float, default=90.0, help="seconds to wait for the backend")
@@ -775,16 +1088,22 @@ def main(argv: list[str] | None = None) -> int:
         env["JWT_SECRET_KEY"] = app_secrets["JWT_SECRET_KEY"]
     key = args.voice_key or env.get("VOICE_API_KEY") or secrets.token_urlsafe(32)
     env["VOICE_API_KEY"] = key
+    agent_model = _agent_model(env)
+    if agent_model:
+        env["AGENT_MODEL"] = agent_model
 
     backend: subprocess.Popen | None = None
     assistant: subprocess.Popen | None = None
     daemon: subprocess.Popen | None = None
+    proxy: subprocess.Popen | None = None
     backend_python: str | None = None
+    model_proxy = ""
 
     def _shutdown(_signum=None, _frame=None):
         _stop(assistant, "el asistente")
         _stop(daemon, "el demonio")
         _stop(backend, "el backend")
+        _stop(proxy, "el proxy de modelos")
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, _shutdown)
@@ -814,6 +1133,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"✓  Infraestructura lista. Los agentes escribirán en {agents_dir}",
                 flush=True,
             )
+            model_proxy = PROXY_URL
+        elif not args.assistant_only:
+            # Without Docker the proxy still has to exist: it is the only thing
+            # that knows the provider keys, and every agent call goes through it.
+            model_proxy, proxy = _ensure_native_proxy(env, args)
+            if model_proxy:
+                env["LLM_PROXY_URL"] = model_proxy
 
         key_ok = True
         if not args.assistant_only:
@@ -934,27 +1260,49 @@ def main(argv: list[str] | None = None) -> int:
         env["FABRICA_API_KEY"] = key
         env["FABRICA_COMPANY_ID"] = str(company_id) if company_id else ""
 
+        # Asistente B1 reads the same factory URL and key from its own config,
+        # and from the environment when --no-config keeps the file untouched.
+        use_b1 = args.asistente == "b1"
+        env["B1_FACTORY_URL"] = url
+        env["B1_VOICE_KEY"] = key
+
         if not args.no_config and key_ok:
-            _configure_assistant(url, key, company_id)
+            if use_b1:
+                # With the proxy the assistant borrows no key at all: the proxy
+                # already holds it. Without one it talks to NVIDIA directly.
+                _configure_new_assistant(
+                    url,
+                    key,
+                    company_id,
+                    proxy_url=f"{model_proxy}/v1" if model_proxy else None,
+                    model_api_key=_nvidia_key(),
+                )
+            else:
+                _configure_assistant(url, key, company_id)
 
         if not args.backend_only:
             assistant_python = _pick_python(
                 args.assistant_python,
-                [ASSISTANT / ".venv", ASSISTANT / "venv"],
+                [ASSISTANT / ".venv", ASSISTANT / "venv", NEW_ASSISTANT / ".venv"]
+                if not use_b1
+                else [NEW_ASSISTANT / ".venv", NEW_ASSISTANT / "venv", ASSISTANT / ".venv"],
                 "PyQt6",
             )
             if not _can_import(assistant_python, "PyQt6"):
+                requirements = (NEW_ASSISTANT if use_b1 else ASSISTANT) / "requirements.txt"
                 print(
                     f"✗  {assistant_python} no tiene las dependencias del "
                     "asistente. Instálalas con:\n"
-                    f"     {assistant_python} -m pip install -r "
-                    f"{ASSISTANT / 'requirements.txt'}\n"
+                    f"     {assistant_python} -m pip install -r {requirements}\n"
                     "   (en Windows, usa pythonw para que no abra consola) y "
                     "vuelve a ejecutar, o pasa --assistant-python RUTA.",
                     file=sys.stderr,
                 )
                 return 1
-            assistant = _start_assistant(args.assistant_args, assistant_python, env)
+            if use_b1:
+                assistant = _start_new_assistant(args.assistant_args, assistant_python, env)
+            else:
+                assistant = _start_assistant(args.assistant_args, assistant_python, env)
             if not args.no_browser:
                 threading.Thread(
                     target=_open_panel,

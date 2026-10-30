@@ -1,8 +1,10 @@
 """Tests for the fusion launcher: env handling and backend detection."""
 
+import argparse
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -472,11 +474,29 @@ def test_a_failed_compose_is_reported(tmp_path, monkeypatch, capsys):
 def test_services_that_never_open_their_port_are_reported(tmp_path, monkeypatch, capsys):
     _fake_docker(tmp_path)
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    # The answer must not depend on which ports this machine happens to have
+    # open: the fake Docker never starts anything.
+    monkeypatch.setattr(run_fusion, "_wait_tcp", lambda *_a, **_kw: False)
 
     started = run_fusion._start_full_stack(run_fusion._docker_cli(), wait=0.5)
 
     assert started is False
     assert "no abrió el puerto" in capsys.readouterr().err
+
+
+def test_a_published_port_with_a_dead_proxy_inside_is_reported(
+    tmp_path, monkeypatch, capsys
+):
+    """Docker keeps 5100 published after the app crashes; that is not a proxy."""
+    _fake_docker(tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setattr(run_fusion, "_wait_tcp", lambda *_a, **_kw: True)
+    monkeypatch.setattr(run_fusion, "_wait_proxy_catalogue", lambda *_a, **_kw: False)
+
+    started = run_fusion._start_full_stack(run_fusion._docker_cli(), wait=0.5)
+
+    assert started is False
+    assert "el proxy no responde" in capsys.readouterr().err
 
 
 def test_without_docker_the_full_mode_explains_itself(tmp_path, monkeypatch, capsys):
@@ -556,3 +576,133 @@ def test_an_explicit_agent_model_is_respected(tmp_path):
     )
 
     assert env["AGENT_MODEL"] == "gemini-3.1-pro-preview"
+
+
+def test_new_assistant_config_keeps_existing_settings(tmp_path, monkeypatch):
+    """Wiring Asistente B1 must not wipe the rest of its config file."""
+    monkeypatch.setenv("B1_HOME", str(tmp_path))
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"language": "en", "stt_model": "medium"}), encoding="utf-8")
+
+    run_fusion._configure_new_assistant(
+        "http://127.0.0.1:8123", "clave-voz", 9, proxy_url="http://127.0.0.1:5100/v1"
+    )
+
+    data = json.loads(config.read_text(encoding="utf-8"))
+    assert data["factory_url"] == "http://127.0.0.1:8123"
+    assert data["voice_key"] == "clave-voz"
+    assert data["factory_company_id"] == 9
+    assert data["model_base_url"] == "http://127.0.0.1:5100/v1"
+    assert data["model"] == run_fusion.NEW_ASSISTANT_MODEL
+    assert data["language"] == "en"
+    assert data["stt_model"] == "medium"
+
+
+def test_new_assistant_config_survives_a_corrupt_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("B1_HOME", str(tmp_path))
+    (tmp_path / "config.json").write_text("{ roto", encoding="utf-8")
+
+    run_fusion._configure_new_assistant("http://127.0.0.1:8123", "k", None)
+
+    data = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert data["voice_key"] == "k"
+    assert "model_base_url" not in data
+
+
+def test_new_assistant_starts_as_a_module(monkeypatch):
+    calls = []
+
+    class _Proc:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(
+        run_fusion.subprocess, "Popen", lambda cmd, **kw: calls.append((cmd, kw)) or _Proc()
+    )
+    run_fusion._start_new_assistant(["--orb"], "/usr/bin/python3", {"A": "1"})
+
+    cmd, kwargs = calls[0]
+    assert cmd == ["/usr/bin/python3", "-m", "b1", "--orb"]
+    assert Path(kwargs["cwd"]) == run_fusion.NEW_ASSISTANT
+    assert kwargs["env"] == {"A": "1"}
+
+
+class _ModelsHandler(BaseHTTPRequestHandler):
+    """A proxy that answers its catalogue, like ``llm-proxy`` does."""
+
+    models: list = ["nvidia/nemotron-3-ultra-550b-a55b"]
+
+    def do_GET(self):  # noqa: N802 - http.server API
+        if self.path == "/v1/models":
+            body = json.dumps({"models": self.models}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, *_args):
+        pass
+
+
+def test_a_proxy_is_only_trusted_once_it_lists_models(monkeypatch):
+    """A published port is not a proxy: Docker keeps it open after a crash."""
+    server, url = _serve(_ModelsHandler)
+    try:
+        assert run_fusion._proxy_answers(url) is True
+
+        monkeypatch.setattr(_ModelsHandler, "models", [])
+        assert run_fusion._proxy_answers(url) is False
+    finally:
+        server.shutdown()
+
+
+def test_an_empty_port_is_not_a_proxy():
+    assert run_fusion._proxy_answers("http://127.0.0.1:9", timeout=0.5) is False
+
+
+def test_the_catalogue_wait_gives_up_instead_of_hanging(monkeypatch):
+    monkeypatch.setattr(run_fusion, "_proxy_answers", lambda **_kw: False)
+    started = time.monotonic()
+    assert run_fusion._wait_proxy_catalogue(5.0) is False
+    assert time.monotonic() - started < 15
+
+
+def test_the_first_provider_key_present_is_reported():
+    assert run_fusion._provider_key({"NVIDIA_API_KEY": "nvapi-x"}) == "NVIDIA_API_KEY"
+    assert run_fusion._provider_key(
+        {"NVIDIA_API_KEY": "  ", "NEBIUS_API_KEY": "k"}
+    ) == "NEBIUS_API_KEY"
+    assert run_fusion._provider_key({}) == ""
+
+
+def test_the_proxy_uses_an_interpreter_that_can_import_flask(tmp_path, monkeypatch):
+    """``.venv-backend`` has no Flask: the proxy needs its own interpreter."""
+    venv = tmp_path / "llm-proxy-venv"
+    python = venv.joinpath(*run_fusion._venv_layout()[0])
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(run_fusion, "PROXY_VENV", venv)
+    monkeypatch.setattr(
+        run_fusion, "_can_import", lambda py, mod: Path(py) == python
+    )
+
+    picked = run_fusion._proxy_python(argparse.Namespace(backend_python=None))
+
+    assert Path(picked) == python
+
+
+def test_without_any_capable_interpreter_the_proxy_venv_is_built(monkeypatch):
+    built: list[str] = []
+    monkeypatch.setattr(run_fusion, "_can_import", lambda *_a: False)
+    monkeypatch.setattr(run_fusion, "_poetry_python", lambda *_a: None)
+    monkeypatch.setattr(
+        run_fusion, "_build_proxy_venv", lambda: built.append("si") or "python-x"
+    )
+
+    assert run_fusion._proxy_python(argparse.Namespace(backend_python=None)) == "python-x"
+    assert built == ["si"]

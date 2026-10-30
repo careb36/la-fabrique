@@ -1,15 +1,23 @@
-# AGENTS.md — fusión La Fabrique + MARK LVI
+# AGENTS.md — fusión La Fabrique + Asistente B1
 
 ## Layout
 
 * `run_fusion.py` — the only entry point. Starts the backend (uvicorn) and the
   desktop assistant, shares `VOICE_API_KEY` between them, bootstraps the first
-  company and writes the URL/key into `profesor3/config/api_keys.json`.
+  company and writes the URL/key into the chosen assistant's config
+  (`asistente-b1`: `~/.asistente-b1/config.json`; `profesor3`:
+  `config/api_keys.json`). `--asistente {b1,profesor3}` picks the front end;
+  **b1 is the default and the product that ships**.
+* `asistente-b1/` — the assistant written for this repository, Apache-2.0.
+  Own package (`b1/`), own tests (`pytest -q` → 104), no dependency on
+  `profesor3/`. Runs as `python -m b1` from inside the folder.
 * `la-fabrique/` — upstream checkout (`le-fabrique-backend`; FastAPI + SQLModel).
   Voice façade: `backend/app/routers/voice.py` +
   `backend/app/services/voice_control.py`. It only calls the same router
   functions the web UI uses, so voice cannot bypass validation.
-* `profesor3/` — upstream checkout (MARK LVI assistant, PyQt6 + Gemini Live).
+* `profesor3/` — upstream checkout (PyQt6 + Gemini Live), CC BY-NC 4.0: kept as
+  reference and as the `--asistente profesor3` front end. Do **not** copy code
+  or copy from it into `asistente-b1/`: `tests/test_originality.py` fails.
   The fusion lives in `plugins/fabrica.py`, auto-discovered by
   `core/plugin_loader.py` (contract: `PLUGIN`, `PLUGIN_SETTINGS`, `run()`).
 * `agentes/` — the workspace the factory's agents write into when started with
@@ -80,12 +88,39 @@ compose service names, which do not resolve from the host), and
 `vscode-daemon` started natively with `WORKSPACE_ROOT=<agentes>` (also
 under `--backend-only`, so a headless server still executes).
 
-`AGENT_MODEL` overrides every role at once. `_full_env` sets it to
-`gemini-flash-latest` when the install only carries the assistant's Gemini key;
-otherwise the role map's Qwen/DeepSeek ids are rejected by the proxy as
+`AGENT_MODEL` overrides every role at once, and the launcher sets it in both
+modes: `_agent_model()` picks the id the installed keys can actually serve
+(NVIDIA → `nvidia/nemotron-3-ultra-…`, only Gemini → `gemini-flash-latest`).
+Without it the role map's Qwen/DeepSeek ids come back from the proxy as
 "unknown model" and tasks end blocked. `ModelFactory.model_for_role` is the
 single resolver: `default_model_for_role` and `agents/graph.py` both go
 through it.
+
+### El proxy de modelos no depende de Docker
+
+In local mode (`run_fusion.py` without `--completa`) the launcher runs
+`la-fabrique/llm-proxy/app.py` with the backend interpreter
+(`PROXY_HOST=127.0.0.1`, log at `la-fabrique/.fusion/llm-proxy.log`) whenever
+`la-fabrique/.env` carries a provider key and nobody answers on `/v1/models`.
+Without it every request ended in "No pude hablar con el proxy de modelos":
+agents and `POST /v1/voice/build` have no other route to a provider. The process
+stops with the rest of the stack.
+
+* The check is `GET /v1/models` **with** models, never the port alone: Docker
+  keeps `5100` published after the process inside dies, and that case is now
+  reported with the tail of `docker compose logs llm-proxy`.
+* With no provider key the launcher says so at start-up instead of letting the
+  first sentence fail.
+* The interpreter comes from `la-fabrique/llm-proxy/.venv` when nothing else can
+  import Flask (`.venv-backend` cannot: the proxy is a separate Poetry project).
+  The launcher builds it from `llm-proxy/poetry.lock` on the first start, which
+  takes a couple of minutes once.
+* `LLM_PROXY_TIMEOUT_SECONDS` (150 s) has to outlast the proxy's own upstream
+  budget (`LLM_UPSTREAM_TIMEOUT_SECONDS`, 110 s). It used to be 60 s with two
+  retries, so the proxy "went down" while it was still writing the files, and a
+  read timeout is no longer retried.
+* Codegen sends `chat_template_kwargs.enable_thinking=false` to `nvidia/*` ids:
+  reasoning before writing doubled the time for a whole-file answer.
 
 Verified end to end in this repo without Docker (the sandbox cannot mount
 overlayfs): native `nats-server -js` + PostgreSQL 17 + the proxy + backend with
@@ -118,6 +153,83 @@ esperando el resultado.
   `SecurityHeadersMiddleware` es el middleware más externo y **ahora respeta** el
   `Content-Security-Policy` que ya trae la respuesta (si lo pisara, el sandbox
   desaparecía sin que ningún test de endpoints lo notara).
+
+## Asistente B1 (`asistente-b1/`)
+
+The clean-room assistant: standard library for the core (model client, tools,
+conversation loop, end-of-speech detection), PyQt6 for the window, and optional
+faster-whisper / piper / sounddevice for voice. Without them it still starts —
+as a console — and says what is missing.
+
+```bash
+cd asistente-b1
+python -m b1 --check     # inventory + live probe of model and factory
+python -m b1 --text      # console turn loop
+pytest -q                # 150 tests, no network, no microphone
+python tools/similarity_check.py ../profesor3   # must print 0 / 0
+```
+
+Invariants worth keeping:
+
+* **The factory writes the words.** `/v1/voice/*` returns `speech` already
+  phrased for speaking; the assistant repeats it instead of inventing numbers.
+  A tool failure returns `{"ok": false, "speech": "..."}`, never an exception
+  into the loop.
+* **No SDKs.** `b1/llm.py` is `urllib` with explicit timeouts, which is what
+  lets `tests/test_end_to_end.py` run a real model server on localhost.
+* **Prose is part of the diff.** The prompt, the guide and every user-facing
+  sentence live in `b1/prompts.py` and `b1/fabrica.py`; `originality.py`
+  compares both prose (8-word sequences) and code (14-token sequences).
+* **`Settings.missing()`** ignores the API key for loopback model URLs, so the
+  factory's `llm-proxy` (`http://127.0.0.1:5100/v1`, no auth) works out of the
+  box with `--completa`.
+* **Two languages, one program.** `b1/i18n.py` holds every user-facing string
+  as `{"es": ..., "en": ...}` and `t(language, key, **fields)`; nothing is
+  translated on the fly. `prompts.py` has a Spanish and an English prompt
+  written separately (a translated prompt makes the model answer like one),
+  `fabrica.py` switches tool descriptions, and `/v1/voice/*` calls carry
+  `language` so the factory's own `speech` arrives in the right one. The
+  conversation switches language when the *phrase* does: `detect_language()`
+  uses Spanish/English function-word hints and only falls back to the
+  transcriber's guess on a tie. `MainWindow._on_language` re-labels the window
+  in the same turn. `stt_language` is `auto` (follow the conversation) or a pin.
+* **The voice chain is Piper → system voice → console.** `speech.py` builds the
+  script each engine would run (`-EncodedCommand` + base64 UTF-16LE for SAPI,
+  `say -v`, `espeak-ng -v`, `spd-say -l`) so tests read it without hardware. A
+  missing model or engine falls through silently-but-reported; an engine that
+  exits 0 **while printing an audio error** (espeak with no sound card) is
+  detected from stderr and the sentence goes to the console plus one line of
+  reason. `b1 --voices` downloads the configured Piper voices (they ship
+  separately) into `~/.asistente-b1/voces`, using the interpreter that owns
+  `piper-tts` — not necessarily the assistant's own.
+* **Audio devices are saved by name.** `b1/devices.py` lists each endpoint
+  once (aliases such as `default` / "Sound Mapper" are dropped, inputs that
+  cannot run at 16 kHz are dropped), caches the list, and resolves the saved
+  name to an index every time a stream opens — a headset that is gone falls
+  back to the system default. The dialog has "Probar micrófono" (3 s with a
+  live level bar) and "Probar parlante" (a beep); both run on a `QThread`.
+* **Nemotron's reasoning is never spoken.** `Reply.reasoning` keeps
+  `reasoning_content` for the log; `chat_template_kwargs.enable_thinking` is
+  only sent to endpoints that serve that family (`nemotron` in the id, the
+  NVIDIA gateway or Token Factory), because a strict server rejects an unknown
+  field. Tuning lives in `config.json`: `model_thinking`, `model_temperature`,
+  `model_top_p`, `model_max_tokens`, `model_timeout`.
+* **Default model** is `nvidia/nemotron-3-ultra-550b-a55b` served by
+  `https://integrate.api.nvidia.com/v1` with an `nvapi-…` key; the launcher
+  copies that key from `la-fabrique/.env` (or `NVIDIA_API_KEY`) into
+  `~/.asistente-b1/config.json` when there is no proxy in front. The proxy
+  refuses `stream: true` (`400 stream_unsupported`) because it relays one body.
+
+Live check of the real contract (Linux; `.venv-backend/` is a Windows venv):
+
+```bash
+cd la-fabrique/backend
+DATABASE_URL=sqlite:////tmp/f.db AUTH_REQUIRED=false NEO4J_DISABLED=1 \
+NATS_DISABLED=1 VOICE_API_KEY=clave-demo SECRET_KEY=x JWT_SECRET_KEY=y \
+PYTHONPATH=.:app python -m uvicorn app.main:app --port 8137
+# then: POST /v1/init_company with {"company_name", "agents": [...]}
+# and:  curl /v1/voice/status -H 'X-Voice-Key: clave-demo'
+```
 
 ## Gotchas
 
@@ -486,4 +598,16 @@ Cómo comprobarlo sin pantalla:
 * **Envío:** `SUBMISSION.md` (categoría, descripción, demo, guion del vídeo de
   3 min, feedback, qué existía antes). Antes de enviar hay que completar las
   URLs del repositorio y del vídeo.
+* **Nombre y originalidad.** El asistente se llama **Asistente B1** (antes
+  «Mark LVI») en código, config, spec, readme y docs. `profesor3/` **no es código
+  propio**: es una obra derivada de *MARK 56 — JARVIS* de FatihMakes, CC BY-NC
+  4.0 (`profesor3/LICENSE`). La atribución se conserva y no se puede relicenciar
+  como Apache-2.0 ni presentar como autoría propia; lo original de este envío es
+  la capa de fusión (~4.300 líneas: `/v1/voice/*`, `plugins/fabrica.py`,
+  `core/fabrica_env.py`, proveedor Nemotron, demo, lanzador, verificador).
+* **Guía de arranque, no noticias.** El briefing ya no pide titulares: muestra
+  `plugins/fabrica.guide_text()` en el panel («FÁBRICA — QUÉ PODÉS PEDIR») y
+  manda `guide_briefing()` al modelo (`main.py::_send_startup_briefing`). Un solo
+  texto para pantalla y voz, para que la respuesta no invente capacidades. Los
+  tests de la guía viven en `profesor3/tests/test_fabrica_plugin.py::GuideTest`.
 

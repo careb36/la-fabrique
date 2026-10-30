@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asistente-b1"
+version = "1.0.0"
+description = "Asistente de escritorio: habla con una persona y maneja la fábrica de software por voz."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Asistente B1 authors" }]
+keywords = ["voice", "assistant", "agents", "factory", "nemotron"]
+dependencies = []
+
+[project.optional-dependencies]
+ui = ["PyQt6>=6.6"]
+voice = ["sounddevice>=0.4", "numpy>=1.24", "faster-whisper>=1.0", "piper-tts>=1.2"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+b1 = "b1.app:main"
+
+[tool.setuptools.packages.find]
+include = ["b1*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning"]

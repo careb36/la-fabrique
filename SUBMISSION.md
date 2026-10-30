@@ -5,7 +5,12 @@ Token Factory
 
 **Categoría:** Programa de Ingeniería de Codificación y Agentes
 
-**Licencia:** [Apache-2.0](LICENSE)
+**Licencia:** [Apache-2.0](LICENSE) para todo lo que se envía: la fábrica, la
+fusión, la demo y el asistente (`asistente-b1/`), escrito desde cero para este
+repositorio. `profesor3/`, una obra derivada de **MARK 56 — JARVIS** de
+FatihMakes bajo [CC BY-NC 4.0](profesor3/LICENSE), queda como referencia y como
+segunda interfaz opcional (`--asistente profesor3`); no forma parte del producto
+que se distribuye.
 
 | Campo del formulario | Valor |
 |---|---|
@@ -25,12 +30,14 @@ rol tiene su propio modelo, su propio presupuesto de tokens y su propio turno de
 conversación; el resultado no se acepta por lo que dice el modelo, se acepta
 porque el intérprete lo ejecuta y las pruebas pasan.
 
-Encima de eso hay un asistente de escritorio (MARK LVI) que **oye y habla**:
+Encima de eso hay un asistente de escritorio (Asistente B1) que **oye y habla**:
 «fabricá el login», «¿cómo va el sprint?», «pausá el sprint». La fusión de los
 dos proyectos añade a la fábrica una puerta de voz (`/v1/voice/*`) y al
 asistente un plugin que la llama. Las órdenes habladas pasan por los mismos
 endpoints que la interfaz web, así que una frase no puede hacer nada que la web
-no permita.
+no permita. Habla en español y en inglés con el mismo motor: escucha con pistas
+de idioma, contesta con Piper o con la voz del sistema, y la fábrica redacta su
+respuesta en el idioma de la conversación.
 
 **Por qué.** Los agentes de código suelen fallar de dos maneras: dicen que
 terminaron sin haber ejecutado nada, o cuestan una fortuna porque cada llamada
@@ -45,8 +52,10 @@ reparte entre tres niveles — Ultra para razonar, Super/Nano para el resto.
    `unittest` y, si algo falla, le pasa la salida real y repite.
 2. `la-fabrique/` — el flujo multiagente (LangGraph) con Postgres, NATS y su
    `llm-proxy`, que valida cada modelo contra el catálogo del proveedor.
-3. `profesor3/` — el asistente: transcripción local (faster-whisper), Nemotron
-   para pensar, Piper para hablar, y el plugin que maneja la fábrica.
+3. `asistente-b1/` — el asistente, escrito para este envío: fin de frase por
+   energía, transcripción local (faster-whisper), Nemotron para pensar, Piper
+   para hablar y tres herramientas que llaman a la puerta de voz de la fábrica.
+   `profesor3/` queda como interfaz alternativa.
 
 ## 2. Cómo se usa NVIDIA Nemotron y Nebius Token Factory
 
@@ -98,7 +107,7 @@ Para la fábrica completa, `cd la-fabrique && docker compose up -d` y abrir
 | 0:20–0:50 | La demo con Token Factory de verdad: se ejecuta con la clave, se ve el id `nvidia/nemotron-3-ultra-550b-a55b` y las pruebas en verde. |
 | 0:50–1:20 | `⚙ Nemotron` en el asistente: pegar la clave, **Probar clave**, `↻` para traer el catálogo, elegir Ultra y guardar. Se muestra el `.env` con los tres niveles. |
 | 1:20–2:10 | La fábrica: requisito → agentes → sprint en el tablero, con los eventos de cada rol y el modelo que usó cada uno. |
-| 2:10–2:40 | La voz: «MARK, ¿cómo va el sprint?» y «pausá el sprint», con la respuesta hablada y el cambio en el tablero. |
+| 2:10–2:40 | La voz: «B1, ¿cómo va el sprint?» y «pausá el sprint», con la respuesta hablada y el cambio en el tablero. |
 | 2:40–3:00 | Cierre: `python tools/hackathon_check.py` en verde. |
 
 ## 5. Feedback
@@ -117,6 +126,27 @@ En resumen: proveedor Nemotron con detección de puerta y migración de modelos
 retirados, niveles Ultra/Super/Nano aplicados por rol, la puerta de voz, la demo
 del agente y el verificador de requisitos.
 
+## 6.1 Origen del código (transparencia)
+
+| Pieza | Origen | Licencia |
+|---|---|---|
+| `la-fabrique/` | checkout upstream de la fábrica (FastAPI + React) | Apache-2.0 |
+| `asistente-b1/` | escrito desde cero para este envío (2.382 líneas de código, 1.070 de pruebas) | Apache-2.0 |
+| `profesor3/` | obra derivada de *MARK 56 — JARVIS*, de FatihMakes; referencia, no se distribuye | CC BY-NC 4.0 (`profesor3/LICENSE`) |
+| Puerta de voz, guía hablada, proveedor Nemotron, demo y lanzador | escritos para este envío | Apache-2.0 |
+
+El asistente que se envía es **Asistente B1** (`asistente-b1/`): se reescribió
+completo —audio, modelo, herramientas, interfaz— para que el producto no dependa
+de una licencia no comercial. La independencia se mide, no se declara:
+
+```bash
+cd asistente-b1 && python tools/similarity_check.py ../profesor3
+# prosa: 0 coincidencias de 8 palabras · código: 0 bloques de 14 tokens
+```
+
+La prueba `tests/test_originality.py` incluye además un control positivo: si se
+le pasa un párrafo copiado, el mismo chequeo lo detecta.
+
 ## 7. Checklist de la convocatoria
 
 - [x] Proyecto funcional sobre Nebius Token Factory con un modelo abierto de NVIDIA
@@ -125,7 +155,9 @@ del agente y el verificador de requisitos.
 - [x] Demostración funcional ejecutable (`demo/coding_agent.py`)
 - [ ] URL pública de la demo — *pendiente de despliegue*
 - [ ] Vídeo de ≤ 3 minutos en YouTube — *guion en la sección 4*
-- [x] Repositorio con licencia Apache-2.0 en la raíz
+- [x] Repositorio con licencia Apache-2.0 en la raíz; el asistente que se envía
+      (`asistente-b1/`) también, y `profesor3/` conserva la CC BY-NC 4.0 de su
+      upstream, declarada en la sección de licencia
 - [x] README con instalación y guía de ejecución
 - [x] Explicación de cómo se usan Nemotron y Token Factory
 - [x] Feedback sobre Nebius y NVIDIA

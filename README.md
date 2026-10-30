@@ -32,7 +32,7 @@ Dos piezas que se hablan entre sí, más el puente que las une:
 | Pieza | Qué es | Dónde |
 |---|---|---|
 | **La Fábrica** | Flujo multiagente (LangGraph) que toma un requisito y lo lleva a código con pruebas: PO → Arquitecto → Scrum → Desarrollo → QA → SecOps → Documentación. FastAPI + React + Postgres + NATS. | `la-fabrique/` |
-| **MARK LVI** | Asistente de escritorio (PyQt6): escucha, piensa y habla. También ejecuta acciones y lee las respuestas en voz alta. | `profesor3/` |
+| **Asistente B1** | Asistente de escritorio (PyQt6): escucha, piensa y habla. También ejecuta acciones y lee las respuestas en voz alta. | `profesor3/` |
 | **La fusión** | Endpoints `/v1/voice/*` en la fábrica + plugin en el asistente, y el proveedor Nemotron que hace que el asistente piense con el mismo modelo que los agentes. | `run_fusion.py`, `plugins/fabrica.py` |
 
 El bucle que pide la categoría —**escribir, ejecutar, probar**— está en tres
@@ -140,6 +140,31 @@ La interfaz queda en <http://localhost:3000> y la API en
 Requisitos: Python 3.12 con *Add python.exe to PATH*. El detalle de lo que hace
 el lanzador —y qué hacer si falla— está en [Arranque rápido](#arranque-rápido).
 
+#### El asistente es propio: `asistente-b1/`
+
+La ventana que abre el lanzador es **`asistente-b1`**, un asistente escrito para
+este repositorio, bajo **Apache-2.0**, sin código ni textos de terceros:
+
+```bash
+cd asistente-b1
+python -m b1 --check      # qué está instalado y si la fábrica responde
+python -m b1              # ventana completa;  --orb  sólo el círculo
+```
+
+Escucha, transcribe en local (`faster-whisper`), decide con un modelo compatible
+con `/chat/completions` (Nemotron en Token Factory, o el `llm-proxy` de la
+fábrica, que ya tiene las claves) y responde en voz alta (`piper`). No inventa el
+resultado de una orden: la fábrica devuelve la frase (`speech`) y él la dice. Si
+algo falla, lo dice en una frase.
+
+Su originalidad no se pide de palabra: `python tools/similarity_check.py
+../profesor3` compara prosa y código contra el asistente anterior y devuelve cero
+coincidencias. Ver [`asistente-b1/README.md`](asistente-b1/README.md).
+
+`profesor3/` sigue en el repositorio como referencia y como segunda interfaz
+(`python run_fusion.py --asistente profesor3`), pero el producto que se envía es
+el nuevo.
+
 ### Comprobar que el repositorio cumple la convocatoria
 
 ```bash
@@ -224,7 +249,7 @@ que corra sobre Token Factory:
 Dos programas, un solo producto:
 
 * **`la-fabrique/`** — la fábrica de software con agentes (FastAPI + React).
-* **`profesor3/`** — MARK LVI / Tutor Virtual A1, el asistente de escritorio que
+* **`profesor3/`** — Asistente B1 / Tutor Virtual A1, el asistente de escritorio que
   oye, habla y ejecuta acciones (Gemini Live, PyQt6).
 
 La fusión añade una **puerta de voz** a la fábrica (`/v1/voice/*`) y un **plugin**
@@ -236,7 +261,7 @@ así que una orden hablada no puede hacer nada que la web no permita.
 ```
    🎙  "¿cómo va la fábrica?"
             │
-     MARK LVI (Gemini Live)  ──►  plugins/fabrica.py
+   Asistente B1 (Gemini Live) ──►  plugins/fabrica.py
             │                            │  POST /v1/voice/command
             │                            ▼
             │                     FastAPI  /v1/voice/*
@@ -370,6 +395,32 @@ bloqueadas. Por eso `-Completa` exporta `AGENT_MODEL=gemini-flash-latest` cuando
 no hay `QWEN_API_KEY` ni `DEEPSEEK_API_KEY`; si añades esas claves a
 `la-fabrique/.env`, el mapa vuelve a mandar. Para forzar otro modelo, pon
 `AGENT_MODEL=<id>` en `la-fabrique/.env`.
+
+#### El proxy de modelos, también sin Docker
+
+La voz no sólo mueve el tablero: «armá una calculadora en html, css y
+javascript» la escribe la fábrica y te la abre en el navegador. Ese trabajo lo
+hace el `llm-proxy` de `la-fabrique/`, y el lanzador ya lo arranca solo cuando la
+instalación no usa Docker: si hay alguna clave de proveedor en
+`la-fabrique/.env` y nadie contesta en `127.0.0.1:5100`, lo levanta con el
+intérprete del backend y lo para al salir (`Ctrl+C`). El registro queda en
+`la-fabrique/.fusion/llm-proxy.log`, y si no levanta verás sus últimas líneas en
+consola en vez de que la primera frase conteste «no pude hablar con el proxy de
+modelos».
+
+Con `-Completa` la espera no se conforma con el puerto 5100 abierto: pide
+`/v1/models`, porque Docker deja el puerto publicado aunque el proceso de dentro
+se haya caído.
+
+El proxy es su propio proyecto de Python, así que la primera vez el lanzador se
+arma su entorno en `la-fabrique/llm-proxy/.venv` (desde `poetry.lock`, un par de
+minutos y sin Docker). Si eso falla, te muestra el error de pip en vez de dejar
+la fábrica muda.
+
+Una respuesta con archivos completos tarda; el cliente espera hasta
+`LLM_PROXY_TIMEOUT_SECONDS` (150 s) antes de darla por perdida, y a los ids de
+NVIDIA les pide escribir sin razonar primero: era lo que hacía que una
+calculadora superara el minuto y medio.
 
 #### Si algo falla en Windows
 
