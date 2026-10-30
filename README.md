@@ -28,15 +28,32 @@ así que una orden hablada no puede hacer nada que la web no permita.
 
 ### Windows (PowerShell)
 
-Requisitos: Python 3.11+ instalado con *Add python.exe to PATH*. Nada más.
+Requisitos: **Python 3.12** (probado con 3.12.10) instalado con *Add
+python.exe to PATH*. Se acepta 3.11+, pero el script busca 3.12 primero, incluso
+si el `python` del sistema es otra versión.
 
 ```powershell
-.\arrancar.ps1
+cd "C:\Users\Felipe\projects\fusion"
+.\arrancar.cmd
 ```
 
-La primera vez tarda: crea `.venv-backend` y `profesor3\.venv`, instala el
-backend con Poetry y las dependencias del asistente con pip, y luego arranca
-las dos piezas. Las siguientes veces arranca directo.
+Qué hace, en orden:
+
+1. localiza Python 3.12 (`py -3.12`, la ruta del usuario, `python3.12`) y
+   comprueba que responde;
+2. reutiliza `.venv-backend` y `profesor3\.venv` si existen y funcionan
+   (en Windows el intérprete es `Scripts\python.exe`; `bin/python` solo en
+   Linux/macOS);
+3. crea únicamente lo que falte; si una carpeta está dañada la mueve a
+   `.venv-backend.roto-<fecha>` en vez de borrarla;
+4. instala solo si hace falta: `poetry install` y, si Poetry no alcanza PyPI,
+   pip con las **versiones exactas de `poetry.lock`** (`tools/lock_requirements.py`);
+5. verifica los módulos esenciales y distingue «falta» de «está roto»,
+   mostrando el traceback completo;
+6. arranca backend y asistente, comprueba que la API responde y para los dos
+   con Ctrl+C.
+
+Todo queda en `logs\arranque-<fecha>.log`.
 
 Si Windows bloquea el script («la ejecución de scripts está deshabilitada»),
 usa cualquiera de estas dos formas:
@@ -49,13 +66,37 @@ powershell -ExecutionPolicy Bypass -File .\arrancar.ps1
 Opciones:
 
 ```powershell
-.\arrancar.ps1 -Instalar          # fuerza comprobar/instalar dependencias
-.\arrancar.ps1 -Reinstalar        # borra los entornos y los rehace
+.\arrancar.ps1 -Instalar          # comprueba y completa dependencias + pip check
+.\arrancar.ps1 -Reinstalar        # mueve los entornos a *.roto-<fecha> y los rehace
 .\arrancar.ps1 -Preparar          # solo deja los entornos listos, sin arrancar
 .\arrancar.ps1 -SoloBackend       # solo la API de la fábrica
 .\arrancar.ps1 -SoloAsistente     # el asistente contra una API ya viva
 .\arrancar.ps1 -Puerto 8123       # otro puerto (si el 8000 está ocupado)
+.\arrancar.ps1 -Python "C:\ruta\python.exe"   # intérprete concreto
 .\arrancar.ps1 -Url http://127.0.0.1:8000 -Clave <clave> -Empresa "Mi estudio"
+```
+
+### Si algo falla en Windows
+
+Todo queda en `logs\arranque-<fecha>.log`. Los avisos `!!` son recuperables; los
+`XX` paran el arranque antes de dejar el producto a medias.
+
+| Síntoma | Causa | Qué hace el lanzador |
+|---|---|---|
+| `All attempts to connect to pypi.org failed` en Poetry | Poetry solo confía en `certifi`; pip y PowerShell usan el almacén de certificados de Windows (antivirus/proxy con inspección TLS) | exporta las raíces del sistema a `logs\windows-ca-bundle.pem`, reintenta y, si sigue fallando, instala con pip las versiones de `poetry.lock` |
+| `langchain-core requires httpx … which is not installed` | instalación anterior interrumpida | detecta los módulos que faltan y completa solo esos |
+| `no se puede ejecutar un documento en medio de una canalización: …\bin\python` | ruta de venv de Linux usada en Windows | en Windows solo se acepta `Scripts\python.exe` |
+| `NativeCommandError` al comprobar módulos | PowerShell 5.1 convierte el stderr de Python en error | las comprobaciones se ejecutan sin pasar por el pipeline y se informa «falta» o «roto» con su traceback |
+| Se usaba Python 3.13/3.14 | el `python` del PATH no es el 3.12 | busca `py -3.12` y la ruta del usuario antes de caer a otra versión |
+
+Comandos de diagnóstico (opcionales):
+
+```powershell
+.\arrancar.ps1 -Preparar -SoloBackend        # deja el entorno listo y sale
+.venv-backend\Scripts\python.exe -m pip check
+.venv-backend\Scripts\python.exe -c "import fastapi, httpx, langchain_core"
+.venv-backend\Scripts\python.exe -m uvicorn app.main:app --port 8999   # con PYTHONPATH=.;app
+Get-Content (Get-ChildItem logs\arranque-*.log | Sort-Object LastWriteTime | Select-Object -Last 1)
 ```
 
 ### macOS / Linux

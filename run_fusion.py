@@ -82,6 +82,10 @@ def _child_env(
     env = dict(os.environ)
     for key, value in _parse_env_file(FACTORY / ".env").items():
         env.setdefault(key, value)
+    # The children inherit our console; without this their accents would go
+    # through the ANSI code page and either crash or print mojibake.
+    env.setdefault("PYTHONIOENCODING", "utf-8:replace")
+    env.setdefault("PYTHONUTF8", "1")
 
     if voice_key:
         env["VOICE_API_KEY"] = voice_key
@@ -247,13 +251,21 @@ def _can_import(python: str, module: str) -> bool:
     return result.returncode == 0
 
 
+def _venv_layout() -> tuple[tuple[str, ...], ...]:
+    """Interpreter paths inside a venv, for the platform we are running on.
+
+    A Windows venv has ``Scripts\\python.exe``; a POSIX one has ``bin/python``.
+    Mixing them made the launcher try to run a non-executable path in cmd.exe.
+    """
+    if os.name == "nt":
+        return (("Scripts", "python.exe"),)
+    return (("bin", "python"), ("bin", "python3"))
+
+
 def _venv_pythons(venv_dirs: list[Path]):
     for venv_dir in venv_dirs:
-        for candidate in (
-            venv_dir / "bin" / "python",
-            venv_dir / "Scripts" / "python.exe",
-            venv_dir / "bin" / "python3",
-        ):
+        for parts in _venv_layout():
+            candidate = venv_dir.joinpath(*parts)
             if candidate.is_file():
                 yield str(candidate)
 
@@ -294,7 +306,12 @@ def _pick_python(
 ) -> str:
     """The interpreter that can import ``module``: flag, local venvs, Poetry, ours."""
     if explicit:
-        return explicit
+        if Path(explicit).exists() or shutil.which(explicit):
+            return explicit
+        print(
+            f"⚠  El intérprete indicado no existe: {explicit}. Busco otro.",
+            file=sys.stderr,
+        )
     for candidate in _venv_pythons(venv_dirs):
         if _can_import(candidate, module):
             return candidate

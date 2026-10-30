@@ -77,6 +77,17 @@ def test_local_sqlite_mode_disables_optional_services(monkeypatch):
     assert env["VOICE_API_KEY"] == "k"
 
 
+def test_children_get_utf8_console(monkeypatch):
+    """cp1252 would mangle the accents the assistant and backend print."""
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+
+    env = run_fusion._child_env(voice_key="k", use_sqlite=True, announce=False)
+
+    assert env["PYTHONIOENCODING"] == "utf-8:replace"
+    assert env["PYTHONUTF8"] == "1"
+
+
 def test_postgres_mode_leaves_nats_alone(monkeypatch):
     monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
     monkeypatch.delenv("NATS_DISABLED", raising=False)
@@ -137,12 +148,38 @@ def test_pick_python_falls_back_when_nothing_matches(tmp_path):
     )
 
 
-def test_venv_pythons_knows_the_windows_layout(tmp_path):
+def test_venv_pythons_knows_the_windows_layout(tmp_path, monkeypatch):
     exe = tmp_path / "Scripts" / "python.exe"
     exe.parent.mkdir()
     exe.write_text("")
 
-    assert str(exe) in list(run_fusion._venv_pythons([tmp_path]))
+    monkeypatch.setattr(run_fusion.os, "name", "nt")
+    found = list(run_fusion._venv_pythons([tmp_path]))
+    assert found == [str(exe)]
+
+
+def test_venv_pythons_ignores_linux_paths_on_windows(tmp_path, monkeypatch):
+    exe = tmp_path / "bin" / "python"
+    exe.parent.mkdir()
+    exe.write_text("")
+
+    monkeypatch.setattr(run_fusion.os, "name", "nt")
+    assert list(run_fusion._venv_pythons([tmp_path])) == []
+
+
+def test_venv_layout_matches_the_platform(monkeypatch):
+    monkeypatch.setattr(run_fusion.os, "name", "nt")
+    assert run_fusion._venv_layout() == (("Scripts", "python.exe"),)
+
+    monkeypatch.setattr(run_fusion.os, "name", "posix")
+    assert run_fusion._venv_layout() == (("bin", "python"), ("bin", "python3"))
+
+
+def test_pick_python_ignores_a_missing_explicit_interpreter(tmp_path):
+    missing = tmp_path / "no-existe" / "python.exe"
+    assert run_fusion._pick_python(str(missing), [tmp_path], "no_such_module_xyz") == (
+        run_fusion.sys.executable
+    )
 
 
 def test_pick_python_prefers_a_venv_that_has_the_module(tmp_path, monkeypatch):

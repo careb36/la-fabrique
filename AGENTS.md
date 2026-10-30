@@ -51,8 +51,14 @@ cd la-fabrique/backend && PYTHONPATH=.:app ../../.venv-backend/bin/python -m pyt
 # assistant plugin tests (no Qt, no audio)
 cd profesor3 && PYTHONPATH=. ../../.venv-backend/bin/python -m pytest tests -q
 
-# launcher tests
+# launcher tests (run_fusion + lock exporter)
 .venv-backend/bin/python -m pytest tests -q
+
+# check the launcher parses under PowerShell (no Windows needed)
+pwsh -NoProfile -Command '$e=$null;$t=$null;[void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/arrancar.ps1",[ref]$t,[ref]$e);$e'
+
+# what the pip fallback would install from the lock
+python tools/lock_requirements.py la-fabrique/backend/poetry.lock --groups main
 ```
 
 `arrancar.ps1` is UTF-8 **with BOM** and `arrancar.cmd` is CRLF: Windows
@@ -79,6 +85,32 @@ slow container because importing `agents.graph` is heavy — raise `--wait` if
 * Poetry must be told to reuse the venv the script created:
   `VIRTUAL_ENV=<venv>` + `POETRY_VIRTUALENVS_CREATE=false`, otherwise it makes
   its own and the launcher finds an empty interpreter.
+* Poetry can fail on Windows with "All attempts to connect to pypi.org failed"
+  while pip and `Invoke-WebRequest` work: Poetry only trusts certifi, pip and
+  Windows use the machine's root store (TLS-inspecting antivirus/proxy). The
+  launcher exports the store to `logs/windows-ca-bundle.pem` and sets
+  `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` — never disable verification. If that
+  still fails it installs with pip from `tools/lock_requirements.py`, which
+  keeps the exact `poetry.lock` pins (markers and groups respected).
+* Never let PowerShell 5.1 handle Python's stderr through the pipeline: with
+  `$ErrorActionPreference='Stop'` a native command's stderr becomes a
+  `NativeCommandError` and aborts mid-install. The launcher keeps
+  `Continue` and runs probes through `Start-Process` with redirected streams.
+* Venv layout is platform-specific: Windows has `Scripts\python.exe`, POSIX has
+  `bin/python`. Both `arrancar.ps1` and `run_fusion._venv_layout()` filter by
+  `os.name`; a `bin/python` path on Windows makes cmd.exe report "no se puede
+  ejecutar un documento en medio de una canalización".
+* The interpreter is only accepted after it actually runs (`-c import sys` or
+  the info probe): an empty `Scripts\python.exe` or the Windows Store stub
+  (exit 9009) must be ignored, not used.
+* `py -3.12` needs its prefix passed through, otherwise `py` resolves to
+  whatever version is default (3.14 here) — `Get-PythonInfo` and `New-Venv`
+  take the candidate's `Prefix`.
+* Broken environments are moved to `<venv>.roto-<timestamp>`, never deleted:
+  `-Reinstalar` is explicit and the backup is the user's safety net.
+* `logs/` holds the transcript, the exported CA bundle and the generated
+  requirements; it is git-ignored. `pip check` warnings are reported but do not
+  stop the launch.
 * Sprint creation by voice is always followed by a pause: an explicit "reanuda"
   is required before agents get any work.
 * Voice vocabulary is duplicated on purpose: `plugins/fabrica.py` (`ACTIONS`,
