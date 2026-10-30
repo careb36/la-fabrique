@@ -422,6 +422,33 @@ the choice reaches every LangGraph node. Requests still carry
 `X-Agent-Role` and `X-Business-Unit-ID`, so per-role and per-company token
 budgets apply to Nemotron calls exactly as they do to the others.
 
+### Nebius services used, and what Token Factory changed
+
+**Nebius Token Factory is the only Nebius service this project uses.** The
+`nebius` provider in `llm-proxy/` talks to its OpenAI-compatible endpoint, and
+`NEBIUS_PROXY_URL` can point the same provider at a Nebius Serverless Endpoint
+instead. No other Nebius service (compute, storage, managed databases) is part
+of the stack: the rest runs on the project's own PostgreSQL, NATS and Neo4j.
+
+What Token Factory did for the project, concretely:
+
+- **The whole NVIDIA open-model line behind one key.** Nemotron 3 Ultra
+  (550B), Super (120B) and Nano (30B) are served from the same endpoint, so the
+  project never had to host or quantize a model to give the strategic roles a
+  larger one and the TechWriter a smaller one. The tiering in
+  `backend/llm/model_factory.py` is a configuration choice, not infrastructure.
+- **A live catalogue instead of a hardcoded list.** The proxy fetches what
+  Token Factory serves at startup and hourly and refuses any id that is not in
+  it. A new Nemotron release becomes available by changing an environment
+  variable, with no release of La Fabrique.
+- **The proxy's existing controls applied unchanged.** Per-company token
+  budgets, per-role routing, and the `reported` / `estimated` marking of each
+  answer's token count work on Nemotron calls as on every other provider,
+  because Token Factory speaks the same OpenAI-compatible protocol.
+- **A reproducible check.** `scripts/verify-nebius.sh` proves the key, the
+  catalogue and a completion separately, so the integration can be verified in
+  a minute on any machine with a key.
+
 [⬆ Back to Top](#la-fabrique)
 
 ---
