@@ -1,23 +1,41 @@
-# La Fabrique — agentes de código con voz, sobre Nemotron en Nebius Token Factory
+<div align="center">
+  <img src="la-fabrique/frontend/public/fabrique-icon.svg" width="90" alt="La Fabrique" />
 
-**Licencia [Apache-2.0](LICENSE)** · Categoría: **Coding & Agents Engineering** ·
-Hackathon Global de IA NVIDIA × Nebius
+# La Fabrique
 
-Una fábrica de software con ocho agentes que **escriben, ejecutan y prueban
-código**, y un asistente de voz que la dirige con la boca — «Fabricá el login»,
-«¿cómo va el sprint?», «pausá». Lo que razona corre en **Nebius Token Factory**
-con los modelos abiertos de NVIDIA: **Nemotron 3 Ultra** para lo que exige
-pensar y **Super/Nano** para las llamadas del día a día.
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/react-%2320232b.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/typescript-%23007acc?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=for-the-badge)](LICENSE)
 
-Todo lo que hay aquí funciona: el agente de la demo escribe una función, corre
-las pruebas en un intérprete de verdad, lee el fallo y se corrige sola. No hay
-un vídeo que lo cuente mejor que la salida real:
+**AI code agents that write, run and test code — commanded by voice, on NVIDIA Nemotron at Nebius Token Factory**
+
+> **Languages:** [🇺🇸 English](README.md) | [🇪🇸 Español](README.es.md)
+
+</div>
+
+---
+
+## About
+
+La Fabrique is a software factory with **eight agents** that take a requirement
+and turn it into code with tests, plus a desktop **voice assistant** that
+directs the factory with spoken orders: *"Build the login"*, *"How is the
+sprint going?"*, *"Pause."*
+
+In this submission, everything that reasons runs on **Nebius Token Factory**
+with NVIDIA's open models: **Nemotron 3 Ultra** for the work that needs thinking and
+**Super/Nano** for everyday calls. The loop the hackathon asks for — **write,
+run, test** — is not a video: the demo agent writes a function, runs the tests
+in a real interpreter, reads the failure and fixes itself.
 
 ```console
-$ python demo/coding_agent.py --offline
+$ python3 demo/coding_agent.py --offline
 [ronda 1] first pass: lower-case and dashes
 [ronda 1] escribió: slugify.py, test_slugify.py
-[ronda 1] pruebas: FALLAN — Ran 3 tests in 0.001s | FAILED (failures=2)
+[ronda 1] pruebas: FALLAN — Ran 3 tests in 0.002s | FAILED (failures=2)
 [ronda 2] second pass: fold accents and drop punctuation
 [ronda 2] escribió: slugify.py
 [ronda 2] pruebas: OK (0.1s)
@@ -25,595 +43,764 @@ $ python demo/coding_agent.py --offline
 ✅ las pruebas pasan (2 ronda(s), 0.2s)
 ```
 
-## Qué construimos
+The demo prints in Spanish; the loop is the same one the factory uses.
 
-Dos piezas que se hablan entre sí, más el puente que las une:
-
-| Pieza | Qué es | Dónde |
-|---|---|---|
-| **La Fábrica** | Flujo multiagente (LangGraph) que toma un requisito y lo lleva a código con pruebas: PO → Arquitecto → Scrum → Desarrollo → QA → SecOps → Documentación. FastAPI + React + Postgres + NATS. | `la-fabrique/` |
-| **Asistente B1** | Asistente de escritorio (PyQt6): escucha, piensa y habla. También ejecuta acciones y lee las respuestas en voz alta. | `profesor3/` |
-| **La fusión** | Endpoints `/v1/voice/*` en la fábrica + plugin en el asistente, y el proveedor Nemotron que hace que el asistente piense con el mismo modelo que los agentes. | `run_fusion.py`, `plugins/fabrica.py` |
-
-El bucle que pide la categoría —**escribir, ejecutar, probar**— está en tres
-sitios, y los tres son código que corre de verdad:
-
-1. **`demo/coding_agent.py`** — el bucle completo en un archivo: el modelo
-   devuelve archivos, el agente los escribe en un directorio de trabajo, ejecuta
-   `unittest` y, si falla, le pasa la salida real al modelo y repite.
-2. **La fábrica** — cada rol es un agente con su propio modelo y su propio
-   presupuesto de tokens; el resultado se ejecuta y se prueba antes de darse por
-   terminado.
-3. **La voz** — el asistente crea el sprint, lo pausa y pregunta por el estado
-   hablando, a través de la misma API que usa la interfaz web (una orden hablada
-   no puede hacer nada que la web no permita).
-4. **La frase** — «hacé una página sencilla en html, css, javascript con la
-   fábrica»: el modelo devuelve los archivos, la fábrica los escribe en disco y
-   los sirve en una URL que el asistente abre y comenta. Es el bucle de la
-   categoría, disparado hablando.
-
-### De una frase a una página abierta
-
-El camino es corto y todo ocurre en el mismo proceso que ya corre:
-
-1. El asistente reconoce el pedido (`plugins/fabrica.py`, `looks_like_build_request`)
-   y llama a `POST /v1/voice/build` con la frase limpia.
-2. La fábrica pide el proyecto al modelo que le toca al rol *Developer* por el
-   `llm-proxy`, con presupuesto de tokens propio y un reintento de reparación si
-   el modelo contesta prosa en vez de JSON (`app/services/codegen.py`).
-3. Los archivos se escriben en `FABRICA_BUILDS_DIR` (por defecto `/workspace/builds`)
-   bajo un slug con fecha, sin poder salir de esa carpeta.
-4. `GET /v1/voice/build/<slug>/<archivo>` los sirve sandboxeados, y el asistente
-   abre esa URL en el navegador y dice qué hizo, en cuánto tiempo y con cuántos
-   archivos.
-
-Si el modelo falla, la respuesta es `ok: false` con una frase para leer en voz
-alta — nunca un 500.
-
-## Cómo usa Nemotron y Nebius Token Factory
-
-**Token Factory es la infraestructura**, no un extra: la dirección por defecto de
-todo el proyecto es `https://api.tokenfactory.nebius.com/v1`, y el `llm-proxy`
-de la fábrica valida cada id contra el catálogo vivo del proveedor antes de
-enviar una petición (un modelo retirado falla en la puerta, con su motivo, en
-vez de a mitad de un sprint).
-
-**Nemotron reparte el trabajo según lo que cuesta pensar:**
-
-| Nivel | Variable | Modelo | Para quién |
-|---|---|---|---|
-| Razonamiento | `NEMOTRON_MODEL_STRATEGIC` | `nvidia/nemotron-3-ultra-550b-a55b` | PO, Arquitecto, SecOps, y el agente de la demo |
-| Equipo | `NEMOTRON_MODEL` | el que elijas del catálogo | Desarrollo, QA, Scrum, memoria |
-| Rápido | `NEMOTRON_MODEL_FAST` | `nvidia/nemotron-3-super-120b-a12b` o un Nano | Documentación y llamadas cortas |
-
-Los tres niveles se escriben en `la-fabrique/.env` desde el panel **⚙ Nemotron**
-del asistente, tomados del catálogo que el proveedor devuelve en ese momento:
-nunca se inventa un id. El reparto no es una idea nuestra — es lo que recomienda
-la convocatoria, y aquí está implementado en `NEMOTRON_ROLES` /
-`NEMOTRON_MODEL_STRATEGIC` / `NEMOTRON_MODEL_FAST` (ver
-`la-fabrique/backend/llm/model_factory.py`).
-
-Lo que Token Factory nos ahorró, en concreto:
-
-- **Un solo cliente.** Los ocho agentes, el asistente y la demo hablan
-  `/v1/chat/completions` contra la misma dirección; no hay ocho integraciones.
-- **Catálogo como fuente de verdad.** `GET /models` nos deja listar modelos en el
-  panel y comprobar antes de gastar un turno.
-- **Dos niveles, un proveedor.** Ultra para pensar, Super/Nano para responder:
-  el mismo crédito rinde mucho más que usando un solo modelo para todo.
-- **Streaming.** El asistente empieza a hablar antes de que la frase esté escrita.
-
-> La app también acepta **NVIDIA NIM** (`integrate.api.nvidia.com`), que sirve
-> los mismos Nemotron: las claves de las dos puertas empiezan por `nvapi-` y no
-> se distinguen a ojo, así que el panel prueba ambas y se queda con la que
-> acepta la clave. Para el envío del hackathon se usa Token Factory.
-
-## Cómo ejecutar
-
-### 1. La demo del agente (lo más rápido, 30 segundos)
-
-```bash
-git clone -b fusion https://github.com/careb36/la-fabrique.git fusion && cd fusion
-export NEBIUS_API_KEY=nvapi-...          # Token Factory
-python demo/coding_agent.py --task "slugify con pruebas unittest"
-```
-
-Sin clave, `--offline` hace el mismo recorrido con dos respuestas grabadas.
-
-### 2. La fábrica completa
-
-```bash
-cd la-fabrique
-cp .env.example .env                     # NEBIUS_API_KEY=... y NEBIUS_PROXY_URL
-docker compose up -d                     # Postgres, NATS, backend, proxy, frontend
-```
-
-La interfaz queda en <http://localhost:3000> y la API en
-<http://localhost:8000/docs>.
-
-### 3. El asistente de voz (Windows)
-
-```powershell
-.\arrancar.cmd       # crea los entornos que falten y arranca fábrica + asistente
-```
-
-Requisitos: Python 3.12 con *Add python.exe to PATH*. El detalle de lo que hace
-el lanzador —y qué hacer si falla— está en [Arranque rápido](#arranque-rápido).
-
-#### El asistente es propio: `asistente-b1/`
-
-La ventana que abre el lanzador es **`asistente-b1`**, un asistente escrito para
-este repositorio, bajo **Apache-2.0**, sin código ni textos de terceros:
-
-```bash
-cd asistente-b1
-python -m b1 --check      # qué está instalado y si la fábrica responde
-python -m b1              # ventana completa;  --orb  sólo el círculo
-```
-
-Escucha, transcribe en local (`faster-whisper`), decide con un modelo compatible
-con `/chat/completions` (Nemotron en Token Factory, o el `llm-proxy` de la
-fábrica, que ya tiene las claves) y responde en voz alta (`piper`). No inventa el
-resultado de una orden: la fábrica devuelve la frase (`speech`) y él la dice. Si
-algo falla, lo dice en una frase.
-
-Su originalidad no se pide de palabra: `python tools/similarity_check.py
-../profesor3` compara prosa y código contra el asistente anterior y devuelve cero
-coincidencias. Ver [`asistente-b1/README.md`](asistente-b1/README.md).
-
-`profesor3/` sigue en el repositorio como referencia y como segunda interfaz
-(`python run_fusion.py --asistente profesor3`), pero el producto que se envía es
-el nuevo.
-
-### Comprobar que el repositorio cumple la convocatoria
-
-```bash
-python tools/hackathon_check.py                       # licencia, README, demo
-NEBIUS_API_KEY=nvapi-... python tools/hackathon_check.py   # + proveedor y modelos
-```
-
-## La demo y el vídeo
-
-`demo/coding_agent.py` es la demostración funcional: se ejecuta en una terminal,
-termina con las pruebas en verde y no necesita nada más que una clave. El guion
-del vídeo de tres minutos, los enlaces de envío y las respuestas a las preguntas
-del formulario están en **[SUBMISSION.md](SUBMISSION.md)**.
-
-## Pruebas
-
-```bash
-python -m pytest tests -q                     # 86 pruebas del repositorio
-cd profesor3 && python -m unittest discover -s tests   # 155 del asistente
-python tools/hackathon_check.py               # los requisitos del envío
-cd la-fabrique && make test                   # backend, proxy y frontend
-```
-
-## Feedback para Nebius y NVIDIA
-
-Lo que nos ayudó y lo que nos costó, con el detalle de lo que pasó:
-
-- **A favor:** un `base_url` compatible con OpenAI para todos los Nemotron, y un
-  `/models` que se puede consultar antes de gastar crédito. El reparto
-  Ultra/Super/Nano es real: bajar las llamadas cortas a Super se nota en la
-  factura y no en la calidad.
-- **Fricción 1 — claves indistinguibles.** Las claves de Token Factory y de
-  NVIDIA NIM empiezan por `nvapi-`, y un 401 dice «Couldn't authenticate» en
-  ambos casos: no se puede saber si la clave es mala o si es de la otra puerta.
-  Nos costó una tarde; ahora el panel prueba las dos y lo explica. Un campo
-  `provider` en la respuesta de error lo resolvería.
-- **Fricción 2 — modelos que se retiran.** `llama-3.3-nemotron-super-49b-v1`
-  contestó `410 Gone` con el id guardado en la configuración. Un encabezado de
-  deprecación (o `sunset`) en `/models` permitiría migrar antes de romperse; hoy
-  lo resolvemos consultando el catálogo y reintentando con el reemplazo.
-- **Fricción 3 — no hay `/audio/transcriptions`.** El asistente necesitaba voz y
-  ninguna de las dos puertas la ofrece, así que la transcripción es local
-  (`faster-whisper`, que el arranque instala sola). Está bien documentarlo como
-  «texto», pero conviene decirlo en la portada: es la primera cosa que alguien
-  intenta.
-- **NVIDIA Nemotron:** cumple el protocolo de JSON que pide el agente de código
-  mejor de lo esperado (archivos completos, sin fences, en la primera ronda) y
-  escribe pruebas que de verdad fallan cuando el código está mal. El modo
-  «thinking» mejora el plan y añade latencia; para voz lo apagamos.
-
-## Qué existía antes del hackathon
-
-Para que el jurado pueda separar lo nuevo de lo que ya estaba:
-
-**Antes** — `la-fabrique` (fábrica multiagente con FastAPI/React/Postgres/NATS,
-sus ocho roles y su `llm-proxy`) y `profesor3` (asistente de escritorio PyQt6 con
-voz, plugins y tablero) eran dos proyectos funcionando por separado, atados a
-Gemini y a un reparto de modelos Qwen/DeepSeek.
-
-**Durante el período de envío** — se hizo la fusión y todo lo que hace falta para
-que corra sobre Token Factory:
-
-1. **Proveedor Nemotron en el asistente** (`profesor3/providers/llm_openai.py`),
-   con detección de puerta, catálogo y migración automática de un id retirado.
-2. **Niveles Ultra/Super/Nano** escritos desde el panel y aplicados por rol en la
-   fábrica (`core/fabrica_env.py`, `la-fabrique/backend/llm/model_factory.py`).
-3. **Puerta de voz** `/v1/voice/*` + plugin del asistente: la fábrica se maneja
-   hablando (`la-fabrique/backend/app/routers/voice.py`, `plugins/fabrica.py`).
-4. **`demo/coding_agent.py`**: el bucle escribir → ejecutar → probar, aislado y
-   reproducible.
-5. **`tools/hackathon_check.py`**: los requisitos de la convocatoria como
-   pruebas ejecutables.
-6. Correcciones nacidas de usar el modelo de verdad: migración ante `410`,
-   claves del `.env` que no llegaban al encabezado, y la instalación automática
-   de `faster-whisper` para que el asistente no arranque sordo.
+> **Project:** La Fabrique — code agents with voice, on Nemotron at Nebius Token Factory.
+> **Category:** Coding & Agents Engineering — NVIDIA × Nebius Global AI Hackathon.
+> **Submission:** see [SUBMISSION.md](SUBMISSION.md) for the form, the three-minute
+> video script and the exact commands.
 
 ---
 
-## El producto en detalle
+## Table of Contents
 
+- [About](#about)
+- [System Overview](#system-overview)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Agent Orchestration](#agent-orchestration)
+- [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
+- [Assistant B1](#assistant-b1)
+- [Voice Control](#voice-control)
+- [Factory Board](#factory-board)
+- [Project Structure](#project-structure)
+- [API Reference](#api-reference)
+- [Testing](#testing)
+- [Feedback for Nebius and NVIDIA](#feedback-for-nebius-and-nvidia)
+- [What Existed Before the Hackathon](#what-existed-before-the-hackathon)
+- [Security](#security)
+- [License](#license)
 
-Dos programas, un solo producto:
+---
 
-* **`la-fabrique/`** — la fábrica de software con agentes (FastAPI + React).
-* **`profesor3/`** — Asistente B1 / Tutor Virtual A1, el asistente de escritorio que
-  oye, habla y ejecuta acciones (Gemini Live, PyQt6).
+## System Overview
 
-La fusión añade una **puerta de voz** a la fábrica (`/v1/voice/*`) y un **plugin**
-en el asistente (`plugins/fabrica.py`). El asistente entiende la frase, llama a
-la fábrica y lee en voz alta la respuesta. La fábrica sigue siendo la misma:
-los endpoints de voz son un adaptador fino sobre los que ya usa la interfaz web,
-así que una orden hablada no puede hacer nada que la web no permita.
+Three pieces that talk to each other:
 
-```
-   🎙  "¿cómo va la fábrica?"
-            │
-   Asistente B1 (Gemini Live) ──►  plugins/fabrica.py
-            │                            │  POST /v1/voice/command
-            │                            ▼
-            │                     FastAPI  /v1/voice/*
-            │                     (start_sprint, pause_sprint, …)
-            ▼                            │
-   🔊 "Sprint 12 «Login» va …"  ◄────────┘
-```
-
-### Arranque rápido
-
-#### Windows (PowerShell)
-
-Requisitos: **Python 3.12** (probado con 3.12.10) instalado con *Add
-python.exe to PATH*. Se acepta 3.11+, pero el script busca 3.12 primero, incluso
-si el `python` del sistema es otra versión.
-
-```powershell
-cd "C:\Users\Felipe\projects\fusion"
-.\arrancar.cmd
-```
-
-Qué hace, en orden:
-
-1. localiza Python 3.12 por **varias vías independientes** —`py --list-paths`,
-   el registro de Windows, las carpetas `Python3*` de `%LOCALAPPDATA%\Programs\Python`
-   y `Program Files`, la base con la que se crearon los entornos (`pyvenv.cfg`)
-   y `python3.12` del PATH— y comprueba con cada candidato que responde de
-   verdad: las sondas se ejecutan en un proceso aparte y se releen sus archivos
-   de salida, con reintento si llegasen vacíos;
-2. reutiliza `.venv-backend` y `profesor3\.venv` si existen y funcionan
-   (en Windows el intérprete es `Scripts\python.exe`; `bin/python` solo en
-   Linux/macOS);
-3. crea únicamente lo que falte; si una carpeta está dañada la mueve a
-   `.venv-backend.roto-<fecha>` en vez de borrarla;
-4. instala solo si hace falta: `poetry install` y, si Poetry no alcanza PyPI,
-   pip con las **versiones exactas de `poetry.lock`** (`tools/lock_requirements.py`);
-5. verifica los módulos esenciales y distingue «falta» de «está roto»,
-   mostrando el traceback completo;
-6. arranca backend y asistente, comprueba que la API responde y para los dos
-   con Ctrl+C.
-
-Todo queda en `logs\arranque-<fecha>.log`.
-
-Si Windows bloquea el script («la ejecución de scripts está deshabilitada»),
-usa cualquiera de estas dos formas:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\arrancar.ps1
-# o doble clic en arrancar.cmd
-```
-
-Opciones:
-
-```powershell
-.\arrancar.ps1 -Instalar          # comprueba y completa dependencias + pip check
-.\arrancar.ps1 -Reinstalar        # mueve los entornos a *.roto-<fecha> y los rehace
-.\arrancar.ps1 -Preparar          # solo deja los entornos listos, sin arrancar
-.\arrancar.ps1 -SoloBackend       # solo la API de la fábrica
-.\arrancar.ps1 -SoloAsistente     # el asistente contra una API ya viva
-.\arrancar.ps1 -Puerto 8123       # otro puerto (si el 8000 está ocupado)
-.\arrancar.ps1 -Python "C:\ruta\python.exe"   # intérprete concreto
-.\arrancar.ps1 -Diagnostico       # qué intérpretes ve y cuál elegiría, sin instalar nada
-.\arrancar.ps1 -Url http://127.0.0.1:8000 -Clave <clave> -Empresa "Mi estudio"
-.\arrancar.ps1 -Completa          # fábrica completa: agentes que ejecutan (necesita Docker)
-.\arrancar.ps1 -Completa -Agentes "D:\trabajo\agentes"   # y dónde escriben
-.\arrancar.ps1 -InterfazWeb       # además compila la UI React de la fábrica (Node)
-```
-
-#### Solo el círculo en el escritorio
-
-El asistente puede vivir como un único botón flotante, sin consola:
-
-```powershell
-profesor3\boton-flotante.cmd                       # doble clic
-.\profesor3\dist\AI-Workspace.exe --floating      # el ejecutable, sin ventana
-```
-
-Arranca directo en el orbe (`--floating`); clic derecho → *Abrir consola*,
-*Generar con la fábrica*, *Quitar el modo flotante* o *Salir*. La fábrica se
-controla desde ahí por voz («¿cómo va la fábrica?», «crea un sprint para…»,
-«despacha las tareas») o desde el panel que abre *Generar con la fábrica*.
-
-#### El ejecutable empaquetado (`profesor3\dist`)
-
-`profesor3\dist\AI-Workspace.exe` es el asistente **congelado** con PyInstaller:
-una copia del código del día en que se compiló. Si después cambia el diseño, ese
-`.exe` sigue mostrando la apariencia anterior. El lanzador ya no lo usa (arranca
-desde el código, con el aspecto nuevo), pero si lo abres por tu cuenta verás la
-cara vieja hasta que lo regeneres:
-
-```powershell
-.\regenerar-ejecutable.cmd      # o doble clic sobre el .cmd
-.\arrancar.cmd -Recompilar      # recompila (si hace falta) y arranca
-```
-
-En cada arranque el lanzador comprueba si el `.exe` es anterior al código y te
-avisa con el comando exacto. La comprobación a mano es
-`python profesor3\tools\build_exe.py --check` (0 al día, 1 no existe, 2 más
-viejo que el código).
-
-#### Fábrica completa (`-Completa`)
-
-Sin nada más, el producto sirve para **mandar la fábrica por voz**: crear el
-sprint, despacharlo, pausarlo, aprobarlo y verlo en el tablero. Los agentes,
-en cambio, no ejecutan tareas: sin broker ni base de datos sus encargos se
-quedan en la cola.
-
-`-Completa` levanta la infraestructura con Docker Desktop y arranca el demonio
-de trabajo, que es lo que convierte "despachar" en ficheros escritos:
-
-```powershell
-.\arrancar.ps1 -Completa
-```
-
-1. `docker compose up -d postgres nats llm-proxy` en `la-fabrique/`;
-2. rellena lo que el compose necesita en `la-fabrique/.env` (contraseña de
-   Postgres, `JWT_SECRET_KEY`, y `GEMINI_API_KEY` tomada del propio asistente),
-   una sola vez y sin tocar lo que ya estuviera escrito;
-3. espera a los puertos 5432, 4222 y 5100 y apunta el backend a ellos;
-4. arranca `vscode-daemon` en nativo sobre la carpeta `agentes\` (también
-   con `-SoloBackend`: el demonio no necesita ventana).
-
-Los agentes escriben **solo** dentro de `agentes\` (o de la carpeta que pases
-con `-Agentes`). Si no hay Docker, el arranque se para y lo dice: preferimos
-eso a un tablero que promete ejecución y no la tiene.
-
-Con una sola clave (la de Gemini del asistente) todos los roles usan el mismo
-modelo: el mapa de roles de la fábrica mezcla ids de Qwen y DeepSeek, y sin sus
-claves el proxy los rechazaría como «modelo desconocido» y las tareas quedarían
-bloqueadas. Por eso `-Completa` exporta `AGENT_MODEL=gemini-flash-latest` cuando
-no hay `QWEN_API_KEY` ni `DEEPSEEK_API_KEY`; si añades esas claves a
-`la-fabrique/.env`, el mapa vuelve a mandar. Para forzar otro modelo, pon
-`AGENT_MODEL=<id>` en `la-fabrique/.env`.
-
-#### El proxy de modelos, también sin Docker
-
-La voz no sólo mueve el tablero: «armá una calculadora en html, css y
-javascript» la escribe la fábrica y te la abre en el navegador. Ese trabajo lo
-hace el `llm-proxy` de `la-fabrique/`, y el lanzador ya lo arranca solo cuando la
-instalación no usa Docker: si hay alguna clave de proveedor en
-`la-fabrique/.env` y nadie contesta en `127.0.0.1:5100`, lo levanta con el
-intérprete del backend y lo para al salir (`Ctrl+C`). El registro queda en
-`la-fabrique/.fusion/llm-proxy.log`, y si no levanta verás sus últimas líneas en
-consola en vez de que la primera frase conteste «no pude hablar con el proxy de
-modelos».
-
-Con `-Completa` la espera no se conforma con el puerto 5100 abierto: pide
-`/v1/models`, porque Docker deja el puerto publicado aunque el proceso de dentro
-se haya caído.
-
-El proxy es su propio proyecto de Python, así que la primera vez el lanzador se
-arma su entorno en `la-fabrique/llm-proxy/.venv` (desde `poetry.lock`, un par de
-minutos y sin Docker). Si eso falla, te muestra el error de pip en vez de dejar
-la fábrica muda.
-
-Una respuesta con archivos completos tarda; el cliente espera hasta
-`LLM_PROXY_TIMEOUT_SECONDS` (150 s) antes de darla por perdida, y a los ids de
-NVIDIA les pide escribir sin razonar primero: era lo que hacía que una
-calculadora superara el minuto y medio.
-
-#### Si algo falla en Windows
-
-Todo queda en `logs\arranque-<fecha>.log`. Los avisos `!!` son recuperables; los
-`XX` paran el arranque antes de dejar el producto a medias.
-
-| Síntoma | Causa | Qué hace el lanzador |
+| Piece | What it is | Where |
 |---|---|---|
-| `All attempts to connect to pypi.org failed` en Poetry | Poetry solo confía en `certifi`; pip y PowerShell usan el almacén de certificados de Windows (antivirus/proxy con inspección TLS) | exporta las raíces del sistema a `logs\windows-ca-bundle.pem`, reintenta y, si sigue fallando, instala con pip las versiones de `poetry.lock` |
-| Lo mismo **y pip tampoco descarga** | sin red, DNS caído o proxy que no responde | imprime el veredicto (DNS, HTTPS a pypi, `pip download` de prueba y proxy configurado) y, si el entorno del asistente ya trae `httpx`, `annotated-types`, `distro`, `sniffio`…, los copia al backend para arrancar sin red |
-| `langchain-core requires httpx … which is not installed` | instalación anterior interrumpida | detecta los módulos que faltan y completa solo esos |
-| `no se puede ejecutar un documento en medio de una canalización: …\bin\python` | ruta de venv de Linux usada en Windows | en Windows solo se acepta `Scripts\python.exe` |
-| `NativeCommandError` al comprobar módulos | PowerShell 5.1 convierte el stderr de Python en error | las comprobaciones se ejecutan sin pasar por el pipeline y se informa «falta» o «roto» con su traceback |
-| Se usaba Python 3.13/3.14 | el `python` del PATH no es el 3.12 | busca `py -3.12` y la ruta del usuario antes de caer a otra versión |
-| `Necesito Python 3.11 o superior` aunque esté instalado | la sonda no devolvía salida (carrera al leer la redirección) y parecía que ningún intérprete servía | se espera a que el proceso cierre del todo, se reintenta la sonda en el propio proceso y, si aun así falla, se acepta la ruta que declaran `pyvenv.cfg`, el registro o `py --list-paths`; `-Diagnostico` muestra candidato por candidato qué pasó |
+| **La Fabrique** | Multi-agent workflow (LangGraph) that takes a requirement to code with tests: PO → Architect → Scrum → Development → QA → SecOps → Documentation → Memory. FastAPI + React + Postgres + NATS. | `la-fabrique/` |
+| **Assistant B1** | Desktop assistant (PyQt6): listens, thinks and speaks. It also executes actions and reads the factory's answers out loud. | `asistente-b1/` |
+| **The fusion** | `/v1/voice/*` endpoints in the factory plus the assistant plugin and the Nemotron provider that makes both think with the same models. | `run_fusion.py`, `asistente-b1/b1/fabrica.py` |
 
-Comandos de diagnóstico (opcionales):
+The **write → run → test** loop lives in four places, and all four are code
+that actually runs:
 
-Si el arranque dice «Backend utilizable con los módulos prestados», la fábrica
-funciona pero esos módulos salieron del entorno del asistente. Cuando vuelvas a
-tener internet, `\.\arrancar.ps1 -Instalar` los sustituye por los del lock.
+1. **`demo/coding_agent.py`** — the whole loop in one file: the model returns
+   files, the agent writes them into a workspace, executes `unittest`, and if
+   the tests fail it sends the real output back to the model and tries again.
+2. **The factory** — each role is an agent with its own model and token budget;
+   the deliverable is executed and tested before it is accepted.
+3. **The voice** — the assistant creates a sprint, pauses it and asks for its
+   status by speaking, through the same API the web UI uses. A spoken order
+   cannot do anything the web cannot.
+4. **The sentence** — *"build a simple HTML, CSS and JavaScript page with the
+   factory"*: the model returns the files, the factory writes them to disk and
+   serves them at a URL the assistant opens and comments on.
 
-```powershell
-.\arrancar.ps1 -Preparar -SoloBackend        # deja el entorno listo y sale
-.\arrancar.ps1 -Diagnostico                  # intérpretes detectados y elegido
-.venv-backend\Scripts\python.exe -m pip check
-.venv-backend\Scripts\python.exe -c "import fastapi, httpx, langchain_core"
-.venv-backend\Scripts\python.exe -m uvicorn app.main:app --port 8999   # con PYTHONPATH=.;app
-Get-Content (Get-ChildItem logs\arranque-*.log | Sort-Object LastWriteTime | Select-Object -Last 1)
+```mermaid
+flowchart LR
+    P[Person] -->|voice| B1[Assistant B1<br/>STT · model · TTS]
+    B1 -->|POST /v1/voice/*<br/>X-Voice-Key| API[FastAPI<br/>voice façade]
+    API -->|same router functions| WEB[Web UI]
+    API --> DB[(SQLite / PostgreSQL)]
+    API --> PROXY[LLM proxy :5100]
+    PROXY --> TF[Nebius Token Factory<br/>NVIDIA Nemotron]
+    API --> OUT[NATS JetStream<br/>outbox]
+    OUT --> AG[LangGraph agents]
+    AG --> WS[Workspace daemon]
+    WS --> FILES[(agentes/)]
+    API --> BUILDS[(builds/)]
 ```
 
-#### macOS / Linux
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Architecture
+
+### A voice command
+
+```mermaid
+sequenceDiagram
+    participant P as Person
+    participant B1 as Assistant B1
+    participant API as FastAPI /v1/voice
+    participant C as voice_control
+    participant DB as Database
+
+    P->>B1: "How is the sprint going?"
+    B1->>B1: local transcription (faster-whisper)
+    B1->>B1: the model picks the factory_status tool
+    B1->>API: GET /v1/voice/status (X-Voice-Key)
+    API->>C: status_snapshot()
+    C->>DB: sprint + counts + pending approvals
+    DB-->>C: rows
+    C-->>API: {ok, speech, counts}
+    API-->>B1: a sentence already phrased for speaking
+    B1-->>P: speaks the factory's words
+```
+
+The voice façade does not reimplement the factory. It calls the same router
+functions the web UI calls, so validation, permissions and side effects are
+identical.
+
+### From one sentence to a served page
+
+1. The assistant's model chooses the `factory_build` tool
+   (`asistente-b1/b1/fabrica.py`) and calls `POST /v1/voice/build` with the
+   sentence the person said.
+2. The factory asks the *Developer* model through the `llm-proxy`, with its own
+   token budget and one repair retry if the model answers prose instead of JSON
+   (`la-fabrique/backend/app/services/codegen.py`).
+3. The files are written under `FABRICA_BUILDS_DIR` (default
+   `la-fabrique/backend/builds`; `/workspace/builds` in Docker) inside a dated
+   slug, with path checks so nothing can escape that folder.
+4. `GET /v1/voice/build/<slug>/<file>` serves them sandboxed with their own CSP;
+   the assistant opens the URL and says what it built, how long it took and how
+   many files it wrote.
+
+If the model fails, the response is `ok: false` with a sentence to read aloud —
+never a 500.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Backend** | Python 3.12+, FastAPI, LangGraph, SQLModel |
+| **Frontend** | React 18, TypeScript, TailwindCSS, Vite, Zustand |
+| **Vector Memory** | PostgreSQL 15 + pgvector (SQLite for the desktop install) |
+| **Knowledge Graph** | Neo4j 5 (optional; disabled in local mode) |
+| **Message Broker** | NATS JetStream (optional; the outbox keeps events until it exists) |
+| **AI Models** | NVIDIA Nemotron on Nebius Token Factory; NVIDIA NIM as an alternative door |
+| **Assistant** | PyQt6, faster-whisper, Piper, standard-library HTTP client |
+| **Infrastructure** | Docker Compose (Postgres, NATS, LLM proxy), VS Code daemon |
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Requirements
+
+- **Python 3.12+** (3.12 recommended; the Windows launcher looks for 3.12 first)
+- **Docker** 24.0+ with Docker Compose v2 for the full factory
+- **Node.js** 20+ only if you build the React UI from source
+- **A Nebius Token Factory key** (`nvapi-...`). NVIDIA NIM keys are accepted too.
+- **Windows** for the one-click launcher; Linux and macOS run through
+  `run_fusion.py`
+- No GPU: the models run in the provider.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Installation
 
 ```bash
-python -m venv .venv-backend
+git clone -b fusion https://github.com/careb36/la-fabrique.git fusion
+cd fusion
+```
+
+### 1. The coding agent demo (30 seconds)
+
+```bash
+export NEBIUS_API_KEY=nvapi-...          # Nebius Token Factory
+python3 demo/coding_agent.py --task "slugify with unittest"
+```
+
+Without a key, the same loop runs with two recorded answers:
+
+```bash
+python3 demo/coding_agent.py --offline
+```
+
+The demo is self-contained: `demo/nemotron.py` holds the minimal
+OpenAI-compatible client and the catalogue helpers in the standard library.
+There is no SDK and no dependency on the reference checkout.
+
+### 2. The full factory
+
+```bash
+cd la-fabrique
+cp .env.example .env                     # set NEBIUS_API_KEY and NEBIUS_PROXY_URL
+docker compose up -d                     # Postgres, NATS, backend, proxy, frontend
+```
+
+The UI is at <http://localhost:3000> and the API at
+<http://localhost:8000/docs>.
+
+### 3. The voice assistant
+
+Windows (what the launcher is built for):
+
+```powershell
+.\arrancar.cmd       # creates any missing environments, starts factory + assistant
+```
+
+Requirements: Python 3.12 with *Add python.exe to PATH*. The launcher's
+diagnostics are documented in [Getting Started](#getting-started).
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv-backend
 .venv-backend/bin/pip install poetry
 (cd la-fabrique/backend && ../../.venv-backend/bin/poetry install)
 
-python -m venv profesor3/.venv
-profesor3/.venv/bin/pip install -r profesor3/requirements.txt
+python3 -m venv asistente-b1/.venv
+(cd asistente-b1 && .venv/bin/pip install -e ".[ui,voice]")
 
-python run_fusion.py
+python3 run_fusion.py
 ```
 
-`run_fusion.py` busca solo el intérprete correcto para cada mitad
-(`.venv-backend/`, `la-fabrique/backend/.venv`, `profesor3/.venv` y, si
-existe, el entorno que ya creó Poetry con `poetry env info --path`). Si usas
-otros entornos, pásalos:
+The assistant can also run alone:
 
 ```bash
-python run_fusion.py --backend-python /ruta/al/python --assistant-python /ruta/al/python
+cd asistente-b1
+python -m b1 --init       # write ~/.asistente-b1/config.json
+python -m b1 --check      # what is installed and whether the factory answers
+python -m b1              # full window;  --orb only the floating orb
+python -m b1 --text       # console loop, no microphone and no Qt
 ```
 
-Y hace el resto:
+`profesor3/` is the previous assistant (CC BY-NC 4.0) and is **not** part of
+this distribution. If you have that checkout, `python run_fusion.py --asistente
+profesor3` uses it as a second front end; the product that ships is
+`asistente-b1/`.
 
-1. carga `la-fabrique/.env` (lo ya exportado manda);
-2. si no hay Postgres configurado, usa **SQLite** en `la-fabrique/.fusion/factory.db`
-   — la fábrica funciona sin infraestructura;
-3. desactiva Neo4j en ese modo (`NEO4J_DISABLED=true`) para que el arranque no
-   espere a un bolt que no existe;
-4. genera una `VOICE_API_KEY` y la comparte con el asistente;
-5. crea la empresa inicial con su equipo la primera vez;
-6. escribe la URL y la clave en `profesor3/config/api_keys.json`
-   (sección `plugin_config.fabrica`);
-7. arranca el asistente y para las dos piezas con Ctrl+C.
-
-Opciones útiles:
+### 4. Verify the submission
 
 ```bash
-python run_fusion.py --backend-only      # solo la API (para la web)
-python run_fusion.py --assistant-only    # el asistente contra una API ya viva
-python run_fusion.py --url http://127.0.0.1:8124   # puerto libre, misma máquina
-python run_fusion.py --url http://otra:8000 --voice-key <clave> --no-config
-python run_fusion.py --company "Mi estudio"
+python3 tools/hackathon_check.py                       # licence, README, demo
+NEBIUS_API_KEY=nvapi-... python3 tools/hackathon_check.py   # + provider and models
 ```
 
-La primera vez que abras el asistente te pedirá la `gemini_api_key` como
-siempre; la configuración de la fábrica ya estará puesta.
+[⬆ Back to Top](#la-fabrique)
 
-### Qué se puede decir
+---
 
-| Frase | Acción |
+## Getting Started
+
+### What the launcher does
+
+`arrancar.cmd` (or `arrancar.ps1`) runs these steps in order:
+
+1. Finds Python 3.12 through independent sources — `py --list-paths`, the
+   Windows registry, `%LOCALAPPDATA%\Programs\Python`, `Program Files`, the
+   `home` recorded in each venv's `pyvenv.cfg`, and `PATH` — and probes every
+   candidate for real.
+2. Reuses `.venv-backend` and `asistente-b1/.venv` when they exist and work.
+   On Windows the interpreter is `Scripts\python.exe`; `bin/python` is only for
+   Linux/macOS.
+3. Creates only what is missing. A broken environment is moved to
+   `<venv>.roto-<date>`, never deleted.
+4. Installs only when needed, with Poetry or, if Poetry cannot reach PyPI, with
+   pip using the exact versions in `poetry.lock`.
+5. Verifies the essential modules and distinguishes "missing" from "broken",
+   with the full traceback.
+6. Starts the backend and the assistant, checks the API, and stops both with
+   Ctrl+C.
+
+Everything is logged to `logs/arranque-<date>.log`.
+
+Windows options:
+
+```powershell
+.\arrancar.ps1 -Instalar          # check and complete dependencies + pip check
+.\arrancar.ps1 -Reinstalar        # move environments aside and rebuild them
+.\arrancar.ps1 -SoloBackend       # only the factory API
+.\arrancar.ps1 -SoloAsistente     # the assistant against an already running API
+.\arrancar.ps1 -Puerto 8123       # another port if 8000 is taken
+.\arrancar.ps1 -Diagnostico       # which interpreters are visible and which one it would use
+.\arrancar.ps1 -Completa          # full factory: agents execute (needs Docker)
+.\arrancar.ps1 -Agentes "D:\work\agentes"   # where agents write
+.\arrancar.ps1 -InterfazWeb       # also build the React UI (needs Node)
+```
+
+Cross-platform options:
+
+```bash
+python3 run_fusion.py --backend-only      # only the API
+python3 run_fusion.py --assistant-only    # the assistant against a live API
+python3 run_fusion.py --port 8124         # another port on the same machine
+python3 run_fusion.py --url http://other:8000 --voice-key <key> --no-config
+python3 run_fusion.py --company "My studio"
+python3 run_fusion.py --asistente b1      # b1 is the default and the shipped front end
+```
+
+### Local mode vs. full factory
+
+In local mode (`run_fusion.py` without `--completa`) the launcher:
+
+1. loads `la-fabrique/.env` (already exported values win);
+2. uses **SQLite** at `la-fabrique/.fusion/factory.db` when no Postgres is
+   configured;
+3. disables Neo4j (`NEO4J_DISABLED=true`) so startup does not wait for a bolt
+   server that does not exist;
+4. generates a `VOICE_API_KEY` and shares it with the assistant;
+5. creates the first company and its team on the first run;
+6. writes the URL and key into the assistant's config;
+7. starts the assistant and stops both pieces with Ctrl+C.
+
+`--completa` is the only mode where agents actually execute. It runs
+`docker compose up -d postgres nats llm-proxy`, fills the compose secrets into
+`la-fabrique/.env` once, points the backend at `127.0.0.1`, and starts the
+workspace daemon natively with `WORKSPACE_ROOT=<agentes>`. Agents write only
+inside `agentes/` (or the folder passed with `--agentes`). Without Docker the
+launcher stops and says so: a board that promises execution and cannot deliver
+is worse than no board.
+
+`AGENT_MODEL` overrides every role with one model id. The launcher sets it in
+both modes to an id the installed keys can actually serve; without it the role
+map's Qwen/DeepSeek ids come back from the proxy as "unknown model" and tasks
+end blocked. `NEMOTRON_ROLES`, `NEMOTRON_MODEL`, `NEMOTRON_MODEL_STRATEGIC` and
+`NEMOTRON_MODEL_FAST` are the per-tier controls.
+
+### The model proxy also works without Docker
+
+The voice does not only move the board: *"build a calculator in HTML, CSS and
+JavaScript"* is written by the factory and opened in the browser. That work is
+done by `la-fabrique/llm-proxy`, and the launcher starts it on its own when the
+install is not using Docker. If `la-fabrique/.env` has a provider key and
+nobody answers on `127.0.0.1:5100`, it starts the proxy with the backend
+interpreter and stops it on exit. The log is at
+`la-fabrique/.fusion/llm-proxy.log`.
+
+With `--completa` the wait does not settle for an open port: it asks
+`GET /v1/models` for models, because Docker keeps `5100` published even after
+the process inside has died.
+
+The proxy is its own Python project, so the first launch builds
+`la-fabrique/llm-proxy/.venv` from `poetry.lock` (a couple of minutes). A
+whole-file answer takes time; the client waits up to
+`LLM_PROXY_TIMEOUT_SECONDS` (150 s) and asks NVIDIA ids to write without
+thinking first, which was what made a calculator exceed ninety seconds.
+
+### What you can say
+
+| Phrase | Action |
 |---|---|
-| «¿Cómo va la fábrica?» / «estado del sprint» | Resumen del tablero: pendientes, en curso, en revisión, hechas, bloqueadas y entregas por aprobar. |
-| «¿Qué sprints tengo?» | Los últimos cinco, del más nuevo al más viejo, con su estado. |
-| «¿Qué equipo tengo?» | Lista de agentes y roles. |
-| «Planea un sprint para el login con Google» | Vista previa del plan (no escribe nada). |
-| «Crea un sprint para el login con Google» | Lo crea **en pausa** y lo dice. |
-| «Reanuda la fábrica» | Los agentes empiezan a trabajar. |
-| «Pausa la fábrica» | No se empieza nada nuevo. |
-| «Despacha las tareas pendientes» | Manda a los agentes las tareas en `todo`. |
-| «Aprueba la última entrega» / «recházala porque no cumple» | Registra la decisión en el expediente. |
-| «Abre la fábrica» / «muéstrame la fábrica» | Abre el tablero de la fábrica en el navegador. |
-| «Hacé una página sencilla en html, css y javascript con la fábrica» | El modelo arma el proyecto, queda escrito en disco, se sirve en una URL y el asistente la abre y lo cuenta. |
-| «Fabricá una calculadora» | Igual, con el pedido que digas: la frase después del disparador es el requisito. |
-| «¿Qué puedes hacer con la fábrica?» | Ayuda con el vocabulario. |
+| "How is the factory going?" / "sprint status" | Board summary: todo, in progress, in review, done, blocked and pending approvals. |
+| "What sprints do I have?" | The last five, newest first, with their status. |
+| "What team do I have?" | The agents and their roles. |
+| "Plan a sprint for Google login" | A preview of the plan (writes nothing). |
+| "Create a sprint for Google login" | Creates it **paused** and says so. |
+| "Resume the factory" | Agents start working. |
+| "Pause the factory" | Nothing new starts. |
+| "Dispatch pending tasks" | Sends the `todo` tasks to the agents. |
+| "Approve the latest delivery" / "reject it because it does not meet the spec" | Records the decision in the audit trail. |
+| "Open the factory" / "show me the factory" | Opens the factory board in the browser. |
+| "Build a simple HTML, CSS and JavaScript page with the factory" | The model builds the project, writes it to disk, serves it at a URL and the assistant opens it. |
+| "Build a calculator" | Same, with whatever follows the trigger as the requirement. |
+| "What can you do with the factory?" | Help with the vocabulary. |
 
-Todo se entiende también en inglés (`estado`, `crear_sprint`… con `language=en`).
+Everything is understood in Spanish and English (`status`, `create_sprint`, …
+with `language=en`).
 
-#### Por qué el sprint nace en pausa
+### Why a sprint starts paused
 
-Crear un sprint ya despacha trabajo a los agentes. Una confirmación del tipo
-`confirm=true` la escribe el modelo, no la persona. Por eso la creación por voz
-**pausa el sprint inmediatamente después de crearlo**: los agentes no empiezan
-hasta que la persona dice «reanuda». Es una segunda orden explícita, no una
-casilla que el modelo pueda rellenar solo.
+Creating a sprint already dispatches work to the agents. A confirmation such as
+`confirm=true` is written by the model, not by the person. So voice creation
+**pauses the sprint immediately after creating it**: agents do not start until
+the person says "resume". It is a second explicit order, not a checkbox the
+model can fill in on its own.
 
-### El tablero de la fábrica
+[⬆ Back to Top](#la-fabrique)
 
-Al arrancar, el lanzador abre el **panel del asistente** (`http://127.0.0.1:8770`),
-que es la cara nueva del producto y lleva la fábrica dentro, en su pestaña
-**Fábrica** (desactívalo con `--no-browser` o `-SinNavegador`). En el propio
-equipo el panel entra sin clave: el servidor inyecta una sesión local en la
-página solo cuando la petición viene de loopback. Desde otro dispositivo manda
-la clave de emparejamiento de *Control remoto*, como siempre.
+---
 
-Si el asistente no llega a arrancar, el lanzador abre directamente la fábrica
-con la sesión ya abierta: el token viaja en el fragmento (`#sesion=…`), que no
-llega al servidor ni a los registros, y la propia aplicación lo borra de la
-barra de direcciones en cuanto lo adopta. También se llega por voz («abre la
-fábrica») y con el botón **Fábrica** del asistente.
+## Agent Orchestration
 
-El panel web del asistente (`http://127.0.0.1:8770`, la clave de emparejamiento
-aparece en *Control remoto*) tiene una pestaña **Fábrica** que muestra la
-interfaz React de la fábrica **tal cual, embebida**. `GET /fabrica` es una
-puerta: pide una sesión a `/v1/auth/desktop` con la clave que el asistente ya
-tiene y redirige con `#sesion=…`. Como es otro origen, el backend declara
-`FRAME_ANCESTORS` (loopback, cualquier puerto) para que el iframe no se quede
-en blanco; sin esa variable `X-Frame-Options: DENY` lo bloquea.
+| Role | What it does | Nemotron tier |
+|---|---|---|
+| **PO** | Turns the requirement into a backlog and acceptance criteria | Strategic (Ultra) |
+| **Architect** | Designs the solution, files and interfaces | Strategic (Ultra) |
+| **ScrumMaster** | Plans the sprint, splits work, triages blocked tasks | Team (`NEMOTRON_MODEL`) |
+| **Developer** | Writes the code and its tests | Team (`NEMOTRON_MODEL`) |
+| **QA** | Reviews the result and decides whether it closes | Team (`NEMOTRON_MODEL`) |
+| **SecOps** | Reviews security and secrets handling | Strategic (Ultra) |
+| **TechWriter** | Writes documentation and the README | Fast (Super/Nano) |
+| **EngramProcessor** | Stores and retrieves memory in the knowledge graph | Team (`NEMOTRON_MODEL`) |
 
-Las órdenes que das con los botones del panel viajan al asistente, no a la
-fábrica:
+A sprint moves through `active ⇄ paused → completed | needs_split | cancelled`.
+A task closes when the interpreter runs it and its tests pass; a blocked task
+stays on the board, appears in the retrospective and can be carried into the
+next sprint once. The ScrumMaster reads what blocked it and decides, in a fixed
+format a parser checks, between another attempt with a brief or leaving it to a
+person.
 
-```
-navegador  --(token)-->  /api/fabrica/command  --(X-Voice-Key)-->  /v1/voice/command
-```
+The execution path is the factory's, not the assistant's: the task worker takes
+the assignment from the NATS outbox, asks the LLM proxy, writes through the
+workspace daemon and records an `AgentRun` plus a `Verification`. Claims are
+kept apart from observations.
 
-Así la clave compartida de la fábrica nunca llega al navegador, y el tablero
-usa exactamente el mismo vocabulario que la voz: si una frase funciona
-hablando, el botón también.
+[⬆ Back to Top](#la-fabrique)
 
-### Configuración
+---
 
-En `la-fabrique/.env`:
+## Model Providers (Nebius / NVIDIA Nemotron)
 
-```ini
-VOICE_API_KEY=<secreto compartido>   # el asistente lo envía como X-Voice-Key
-VOICE_COMPANY_ID=                    # vacío = la primera empresa
-DATABASE_URL=sqlite:///./factory.db  # opcional; sin esto, Postgres
-AUTH_REQUIRED=false                  # solo instalación local de un usuario
-```
+**Token Factory is the infrastructure**, not an add-on: the default address of
+the whole project is `https://api.tokenfactory.nebius.com/v1`, and the factory's
+`llm-proxy` validates every id against the provider's live catalogue before
+sending a request. A retired model fails at the door, with its reason, instead
+of halfway through a sprint.
 
-En el asistente, ⚙ → plugins → **FÁBRICA — control por voz**:
+**Nemotron splits the work by how much thinking it costs:**
 
-* URL del backend (por defecto `http://127.0.0.1:8000`)
-* `VOICE_API_KEY`
-* ID de empresa (opcional)
-* idioma de las respuestas (`auto` sigue el idioma del asistente)
+| Tier | Variable | Model | Used by |
+|---|---|---|---|
+| Reasoning | `NEMOTRON_MODEL_STRATEGIC` | `nvidia/nemotron-3-ultra-550b-a55b` | PO, Architect, SecOps, demo agent |
+| Team | `NEMOTRON_MODEL` | any chat model from the catalogue | Developer, QA, ScrumMaster, memory |
+| Fast | `NEMOTRON_MODEL_FAST` | `nvidia/nemotron-3-super-120b-a12b` or a Nano | Documentation and short calls |
 
-El botón **PROBAR CONEXIÓN** llama a `/v1/voice/ping` y dice si la clave vale.
+The three tiers are written into `la-fabrique/.env` from the assistant's
+**⚙ Nemotron** panel, using the catalogue the provider returns at that moment:
+an id is never invented. The mapping is applied by
+`la-fabrique/backend/llm/model_factory.py`.
 
-### Seguridad
+What Token Factory saved us, concretely:
 
-* Sin `VOICE_API_KEY` y con `AUTH_REQUIRED=true`, `/v1/voice/*` responde **503**:
-  nunca se abre sola.
-* Con clave, se exige en la cabecera `X-Voice-Key` (comparación en tiempo
-  constante) o un JWT normal con rol suficiente.
-* La clave se compara en el servidor; el asistente solo la guarda en
-  `config/api_keys.json` (permisos 600 cuando el sistema lo permite).
+- **One client.** The eight agents, the assistant and the demo speak
+  `/v1/chat/completions` against the same address; there are no eight
+  integrations.
+- **Catalogue as source of truth.** `GET /models` lets the panel list models
+  and check before spending a turn.
+- **Two cost tiers, one provider.** Ultra for thinking, Super/Nano for
+  answering: the same credit goes much further than using one model for
+  everything.
+- **Streaming.** The assistant starts speaking before the sentence is finished.
 
-### Pruebas
+> The app also accepts **NVIDIA NIM** (`integrate.api.nvidia.com`), which serves
+> the same Nemotron models. Keys from both doors start with `nvapi-` and cannot
+> be told apart by eye, so the panel probes both and keeps the one that accepts
+> the key. The submission uses Token Factory.
+
+A retired model answers **410 Gone**. The provider answers with a date and the
+proxy consults the catalogue once, prefers the same vendor and the default
+Nemotron, retries before the first word and stores the replacement in both the
+provider config and the factory's `AGENT_MODEL`. A 404 for an id that *is* in
+the catalogue does not migrate: the problem is elsewhere and changing the id
+would hide it.
+
+Codegen sends `chat_template_kwargs.enable_thinking=false` to `nvidia/*` ids:
+reasoning before writing doubled the time for a whole-file answer.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Assistant B1
+
+`asistente-b1/` is the assistant written for this repository, under
+Apache-2.0, with no code or prose from the reference assistant:
+
+- The core — model client, tools, conversation loop, end-of-speech detection —
+  is **standard library only**.
+- The window is **PyQt6**. Without PyQt6, faster-whisper, Piper or sounddevice,
+  it still starts as a console and says what is missing.
+- Voice chain: **Piper → system voice → console**. A missing model or engine
+  falls through and reports the reason; it never leaves the assistant silent
+  without saying why.
+- Two languages, one program: `b1/i18n.py` holds every user-facing string, the
+  conversation switches language with the phrase, and the factory returns its
+  `speech` in the same language.
+- Nemotron's `reasoning_content` is kept in the log and **never spoken**.
+
+Modes:
 
 ```bash
-# Voz de la fábrica (sin Postgres, NATS ni LLM)
-cd la-fabrique/backend
-PYTHONPATH=.:app python -m pytest tests/test_voice_control.py -q
-
-# Plugin del asistente y tablero (sin Qt ni audio)
-cd profesor3
-python -m unittest discover -s tests -q
-
-# Lanzador (no abre ventanas ni arranca la fábrica)
-python -m pytest tests -q
+python -m b1              # full window: orb, transcript, guide panel
+python -m b1 --orb        # only the orb, borderless and always on top
+python -m b1 --text       # console, no microphone and no Qt
+python -m b1 --guide      # print the factory guide
+python -m b1 --voices     # download the configured Piper voices once
+python -m b1 --speak "Hello"   # say that sentence and exit
+python -m b1 --language en     # start in English
+python -m b1 --check      # diagnostics
 ```
 
-### Limitaciones honestas
+The three factory tools are `factory_status`, `factory_command` and
+`factory_build`. The model chooses the tool; the factory writes the words. A
+tool failure returns `{"ok": false, "speech": "..."}`, never an exception into
+the conversation loop.
 
-* **Ejecución autónoma completa** (agentes escribiendo archivos) necesita el
-  resto de la pila: Postgres + NATS JetStream + el proxy LLM + el daemon de
-  espacio de trabajo. Eso es exactamente `-Completa`; sin Docker el modo SQLite
-  sirve para planear, crear, pausar/reanudar, ver el tablero y gobernar
-  entregas, pero los `task.assign` quedan en el outbox hasta que haya NATS.
-* La planificación usa el proxy LLM; sin él, el planificador cae en su lista
-  determinista (4 tareas) y lo dice igual.
-* Los sprints creados por voz se planifican con el objetivo dictado; ajusta
-  tareas y prioridades desde la web si quieres afinar.
+Settings live in `~/.asistente-b1/config.json`; the launcher writes the factory
+URL and the shared key there. The assistant's own suite is in
+`asistente-b1/tests/` and runs without network, microphone or Qt.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Voice Control
+
+The voice façade is a thin adapter over the factory's own router functions:
+
+| Method | Endpoint | What it does |
+|---|---|---|
+| `GET` | `/v1/voice/ping` | Checks the shared key and the factory version |
+| `GET` | `/v1/voice/status` | Returns the board snapshot: sprint, counts, pending approvals, `speech` |
+| `POST` | `/v1/voice/command` | Runs one voice action (`status`, `planear`, `crear_sprint`, `pausar`, `reanudar`, `despachar`, `aprobar`, `rechazar`, `asignar`, …) |
+| `POST` | `/v1/voice/build` | Turns a sentence into a project written to disk |
+| `GET` | `/v1/voice/build/<slug>/<file>` | Serves a generated file, sandboxed with its own CSP |
+
+Canonical actions are declared in
+`la-fabrique/backend/app/services/voice_control.py`; Spanish and English
+paraphrases are resolved in `routers/voice.py`. The assistant's tool enum and
+the factory's action list are kept in step on purpose: adding an action to one
+without the other produces a 400.
+
+**Security:**
+
+- Without `VOICE_API_KEY` and with `AUTH_REQUIRED=true`, `/v1/voice/*` answers
+  **503**: it never opens by itself.
+- With a key, it is required in the `X-Voice-Key` header (constant-time
+  comparison) or as a normal JWT with enough role.
+- The key is compared on the server; the assistant stores it in its config
+  (`chmod 600` where the system allows it).
+- Generated projects are served under a sandbox and their own
+  `Content-Security-Policy`; the middleware respects the CSP already present in
+  the response instead of overwriting it.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Factory Board
+
+When the stack starts, the launcher opens the **factory's own React UI** in the
+browser with a desktop session already signed in. The token travels in the URL
+fragment (`#sesion=…`), which never reaches a server or a log, and the app
+removes it from the address bar as soon as it adopts it.
+
+The shipped assistant (`asistente-b1`) has no embedded web panel. If the
+reference `profesor3` checkout is running, its panel at
+`http://127.0.0.1:8770` is opened first; that panel embeds the same React UI in
+its **Fábrica** tab. `GET /fabrica` is the doorway: it asks
+`/v1/auth/desktop` for a session with the assistant's own key and redirects.
+Because embedding crosses origins, the backend declares `FRAME_ANCESTORS`
+(loopback, any port) so the iframe is not blocked by `X-Frame-Options: DENY`.
+
+That panel never talks to the factory directly. Its buttons go through the
+assistant, which keeps the shared key out of the browser:
+
+```text
+browser  --(token)-->  /api/fabrica/command  --(X-Voice-Key)-->  /v1/voice/command
+```
+
+That is why the board uses exactly the same vocabulary as the voice: if a
+sentence works spoken, the button works too.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Project Structure
+
+```text
+fusion/
+├── run_fusion.py              # the only entry point: backend + assistant + shared key
+├── arrancar.cmd / .ps1        # Windows launcher (installs, diagnoses, starts)
+├── asistente-b1/              # the assistant that ships (Apache-2.0)
+│   ├── b1/                    # stdlib core, PyQt6 window, factory tools
+│   └── tests/                 # 150 tests, no network and no microphone
+├── la-fabrique/               # the factory (upstream checkout + voice layer)
+│   ├── backend/               # FastAPI, LangGraph, voice façade, codegen
+│   ├── frontend/              # React UI served by the backend
+│   └── llm-proxy/             # model door: catalogue, budgets, provider routing
+├── demo/
+│   ├── coding_agent.py        # write → run → test → fix
+│   └── nemotron.py            # minimal OpenAI-compatible client (stdlib)
+├── tools/
+│   ├── hackathon_check.py     # the submission requirements as executable checks
+│   └── lock_requirements.py   # pip fallback with poetry.lock pins
+├── tests/                     # launcher, demo, codegen and panel guards
+├── docs/                      # design notes and screenshots
+├── screenshots/
+├── SUBMISSION.md              # form, video script and checklist
+├── README.es.md               # original Spanish documentation
+└── LICENSE                    # Apache-2.0
+```
+
+Generated or ignored: `la-fabrique/.env`, `agentes/`,
+`la-fabrique/backend/builds/`, `logs/`,
+`.venv*`, `profesor3/` and the Python caches.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## API Reference
+
+The full API is documented by FastAPI at
+<http://localhost:8000/docs> when the backend is running. The voice contract is
+small on purpose:
+
+| Method | Path | Body / query | Response |
+|---|---|---|---|
+| `GET` | `/v1/capabilities` | — | What the install supports |
+| `GET` | `/v1/voice/ping` | — | `{ok, version}` |
+| `GET` | `/v1/voice/status` | — | `{ok, speech, sprint, counts, pending_approvals}` |
+| `POST` | `/v1/voice/command` | `{action, text?, company_id?, language?}` | `{ok, speech, …}` |
+| `POST` | `/v1/voice/build` | `{text, name?, language?}` | `{ok, slug, files, entry, preview, seconds, speech}` |
+| `GET` | `/v1/voice/build/<slug>/<file>` | — | The generated file, sandboxed |
+
+Actions understood by `/v1/voice/command`: `estado`, `empresas`, `equipo`,
+`planear`, `crear_sprint`, `despachar`, `pausar`, `reanudar`, `aprobar`,
+`rechazar`, `sprints`, `asignar`, `ayuda`. English aliases (`status`,
+`create_sprint`, `pause`, `resume`, `dispatch`, `approve`, `reject`, `help`, …)
+resolve to the same actions.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Testing
+
+```bash
+# The fusion layer: launcher, demo, codegen and panel guards.
+python3 -m pytest tests -q
+# 126 passed, 7 skipped when the reference profesor3/ checkout is absent.
+
+# The assistant: no network, no microphone, no Qt.
+cd asistente-b1 && python3 -m pytest -q          # 150 tests
+
+# The factory's own suites (needs its environment).
+cd la-fabrique/backend
+PYTHONPATH=.:app ../../.venv-backend/bin/python -m pytest tests -q
+
+# The submission requirements, in cold mode and with a key.
+python3 tools/hackathon_check.py
+NEBIUS_API_KEY=nvapi-... python3 tools/hackathon_check.py
+```
+
+The seven skipped tests are the reference assistant's web-panel guards; they
+skip themselves when `profesor3/` is not present.
+
+The demo can also be checked directly:
+
+```bash
+python3 demo/coding_agent.py --offline --quiet   # exits 0 when the tests pass
+```
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Feedback for Nebius and NVIDIA
+
+What helped and what cost us time, with the detail of what happened:
+
+- **In favor:** one OpenAI-compatible `base_url` for all Nemotron models, and a
+  `/models` endpoint that can be queried before spending credit. The
+  Ultra/Super/Nano split is real: moving short calls to Super shows up in the
+  bill, not in the quality.
+- **Friction 1 — indistinguishable keys.** Token Factory and NVIDIA NIM keys
+  both start with `nvapi-`, and a 401 says "Couldn't authenticate" in both
+  cases: you cannot tell whether the key is bad or belongs to the other door.
+  It cost us an afternoon; the panel now probes both and explains it. A
+  `provider` field in the error response would solve it.
+- **Friction 2 — retired models.** `llama-3.3-nemotron-super-49b-v1` answered
+  `410 Gone` with the id stored in the config. A deprecation (or `sunset`)
+  header in `/models` would allow migrating before breaking; today we resolve it
+  by consulting the catalogue and retrying with the replacement.
+- **Friction 3 — no `/audio/transcriptions`.** The assistant needed voice and
+  neither door offers it, so transcription is local (`faster-whisper`, which
+  the launcher installs by itself). It is fine to document the API as
+  "text-only", but it should be on the front page: it is the first thing anyone
+  tries.
+- **NVIDIA Nemotron:** it follows the JSON protocol the coding agent asks for
+  better than expected (whole files, no fences, first round) and writes tests
+  that really fail when the code is wrong. "Thinking" improves the plan and
+  adds latency; for voice we turn it off.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## What Existed Before the Hackathon
+
+So the jury can separate what is new from what was already there:
+
+**Before** — `la-fabrique` (a multi-agent factory with FastAPI/React/Postgres/
+NATS, its eight roles and its `llm-proxy`) and `profesor3` (a PyQt6 desktop
+assistant with voice, plugins and a board) were two separate projects tied to
+Gemini and a Qwen/DeepSeek model map.
+
+**During the submission period** — the fusion and everything needed to run it
+on Token Factory:
+
+1. **Nemotron provider in the assistant**, with door detection, catalogue and
+   automatic migration of a retired id.
+2. **Ultra/Super/Nano tiers** written from the panel and applied per role in the
+   factory.
+3. **Voice gate** `/v1/voice/*` plus the assistant plugin: the factory is
+   commanded by speaking.
+4. **`demo/coding_agent.py`**: the write → run → test loop, isolated and
+   reproducible.
+5. **`tools/hackathon_check.py`**: the submission requirements as executable
+   checks.
+6. **A clean-room assistant (`asistente-b1/`)**: the shipped assistant was
+   rewritten from scratch — audio, model, tools, interface — so the product does
+   not depend on a non-commercial licence. `profesor3/` remains the reference
+   and is not distributed.
+
+Fixes that came from using the real model: migration on `410`, keys in `.env`
+that never reached the header, and the automatic `faster-whisper` install so the
+assistant does not start deaf.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Security
+
+- `/v1/voice/*` is closed by default: 503 without a key when auth is required,
+  constant-time comparison when a key is configured.
+- A spoken order goes through the same functions as the web UI; voice cannot
+  bypass validation or permissions.
+- The assistant keeps the shared key in its config, not in the browser. The
+  factory board's buttons go through the assistant.
+- Generated projects are written under a dated slug with path checks and served
+  with a sandbox and their own CSP.
+- `.env` files, API keys, generated projects and agent workspaces are
+  git-ignored; `tools/hackathon_check.py` fails if `la-fabrique/.env` is
+  tracked.
+- `profesor3/`, when present, keeps its own CC BY-NC 4.0 licence and is not
+  relicensed as Apache-2.0.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## License
+
+[Apache-2.0](LICENSE) for the fusion layer, `la-fabrique/`, `demo/`, `tools/`
+and `asistente-b1/`.
+
+`profesor3/` is a derivative of *MARK 56 — JARVIS* by FatihMakes, under
+CC BY-NC 4.0. It is kept as a reference and as an optional second front end; it
+is **not** part of the distributed product and must not be relicensed as
+Apache-2.0.
+
+NVIDIA Nemotron models are served by Nebius Token Factory and NVIDIA NIM under
+their own model licences.
+
+---
+
+## Support
+
+- **Submission details and video script:** [SUBMISSION.md](SUBMISSION.md)
+- **Factory user guide:** [la-fabrique/USER_GUIDE.md](la-fabrique/USER_GUIDE.md)
+- **Issues:** use the repository's issue tracker.
+- **Spanish documentation:** [README.es.md](README.es.md)
+
+[⬆ Back to Top](#la-fabrique)

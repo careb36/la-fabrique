@@ -59,16 +59,22 @@ def check_license(report: Report) -> None:
 
 
 def check_readme(report: Report) -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
+    # The README that ships is English; README.es.md is the original Spanish
+    # documentation kept alongside it.
+    path = ROOT / "README.md"
+    if not path.exists():
+        path = ROOT / "README.es.md"
+    text = path.read_text(encoding="utf-8", errors="replace")
     lowered = text.lower()
     required = {
-        "Token Factory": "token factory",
-        "Nemotron": "nemotron",
-        "cómo ejecutar": "cómo ejecutar",
-        "categoría del hackathon": "coding & agents",
+        "Token Factory": ("token factory",),
+        "Nemotron": ("nemotron",),
+        "cómo ejecutar": ("installation", "getting started", "cómo ejecutar"),
+        "categoría del hackathon": ("coding & agents",),
     }
-    for label, needle in required.items():
-        report.check(needle in lowered, f"el README habla de {label}")
+    for label, needles in required.items():
+        report.check(any(n in lowered for n in needles),
+                     f"el README habla de {label}")
     report.check(len(text) > 3000, "el README tiene instrucciones de verdad")
 
 

@@ -112,7 +112,7 @@ Para la fábrica completa, `cd la-fabrique && docker compose up -d` y abrir
 
 ## 5. Feedback
 
-Está en el README, sección [Feedback para Nebius y NVIDIA](README.md#feedback-para-nebius-y-nvidia):
+Está en el README, sección [Feedback para Nebius y NVIDIA](README.md#feedback-for-nebius-and-nvidia):
 lo que funcionó (base_url único, catálogo consultable, niveles de coste) y las
 tres fricciones reales (claves `nvapi-` indistinguibles entre puertas, modelos
 retirados con `410`, y la ausencia de `/audio/transcriptions` para la voz).
@@ -121,7 +121,7 @@ retirados con `410`, y la ausencia de `/audio/transcriptions` para la voz).
 
 Sí: `la-fabrique` y `profesor3` son dos proyectos anteriores. El detalle de qué
 se añadió durante el período está en
-[Qué existía antes del hackathon](README.md#qué-existía-antes-del-hackathon).
+[Qué existía antes del hackathon](README.md#what-existed-before-the-hackathon).
 En resumen: proveedor Nemotron con detección de puerta y migración de modelos
 retirados, niveles Ultra/Super/Nano aplicados por rol, la puerta de voz, la demo
 del agente y el verificador de requisitos.
