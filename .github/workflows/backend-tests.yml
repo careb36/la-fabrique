@@ -11,8 +11,8 @@ on:
       - '.github/workflows/backend-tests.yml'
 
 
-# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
-# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
+# en vez de encolarse.
 concurrency:
   group: backend-tests-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     # Un cuelgue de red en `poetry install` dejó este job 40 minutos parado sin
     # que nadie se enterara (el default son 6 horas). El job entero tarda ~5
     # minutos, así que cortar a los 20 convierte un cuelgue en un fallo visible.
@@ -57,9 +57,9 @@ jobs:
       - name: Install dependencies
         working-directory: ./backend
         run: |
-          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
-          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
-          # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
+          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y
+          # puede encontrar uno ajeno al job (con otro Python), instalar Poetry
+          # ahí, fuera del PATH, y el siguiente paso muere con
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
           poetry env use python

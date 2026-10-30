@@ -414,11 +414,11 @@ repo root with the proxy's Poetry environment plus
 `llm-proxy/requirements-dev.txt`: `python -m pytest llm-proxy/tests -q`. CI
 runs it after the backend tests.
 
-CI jobs run on the self-hosted runner labelled `lafabrique`
-(`runs-on: [self-hosted, linux, x64, lafabrique]`), not on GitHub-hosted
-machines; only the SLSA release generator stays on `ubuntu-latest`. The
-runner keeps its state between jobs, so a job cleans up what it starts (the
-e2e removes its NATS container) and avoids the ports a local stack uses.
+CI jobs run on GitHub-hosted runners (`runs-on: ubuntu-latest`). The
+repository is public, so a self-hosted runner would run code from any fork's
+pull request on that machine; keep every workflow on hosted runners. The e2e
+still names its containers per run and lets Docker pick their ports, so it
+is safe wherever it runs.
 
 CI runs this suite on every pull request that touches `backend/` or the
 workflow itself, and on pushes to `main`

@@ -23,15 +23,15 @@ permissions:
   contents: read
 
 
-# One self-hosted runner takes jobs one at a time: a new push cancels the
-# runs of the commit it replaces instead of queueing behind them.
+# A new push cancels the runs of the commit it replaces instead of queueing
+# behind them.
 concurrency:
   group: workflows-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check out the repository

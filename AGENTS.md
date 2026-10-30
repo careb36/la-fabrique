@@ -172,8 +172,8 @@ venv's interpreter.
 
 ## CI
 
-Workflows live in `.github/workflows/` and mostly run on the self-hosted
-`[self-hosted, linux, x64, lafabrique]` runner: `backend-tests.yml` (Poetry,
+Workflows live in `.github/workflows/` and run on GitHub-hosted runners
+(`ubuntu-latest`): `backend-tests.yml` (Poetry,
 ruff, mypy, pytest, then the llm-proxy suite), `frontend-build.yml` (`npm ci`,
 tsc, lint, tests, build), `e2e.yml` (the loop against pgvector/Postgres and NATS with
 JetStream), `security-scan.yml` (Trivy, plus a non-failing `safety check`) and
@@ -187,12 +187,13 @@ A red run does not necessarily mean broken code: read the check-run
 not just the log. Two infrastructure failures look identical to test failures in
 the UI and in `--log-failed`:
 
-- *"The self-hosted runner lost communication with the server"* — the tests had
-  already passed (the whole suite) when the runner dropped; it is the runner host,
-  not the change.
+- *"The runner has received a shutdown signal"* or *"lost communication with the
+  server"* — the runner went away mid-job; it is the runner, not the change.
 - *"The job was not started because recent account payments have failed or your
-  spending limit needs to be increased"* — a job on a hosted runner. Every
-  workflow must stay on the self-hosted label for this reason.
+  spending limit needs to be increased"* — the account's Actions billing, not
+  the change. Never move a workflow to a self-hosted runner to get around it:
+  the repository is public, and a self-hosted runner would run code from any
+  fork's pull request on that machine.
 
 The `Run tests` step also reports `conclusion: null` in that first case, which
 is the tell.

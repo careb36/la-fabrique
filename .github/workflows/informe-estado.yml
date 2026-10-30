@@ -6,9 +6,6 @@
 # estado operativo de los cinco sistemas, incluidos los que son privados (qué CI
 # falla, cuántas alertas de dependencias hay abiertas y cuántas son críticas).
 # El issue queda igual de accesible para dirección y no lo indexa un buscador.
-#
-# Corre en el runner propio porque los jobs hospedados de la cuenta están
-# bloqueados por el límite de gasto de Actions.
 
 name: Informe de estado
 
@@ -35,7 +32,7 @@ permissions:
 jobs:
   solicitar:
     name: Solicitar informe
-    runs-on: [self-hosted, linux, x64, lafabrique]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
