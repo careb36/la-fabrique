@@ -9,12 +9,23 @@
 [![React](https://img.shields.io/badge/react-%2320232b.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-%23007acc?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=for-the-badge)](LICENSE)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](https://build.nvidia.com/)
+[![Nebius Token Factory](https://img.shields.io/badge/Nebius-Token%20Factory-1E40AF?style=for-the-badge)](https://tokenfactory.nebius.com/)
+[![PyQt6](https://img.shields.io/badge/PyQt6-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://www.riverbankcomputing.com/software/pyqt/)
 
 **AI code agents that write, run and test code — commanded by voice, on NVIDIA Nemotron at Nebius Token Factory**
 
 > **Languages:** [🇺🇸 English](README.md) | [🇪🇸 Español](README.es.md)
 
 </div>
+
+> **Try it in 30 seconds:** clone the branch and run the offline demo.
+>
+> ```bash
+> git clone -b fusion https://github.com/careb36/la-fabrique.git
+> cd la-fabrique
+> python3 demo/coding_agent.py --offline
+> ```
 
 ---
 
