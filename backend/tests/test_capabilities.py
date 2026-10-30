@@ -41,12 +41,18 @@ def test_agent_graph_enabled(test_client, default_settings, monkeypatch):
     assert response.json()["agent_graph"] is True
 
 
-def test_memory_follows_memory_client(test_client, default_settings, monkeypatch):
-    monkeypatch.setattr(app.state, "memory_client", MagicMock())
-    assert test_client.get("/v1/capabilities").json()["memory"] is True
+def test_memory_follows_memory_client(test_client, default_settings):
+    # Assign directly: monkeypatch cannot restore a Starlette State key that was
+    # written by the lifespan, so its teardown raises KeyError.
+    previous = app.state.memory_client
+    try:
+        app.state.memory_client = MagicMock()
+        assert test_client.get("/v1/capabilities").json()["memory"] is True
 
-    monkeypatch.setattr(app.state, "memory_client", None)
-    assert test_client.get("/v1/capabilities").json()["memory"] is False
+        app.state.memory_client = None
+        assert test_client.get("/v1/capabilities").json()["memory"] is False
+    finally:
+        app.state.memory_client = previous
 
 
 def test_github_token_enables_github(test_client, default_settings, monkeypatch):

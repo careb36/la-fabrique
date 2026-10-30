@@ -66,6 +66,16 @@ def classify_model(model_id: str) -> tuple[str, str]:
     return "balanced", "General-purpose model"
 
 
+def open_model_tier(model_id: str) -> str:
+    """Tier of an open model (Nemotron and the rest Nebius or NVIDIA serve)."""
+    lower = model_id.lower()
+    if "nano" in lower:
+        return "fast"
+    if "ultra" in lower or "253b" in lower or "340b" in lower:
+        return "strategic"
+    return "balanced"
+
+
 def provider_for_model(model_id: str) -> str | None:
     """The provider whose prefix *model_id* carries, or ``None``."""
     lower = (model_id or "").strip().lower()

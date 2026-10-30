@@ -13,6 +13,7 @@ interface AuthState {
   loadingMe: boolean
   profileError: string | null
   login: (email: string, password: string) => Promise<void>
+  adoptSession: (token: string, expiresInSeconds: number) => void
   loadMe: () => Promise<void>
   logout: () => void
   getValidToken: () => string | null
@@ -39,6 +40,20 @@ export const useAuthStore = create<AuthState>()(
           profileError: null,
         })
         await get().loadMe()
+      },
+
+      // The desktop launcher already holds the operator's key and mints a
+      // session for this browser, so the UI opens signed in. Ordinary installs
+      // never see this path: they log in through the form.
+      adoptSession: (token, expiresInSeconds) => {
+        queryClient.clear()
+        set({
+          token,
+          expiresAt: Date.now() + Math.max(60, expiresInSeconds) * 1000,
+          meLoaded: false,
+          loadingMe: false,
+          profileError: null,
+        })
       },
 
       loadMe: async () => {
