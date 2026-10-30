@@ -157,19 +157,6 @@ function ConvertTo-ArgumentString([string[]]$Arguments) {
 # Ejecuta Python sin que PowerShell interprete su stderr. Devuelve código de
 # salida y ambos flujos: así un import roto nunca se confunde con una
 # dependencia ausente ni aborta el script con NativeCommandError.
-function Read-TextFile([string]$Path) {
-    for ($intento = 0; $intento -lt 14; $intento++) {
-        if (Test-Path -LiteralPath $Path) {
-            $text = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
-            if ($text) { return $text }
-        }
-        Start-Sleep -Milliseconds 50
-    }
-    return ''
-}
-
-# Ejecuta Python en el propio proceso de PowerShell, mezclando los flujos. Es
-# la red de seguridad cuando la redirección a archivo no devuelve nada.
 function Invoke-PythonInProcess {
     param(
         [Parameter(Mandatory = $true)][string]$Exe,
@@ -196,26 +183,41 @@ function Invoke-Python {
         [int]$TimeoutSeconds = 120,
         [switch]$AllowDirectRetry
     )
-    $outFile = [IO.Path]::GetTempFileName()
-    $errFile = [IO.Path]::GetTempFileName()
+    # Se usa la API .NET y no 'Start-Process': en PowerShell 5.1
+    # Start-Process -PassThru devuelve ExitCode $null cuando el proceso termina
+    # antes de que PowerShell lo enganche, y entonces todo fallo se queda sin
+    # código y sin mensaje. ReadToEndAsync en los dos flujos evita bloqueos.
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $Exe
+    $startInfo.Arguments = (ConvertTo-ArgumentString $Arguments)
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    $startInfo.StandardOutputEncoding = $utf8
+    $startInfo.StandardErrorEncoding = $utf8
+    try { $startInfo.WorkingDirectory = (Get-Location).Path } catch { }
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
     try {
-        try {
-            $process = Start-Process -FilePath $Exe -ArgumentList (ConvertTo-ArgumentString $Arguments) `
-                -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-        } catch {
-            if ($AllowDirectRetry) { return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments }
-            return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
-        }
+        $null = $process.Start()
+    } catch {
+        if ($AllowDirectRetry) { return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments }
+        return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
+    }
+    try {
+        $outTask = $process.StandardOutput.ReadToEndAsync()
+        $errTask = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try { $process.Kill() } catch { }
             return [pscustomobject]@{ ExitCode = -2; StdOut = ''; StdErr = "no terminó en $TimeoutSeconds s" }
         }
-        # La segunda espera, sin límite, es imprescindible: los lectores
-        # asíncronos de .NET pueden no haber volcado el archivo todavía y se lee
-        # vacío. Ese fallo hacía que ningún intérprete pareciera válido.
-        try { $process.WaitForExit() } catch { }
-        $stdout = Read-TextFile $outFile
-        $stderr = Read-TextFile $errFile
+        $process.WaitForExit()
+        $stdout = $outTask.GetAwaiter().GetResult()
+        $stderr = $errTask.GetAwaiter().GetResult()
+        if ($null -eq $stdout) { $stdout = '' }
+        if ($null -eq $stderr) { $stderr = '' }
         # Sin salida y con error: se repite en el propio proceso para tener el
         # mensaje real (si no, un fallo se queda sin explicación).
         if (-not $stdout -and -not $stderr -and ($AllowDirectRetry -or $process.ExitCode -ne 0)) {
@@ -226,7 +228,7 @@ function Invoke-Python {
         if ($AllowDirectRetry) { return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments }
         return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
     } finally {
-        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+        $process.Dispose()
     }
 }
 
@@ -304,6 +306,9 @@ function Test-PythonModules {
     }
     return [pscustomobject]@{
         ExitCode = $result.ExitCode
+        # La verdad está en el JSON: si el intérprete respondió con su informe,
+        # el código de salida da igual (PowerShell 5.1 a veces lo pierde).
+        Ready    = (($null -ne $payload) -and (@($missing).Count -eq 0) -and (@($broken).Count -eq 0))
         Missing  = $missing
         Broken   = $broken
         Output   = (($result.StdErr + $result.StdOut) -as [string]).Trim()
@@ -941,7 +946,8 @@ function Install-BackendDependencies([string]$PythonExe) {
             throw "No pude leer poetry.lock para generar el requirements."
         }
         if ($exportResult.ExitCode -ne 0) {
-            Write-Aviso "El exportador salió con código $($exportResult.ExitCode), pero escribió el requirements; sigo."
+            $codigo = if ($null -eq $exportResult.ExitCode) { 'desconocido' } else { $exportResult.ExitCode }
+            Write-Aviso "El exportador salió con código $codigo, pero escribió el requirements; sigo."
         }
         Write-Detalle $exportResult.StdOut
         & $PythonExe -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r $requirements
@@ -984,14 +990,14 @@ function Install-AssistantDependencies([string]$PythonExe) {
 
 function Test-BackendReady([string]$PythonExe) {
     $report = Test-PythonModules -Exe $PythonExe -Modules $script:BackendModules
-    if ($report.ExitCode -eq 0) { Write-Ok "Módulos del backend presentes"; return $true }
+    if ($report.Ready) { Write-Ok "Módulos del backend presentes"; return $true }
     Write-ModuleReport $report "el backend"
     return $false
 }
 
 function Test-AssistantReady([string]$PythonExe) {
     $report = Test-PythonModules -Exe $PythonExe -Modules $script:AssistantModules
-    if ($report.ExitCode -eq 0) { Write-Ok "Módulos del asistente presentes"; return $true }
+    if ($report.Ready) { Write-Ok "Módulos del asistente presentes"; return $true }
     Write-ModuleReport $report "el asistente"
     return $false
 }

@@ -52,9 +52,21 @@ def test_no_array_unrolling_through_if(script):
     assert "@(, @" not in script
 
 
-def test_waits_for_output_before_reading_it(script):
-    """Reading the redirect file after WaitForExit(ms) alone returns empty."""
-    assert script.count("WaitForExit()") >= 1
+def test_captures_output_with_dotnet_not_start_process(script):
+    """Start-Process -PassThru loses ExitCode ($null) in PowerShell 5.1.
+
+    With a null code every "if ($code -ne 0)" fires: a successful export or a
+    finished install looked like a failure and the real message was lost.
+    """
+    assert "Start-Process -FilePath" not in script
+    assert "ReadToEndAsync()" in script
+    assert "$process.ExitCode" in script
+
+
+def test_readiness_is_decided_by_the_probe_payload(script):
+    """The JSON report is the truth; the exit code is not reliable."""
+    assert "Ready    =" in script
+    assert script.count("$report.Ready") >= 2
 
 
 def test_has_diagnostic_mode(script):
