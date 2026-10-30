@@ -6,7 +6,11 @@ Shared by the voice router and its action handlers (``routers/voice_actions.py``
 import secrets
 from dataclasses import dataclass
 
-from auth_policy import current_user_if_required
+from auth_policy import (
+    current_user_if_required,
+    require_company_role,
+    viewer_company_ids,
+)
 from config import settings
 from database import get_session
 from fastapi import Depends, HTTPException, Request
@@ -34,7 +38,7 @@ async def voice_access(
     provided = (request.headers.get("X-Voice-Key") or "").strip()
 
     if configured:
-        if provided and secrets.compare_digest(provided, configured):
+        if provided and secrets.compare_digest(provided.encode(), configured.encode()):
             return VoiceCaller(user=None, via_key=True)
         try:
             user = await current_user_if_required(request, session)
@@ -83,12 +87,67 @@ def _fail(action: str, language: str, speech_es: str, speech_en: str, **extra) -
     )
 
 
+# Actions that only read the factory; everything else changes it and needs a
+# Manager, the same role the web asks for.
+READ_ACTIONS = frozenset({"estado", "empresas", "equipo", "sprints", "ayuda"})
+
+
+def key_company(session: Session) -> Company | None:
+    """The one company the shared voice key reaches.
+
+    ``VOICE_COMPANY_ID`` when set, else the oldest company. The key never
+    reaches any other company: it is a credential for one desktop install,
+    not an administrator key for every tenant.
+    """
+    return voice_control.resolve_company(session, settings.VOICE_COMPANY_ID)
+
+
+def _no_access(action: str, language: str) -> dict:
+    return _fail(
+        action,
+        language,
+        "No tienes permiso para eso en esa empresa.",
+        "You do not have permission for that in that company.",
+    )
+
+
 def _company(
-    session: Session, requested: int | None, action: str, language: str
+    session: Session,
+    requested: int | None,
+    action: str,
+    language: str,
+    caller: VoiceCaller | None = None,
 ) -> tuple[Company | None, dict | None]:
-    company_id = requested if requested is not None else settings.VOICE_COMPANY_ID
-    company = voice_control.resolve_company(session, company_id)
+    """The company *action* is about, once the caller may act on it.
+
+    A key caller reaches only :func:`key_company`. A signed-in user reaches a
+    company they belong to, as a Viewer for reading and a Manager for
+    anything else, and defaults to their own first company.
+    """
+    if caller is not None and caller.via_key:
+        company = key_company(session)
+        if company is not None and requested is not None and requested != company.id:
+            return None, _no_access(action, language)
+        company_id = company.id if company is not None else None
+    elif caller is not None and caller.user is not None:
+        company_id = requested if requested is not None else settings.VOICE_COMPANY_ID
+        if company_id is None:
+            own = viewer_company_ids(session, caller.user)
+            company_id = min(own) if own else None
+            if company_id is None:
+                return None, _no_access(action, language)
+        company = voice_control.resolve_company(session, company_id)
+    else:
+        company_id = requested if requested is not None else settings.VOICE_COMPANY_ID
+        company = voice_control.resolve_company(session, company_id)
+
     if company is not None:
+        if caller is not None and caller.user is not None:
+            minimum = "Viewer" if action in READ_ACTIONS else "Manager"
+            try:
+                require_company_role(session, caller.user, company.id, minimum)
+            except HTTPException:
+                return None, _no_access(action, language)
         return company, None
     if company_id is not None:
         return None, _fail(
@@ -111,10 +170,11 @@ def status_answer(
     company_id: int | None,
     sprint_id: int | None,
     language: str | None,
+    caller: VoiceCaller | None = None,
 ) -> dict:
     """What the factory is doing, as one sentence plus its numbers."""
     language = voice_control.normalize_language(language or _LANGUAGE)
-    company, failure = _company(session, company_id, "estado", language)
+    company, failure = _company(session, company_id, "estado", language, caller)
     if failure:
         return failure
 

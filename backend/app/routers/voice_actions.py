@@ -6,6 +6,7 @@ cannot do more than the web allows.
 
 from uuid import uuid4
 
+from auth_policy import viewer_company_ids
 from fastapi import HTTPException
 from models import BacklogItem, Company, OutboxEvent
 from schemas import (
@@ -24,7 +25,7 @@ from routers.sprint import (
     resume_sprint,
     start_sprint,
 )
-from routers.voice_support import _company, _fail, _result, status_answer
+from routers.voice_support import _company, _fail, _result, key_company, status_answer
 
 # ---------------------------------------------------------------------------
 # Actions
@@ -32,11 +33,19 @@ from routers.voice_support import _company, _fail, _result, status_answer
 
 
 async def _action_status(req, action, language, session, caller):
-    return status_answer(session, req.company_id, req.sprint_id, language)
+    return status_answer(session, req.company_id, req.sprint_id, language, caller)
 
 
 async def _action_companies(req, action, language, session, caller):
     companies = list(session.exec(select(Company).order_by(Company.id)).all())
+    if caller.via_key:
+        reachable = key_company(session)
+        companies = [
+            c for c in companies if reachable is not None and c.id == reachable.id
+        ]
+    elif caller.user is not None:
+        own = set(viewer_company_ids(session, caller.user))
+        companies = [c for c in companies if c.id in own]
     if not companies:
         return _fail(
             action,
@@ -58,7 +67,7 @@ async def _action_companies(req, action, language, session, caller):
 
 
 async def _action_team(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     agents = voice_control.agent_roster(session, company.id)
@@ -98,7 +107,7 @@ async def _action_assign(req, action, language, session, caller):
     web board uses sends it to the worker. A paused sprint keeps the card
     without dispatching — resuming is still the human's decision.
     """
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     text = str(req.text or "").strip()
@@ -229,7 +238,7 @@ async def _action_assign(req, action, language, session, caller):
 
 
 async def _action_sprints(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     sprints = voice_control.sprint_list(session, company.id)
@@ -263,7 +272,7 @@ async def _action_plan(req, action, language, session, caller):
             "Dime el objetivo del sprint y te lo planeo.",
             "Tell me the sprint objective and I will plan it.",
         )
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     scope = voice_control.normalize_scope(req.scope_size, company.default_scope_size)
@@ -293,7 +302,7 @@ async def _action_create_sprint(req, action, language, session, caller):
             "Dime para qué es el sprint y lo creo.",
             "Tell me what the sprint is for and I will create it.",
         )
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     scope = voice_control.normalize_scope(req.scope_size, company.default_scope_size)
@@ -339,7 +348,7 @@ async def _action_create_sprint(req, action, language, session, caller):
 
 
 async def _action_dispatch(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     sprint = voice_control.resolve_sprint(session, company.id, req.sprint_id)
@@ -381,7 +390,7 @@ async def _action_dispatch(req, action, language, session, caller):
 
 
 async def _action_pause(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     sprint = voice_control.resolve_sprint(session, company.id, req.sprint_id)
@@ -412,7 +421,7 @@ async def _action_pause(req, action, language, session, caller):
 
 
 async def _action_resume(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
     sprint = voice_control.resolve_sprint(session, company.id, req.sprint_id)
@@ -437,8 +446,19 @@ async def _action_resume(req, action, language, session, caller):
     )
 
 
+def _approver(caller) -> str:
+    """Who decided, from the credential, never from a name in the request.
+
+    A name the assistant sends is a claim; the audit row records what is known:
+    the signed-in user, or the shared voice key.
+    """
+    if caller.user is not None:
+        return caller.user.email
+    return "voice-key" if caller.via_key else "voice-anonymous"
+
+
 def _action_decide(req, action, language, session, caller):
-    company, failure = _company(session, req.company_id, action, language)
+    company, failure = _company(session, req.company_id, action, language, caller)
     if failure:
         return failure
 
@@ -467,7 +487,7 @@ def _action_decide(req, action, language, session, caller):
             run_id=run.id,
             payload=AgentRunApprovalRequest(
                 company_id=company.id,
-                approver_name=(req.approver_name or "Asistente de voz").strip(),
+                approver_name=_approver(caller),
                 decision="approved" if approved else "rejected",
                 feedback=feedback or None,
                 rejection_category=None if approved else "other",

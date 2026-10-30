@@ -62,7 +62,7 @@ def voice_status(
     caller: VoiceCaller = Depends(voice_access),  # noqa: B008 - FastAPI dependency marker.
 ):
     """What the factory is doing, as one sentence plus its numbers."""
-    return status_answer(session, company_id, sprint_id, language)
+    return status_answer(session, company_id, sprint_id, language, caller)
 
 
 @router.post("/command")

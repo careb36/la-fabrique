@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import time
 import unicodedata
 from pathlib import Path
@@ -262,7 +263,11 @@ def build(root: Path, request_text: str, chat, *, now: float | None = None) -> d
             "Probá de nuevo o pedí algo más concreto."
         )
 
-    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    # A random part keeps the preview URL from being guessed: the folder name
+    # is otherwise the request's first words and the second it was built.
+    stamp = (
+        time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + "-" + secrets.token_hex(4)
+    )
     base = slugify(request_text)
     slug, attempt = f"{base}-{stamp}", 1
     while (root / slug).exists():
