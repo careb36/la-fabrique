@@ -113,6 +113,21 @@ Copy `.env.example` to `.env` and fill in:
   a deleted, inserted, reordered, altered or moved row breaks it). Without a
   key the chain is unkeyed and says so.
   Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`
+- `VOICE_API_KEY` — optional. The shared key the desktop assistant sends as
+  `X-Voice-Key` to `/v1/voice/*` (`routers/voice.py`, actions in
+  `routers/voice_actions.py`) and to `POST /v1/auth/desktop`, which trades it
+  for a session of the desktop operator (an Owner of the oldest company).
+  Unset, those routes answer 503 while `AUTH_REQUIRED` is on and the desktop
+  exchange refuses; they never open anonymously. `VOICE_COMPANY_ID` picks the
+  company when the assistant names none (empty: the oldest).
+- `FABRICA_BUILDS_DIR` — where `POST /v1/voice/build` (`routers/build.py`,
+  `services/codegen.py`) writes a project asked for in one sentence, served
+  back sandboxed under `/v1/voice/build/<slug>/<file>`; default
+  `/workspace/builds`.
+- `NVIDIA_API_KEY` / `NVIDIA_PROXY_URL` — optional. NVIDIA's own gateway for
+  the same `nvidia/` ids Nebius serves; the proxy tries it first when its key
+  is set. `AGENT_MODEL` is the model of every role `NEMOTRON_ROLES` does not
+  name. `NEO4J_DISABLED=true` skips Neo4j on an install without it.
 - `NATS_BIND` — optional, default `127.0.0.1`. The host address NATS listens on;
   the workspace daemon on this computer connects there. `0.0.0.0` exposes it to
   other machines, which can then ask the daemon to run commands.
@@ -142,13 +157,13 @@ FastAPI Backend  ←→  LangGraph Agent Orchestration
 
 ### Key Components
 
-**`backend/app/main.py`** — The FastAPI app: lifespan (workers, JetStream, schema backfills), middleware and the routers it includes. The routes live in `backend/app/routers/` (`sprint`, `agents`, `agent_runs`, `inbox`, `messages`, `procedures`, `support`, `workspace`, `github`, `auth`, `enterprise`).
+**`backend/app/main.py`** — The FastAPI app: lifespan (workers, JetStream, schema backfills), middleware and the routers it includes. The routes live in `backend/app/routers/` (`sprint`, `agents`, `agent_runs`, `inbox`, `messages`, `procedures`, `support`, `workspace`, `github`, `auth`, `enterprise`, `voice`, `build`). When `frontend/dist` exists the backend also serves the web UI same-origin (`ui_static.py`); the frontend's API base defaults to its own origin (`frontend/src/lib/apiBase.ts`), the Vite dev server proxies `/v1` to `VITE_PROXY_TARGET`, and `VITE_API_URL` still wins.
 
 **`backend/agents/graph.py`** — Optional LangGraph producer, disabled unless `AGENT_GRAPH_ENABLED=true`. Its runs are ingested as `AgentRun` records with `producer: "le-fabrique-graph"`.
 
 **`backend/app/llm_proxy_client.py`** — Thin HTTP client wrapping the LLM proxy for token-budget-aware requests. `chat()` / `chat_async()` take a `model` id (default `"gemini-pro"`), a `role`, and an optional `bu_id`.
 
-**`llm-proxy/app.py`** — Flask gateway that enforces per-company token budgets, routes by model-id prefix to the wired providers (Nebius Token Factory, Gemini, DeepSeek, Qwen), and refreshes each provider's catalogue hourly. Each answer says how its token count is known (`llm-proxy/usage.py`): `usage_status: reported` with the provider's figure in `usage`, or `estimated` with a characters/4 estimate apart in `usage_estimate` (charged to the quota, never shown as usage); the backend's `usage_status` keeps estimates out of the KPI averages.
+**`llm-proxy/app.py`** — Flask gateway that enforces per-company token budgets, routes by model-id prefix to the wired providers (NVIDIA's gateway, Nebius Token Factory, Gemini, DeepSeek, Qwen), checks every id against the provider's live catalogue before sending it, and refreshes each provider's catalogue hourly. Each answer says how its token count is known (`llm-proxy/usage.py`): `usage_status: reported` with the provider's figure in `usage`, or `estimated` with a characters/4 estimate apart in `usage_estimate` (charged to the quota, never shown as usage); the backend's `usage_status` keeps estimates out of the KPI averages.
 
 **`vscode-daemon/daemon.py`** — The workspace daemon: a Python process that runs natively on the user's macOS, Linux or Windows machine (started by `scripts/start-daemon.*`, reconnects to NATS on its own). It answers `workspace.generate` (write files, reply with the sha256 read back from disk), `workspace.execute` (run a command), `workspace.capabilities`, `workspace.status`, `workspace.browse` (folder picker) and `workspace.inspect` (canonical path, git remote/branch, file snapshot for stack detection), and consumes the JetStream queue `workspace.deliver` for files queued while it was offline, reporting on `workspace.delivered`. Its `requirements.txt` is `nats-py` only.
 
@@ -358,6 +373,8 @@ Test files:
 | `test_audit_chain.py` | The audit hash chain per company: numbered and linked rows, each company its own chain, a deleted, altered or moved row breaks it where it was, a chain rewritten without the key does not verify, unkeyed chains say so, rows without a company stay unchained, KPI turn rows are signed and chained too |
 | `test_tenant_scoping.py` | Every table carries a required `company_id` that references `companies`, or is listed with its reason (the tenant, users, help-desk tickets, the outbox, backlog items through their sprint); `audit_log` alone may hold rows without a company; the lists hold no stale names |
 | `test_exception_handlers.py` | The catch-all 500: it says a report was sent only when the support webhook took it, names the installation from `FABRIQUE_VENDOR_ID`, and publishes the incident ticket on NATS |
+| `test_voice_control.py` / `test_voice_build.py` | The voice façade: the shared key or a real user, never anonymous; each spoken action calls the same endpoint as the web; a voice-created sprint starts paused; a project from one sentence is written inside `FABRICA_BUILDS_DIR` and served sandboxed; an empty `VOICE_COMPANY_ID` is unset |
+| `test_auth_desktop.py` / `test_ui_static.py` | The desktop session exchange (refused without the key); the built UI served same-origin without swallowing API routes |
 | `test_metrics.py` | `/metrics` labels requests by route template, a fixed route by its path, a CORS preflight as `preflight` and a path no route answered as `unmatched`; memory search caps its `limit` |
 
 **End to end, against a real stack:** `scripts/e2e/run.sh` starts the backend,

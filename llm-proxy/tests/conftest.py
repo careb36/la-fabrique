@@ -18,7 +18,8 @@ _APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 # app.py imports its sibling modules (usage.py) by name, as it does in /app.
 sys.path.insert(0, str(_APP_PATH.parent))
 
-for _key in ("GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "NEBIUS_API_KEY"):
+for _key in ("GEMINI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY", "NEBIUS_API_KEY",
+             "NVIDIA_API_KEY"):
     os.environ[_key] = ""
 os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
@@ -65,6 +66,8 @@ class FakeUpstream:
             return "deepseek"
         if "qwen" in url:
             return "qwen"
+        if "integrate.api.nvidia" in url:
+            return "nvidia"
         if "tokenfactory" in url:
             return "nebius"
         if "generativelanguage" in url:
@@ -106,7 +109,8 @@ def proxy(monkeypatch):
     monkeypatch.setattr(mod, "_available_qwen_models", {"qwen3.7-plus", "qwen3.6-flash"})
     monkeypatch.setattr(mod, "track_usage_in_db", lambda bu_id, tokens: None)
     # A catalogue that is empty must stay empty: no refresh over the network.
-    for name in ("_refresh_gemini_models", "_refresh_deepseek_models", "_refresh_qwen_models"):
+    for name in ("_refresh_gemini_models", "_refresh_deepseek_models", "_refresh_qwen_models",
+                 "_refresh_nebius_models", "_refresh_nvidia_models"):
         monkeypatch.setattr(mod, name, lambda: None)
     return mod
 
@@ -119,6 +123,28 @@ def nebius(proxy, monkeypatch):
                         {"nvidia/Llama-3.1-Nemotron-70B-Instruct", "nvidia/Nemotron-Nano-9B"})
     monkeypatch.setattr(proxy, "_refresh_nebius_models", lambda: None)
     return proxy
+
+
+@pytest.fixture()
+def nvidia(proxy, monkeypatch):
+    """The proxy with NVIDIA's own gateway configured instead of Nebius."""
+    monkeypatch.setattr(proxy, "NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.setattr(proxy, "_available_nvidia_models", {
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3-nano-30b-a3b",
+    })
+    return proxy
+
+
+@pytest.fixture()
+def both_gateways(nvidia, monkeypatch):
+    """Both keys answer for ``nvidia/`` ids: the NVIDIA gateway must win."""
+    monkeypatch.setattr(nvidia, "NEBIUS_API_KEY", "n-key")
+    monkeypatch.setattr(nvidia, "_available_nebius_models", {
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "meta-llama/Llama-3.3-70B-Instruct",
+    })
+    return nvidia
 
 
 @pytest.fixture()

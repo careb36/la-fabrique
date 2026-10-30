@@ -254,3 +254,135 @@ def test_gemini_reports_its_own_count_or_the_estimate_stays_apart(client, upstre
     estimated = client.post("/v1/chat/completions", json={"model": "gemini-3.8-flash", "messages": [{"role": "user", "content": "hi"}]}).get_json()
     assert "usage" not in estimated
     assert estimated["usage_status"] == "estimated"
+
+
+def test_env_values_are_trimmed(monkeypatch):
+    """A .env edited on Windows leaves a CRLF, and a key with \\r is not a key."""
+    from conftest import proxy_module
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "nvapi-abc\r\n")
+
+    assert proxy_module._env("NEBIUS_API_KEY") == "nvapi-abc"
+    assert proxy_module._env("NO_EXISTE", "por-defecto") == "por-defecto"
+
+
+# ── NVIDIA's own gateway (integrate.api.nvidia.com) ─────────────────────────
+
+
+def test_nemotron_ultra_routes_to_nvidias_gateway(nvidia, client, upstream):
+    upstream.set("nvidia", openai_ok("from ultra"))
+
+    resp = _chat(client, "nvidia/nemotron-3-ultra-550b-a55b")
+
+    assert resp.status_code == 200
+    assert upstream.providers_called() == ["nvidia"]
+    assert upstream.calls[0]["url"] == (
+        "https://integrate.api.nvidia.com/v1/chat/completions"
+    )
+    body = resp.get_json()
+    assert body["provider"] == "nvidia"
+    assert body["served_model"] == "nvidia/nemotron-3-ultra-550b-a55b"
+
+
+def test_the_shared_prefix_prefers_the_gateway_whose_key_is_configured(
+    both_gateways, client, upstream
+):
+    upstream.set("nvidia", openai_ok("from ultra"))
+
+    resp = _chat(client, "nvidia/nemotron-3-ultra-550b-a55b")
+
+    assert resp.status_code == 200
+    assert upstream.providers_called() == ["nvidia"]
+    # The same id still resolves on Nebius when that is the only key.
+    assert both_gateways.resolve_model("nvidia/nemotron-3-ultra-550b-a55b")[0] == "nvidia"
+
+
+def test_nemotron_still_resolves_on_nebius_without_the_nvidia_key(nebius, client, upstream):
+    upstream.set("nebius", openai_ok("from nebius"))
+
+    resp = _chat(client, "nvidia/Llama-3.1-Nemotron-70B-Instruct")
+
+    assert resp.status_code == 200
+    assert upstream.providers_called() == ["nebius"]
+
+
+def test_thinking_parameters_reach_the_provider(nvidia, client, upstream):
+    upstream.set("nvidia", openai_ok("listo"))
+
+    client.post("/v1/chat/completions", json={
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "messages": [{"role": "user", "content": "hola"}],
+        "temperature": 1,
+        "top_p": 0.95,
+        "max_tokens": 16384,
+        "chat_template_kwargs": {"enable_thinking": True},
+    })
+
+    sent = upstream.calls[0]["json"]
+    assert sent["temperature"] == 1
+    assert sent["top_p"] == 0.95
+    assert sent["max_tokens"] == 16384
+    assert sent["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_a_nested_extra_body_is_flattened_before_the_call(nvidia, client, upstream):
+    upstream.set("nvidia", openai_ok("listo"))
+
+    client.post("/v1/chat/completions", json={
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "messages": [{"role": "user", "content": "hola"}],
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": True}},
+    })
+
+    sent = upstream.calls[0]["json"]
+    assert "extra_body" not in sent
+    assert sent["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_reasoning_travels_in_the_answer(nvidia, client, upstream):
+    upstream.set("nvidia", FakeResponse(200, {
+        "choices": [{"message": {
+            "role": "assistant",
+            "content": "Cuatro.",
+            "reasoning_content": "Dos más dos son cuatro.",
+        }}],
+    }))
+
+    body = _chat(client, "nvidia/nemotron-3-ultra-550b-a55b").get_json()
+
+    message = body["choices"][0]["message"]
+    assert message["content"] == "Cuatro."
+    assert message["reasoning_content"] == "Dos más dos son cuatro."
+
+
+def test_streaming_is_refused_with_an_explanation(nvidia, client, upstream):
+    resp = client.post("/v1/chat/completions", json={
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "messages": [{"role": "user", "content": "hola"}],
+        "stream": True,
+    })
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body["error"] == "stream_unsupported"
+    assert "stream=false" in body["message"]
+    assert upstream.calls == []
+
+
+def test_nvidia_models_are_listed_with_a_tier(nvidia, client):
+    listed = {m["id"]: m for m in client.get("/v1/models").get_json()["models"]
+              if m["provider"] == "nvidia"}
+
+    assert set(listed) == {
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3-nano-30b-a3b",
+    }
+    assert listed["nvidia/nemotron-3-ultra-550b-a55b"]["tier"] == "strategic"
+    assert listed["nvidia/nemotron-3-nano-30b-a3b"]["tier"] == "fast"
+
+
+def test_an_id_served_by_both_gateways_is_listed_once(both_gateways, client):
+    providers = [m["provider"] for m in client.get("/v1/models").get_json()["models"]
+                 if m["id"] == "nvidia/nemotron-3-ultra-550b-a55b"]
+
+    assert providers == ["nvidia"]

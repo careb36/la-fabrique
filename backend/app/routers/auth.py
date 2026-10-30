@@ -5,12 +5,14 @@ Endpoints:
 - ``POST /v1/auth/register``  — create a new platform user account.
 - ``POST /v1/auth/login``     — authenticate and issue an access token.
 - ``GET /v1/auth/me``         — return the authenticated user's profile.
+- ``POST /v1/auth/desktop``   — trade the desktop's voice key for an owner session.
 - ``POST /v1/company/invite`` — invite an existing user to collaborate on a company.
 
 Passwords are hashed with bcrypt directly (``app.passwords``) before storage.
 Sensitive-route enforcement is gated by AUTH_REQUIRED.
 """
 
+import secrets
 from datetime import timedelta
 
 import auth_tokens
@@ -18,8 +20,8 @@ from auth_deps import get_current_user
 from auth_policy import current_user_if_required, is_support_admin, require_company_role
 from config import settings
 from database import get_session
-from fastapi import APIRouter, Depends, HTTPException
-from models import CompanyMember, User
+from fastapi import APIRouter, Depends, HTTPException, Request
+from models import Company, CompanyMember, User
 from passwords import hash_password, needs_rehash, rehash_password, verify_password
 from schemas import InviteMemberRequest, LoginRequest, UserCreateRequest
 from sqlmodel import Session, select
@@ -81,6 +83,84 @@ async def login(req: LoginRequest, session: Session = Depends(get_session)):  # 
         "access_token": token,
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
+
+
+DESKTOP_EMAIL = "escritorio@fabrica.local"
+
+
+def _desktop_owner(session: Session) -> User:
+    """The desktop operator, created on first use.
+
+    Its password is random and never shown: this account exists so the web UI
+    has a real user with a real membership, and the only way in is the voice
+    key the launcher already holds.
+    """
+    user = session.exec(select(User).where(User.email == DESKTOP_EMAIL)).first()
+    if user is None:
+        user = User(
+            email=DESKTOP_EMAIL,
+            full_name="Operador de escritorio",
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    company = session.exec(select(Company).order_by(Company.id)).first()
+    if company is not None:
+        member = session.exec(
+            select(CompanyMember).where(
+                CompanyMember.user_id == user.id,
+                CompanyMember.company_id == company.id,
+            )
+        ).first()
+        if member is None:
+            session.add(
+                CompanyMember(
+                    company_id=company.id, user_id=user.id, human_role="Owner"
+                )
+            )
+            session.commit()
+    return user
+
+
+@router.post("/auth/desktop")
+async def desktop_session(
+    request: Request,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
+    """
+    Exchange the desktop's voice key for an owner session for the web UI.
+
+    The fused product has one operator and the assistant already holds
+    ``VOICE_API_KEY``, which can create and dispatch sprints; minting that same
+    operator's web session is therefore not an escalation. Without a configured
+    key this refuses rather than opening the UI to anything on the machine.
+    """
+    configured = (settings.VOICE_API_KEY or "").strip()
+    provided = (request.headers.get("X-Voice-Key") or "").strip()
+    if not configured or not secrets.compare_digest(provided, configured):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing X-Voice-Key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not auth_tokens.is_auth_configured():
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+
+    user = _desktop_owner(session)
+    expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = auth_tokens.create_access_token(
+        user_id=user.id,
+        email=user.email,
+        expires_delta=expires_delta,
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "email": user.email,
     }
 
 

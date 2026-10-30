@@ -1,6 +1,6 @@
+import { API_BASE } from '../lib/apiBase'
 import { useAuthStore } from '../store/useAuthStore'
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const TIMEOUT_MS = 90_000
 const MAX_RETRIES = 2
 

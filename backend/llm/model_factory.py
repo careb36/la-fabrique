@@ -81,13 +81,20 @@ class ModelFactory:
         """
         The model id to use for *role*.
 
+        ``AGENT_MODEL`` overrides every role with one model id: the desktop
+        install only guarantees one provider key (the assistant's Gemini), and
+        the ``ROLE_MODEL_MAP`` mix of Qwen/DeepSeek would leave most roles
+        asking the proxy for a model nobody authorised. Unset means the map.
+
         ``NEMOTRON_ROLES`` (comma-separated role names) opts roles into the
         NVIDIA models served by Nebius Token Factory; ``NEMOTRON_MODEL``
         (with ``NEMOTRON_MODEL_STRATEGIC`` / ``_FAST`` overrides) names them.
         Unset means the ``ROLE_MODEL_MAP`` default, so nothing changes for
         existing deployments.
         """
-        default = ModelFactory.ROLE_MODEL_MAP[role].model_name
+        default = os.getenv("AGENT_MODEL", "").strip() or (
+            ModelFactory.ROLE_MODEL_MAP[role].model_name
+        )
         opted_in = {
             r.strip().lower()
             for r in os.getenv("NEMOTRON_ROLES", "").split(",")
@@ -182,9 +189,10 @@ def default_model_for_role(role: str) -> str:
     The model id an agent of *role* uses when its own ``model`` is empty.
 
     This is the single source of role defaults: the LangGraph producer and
-    the task worker both read ``ModelFactory.ROLE_MODEL_MAP``.
+    the task worker both come through here, so ``AGENT_MODEL`` and the
+    ``NEMOTRON_*`` overrides reach every caller.
     """
-    return ModelFactory.ROLE_MODEL_MAP[role_for_name(role)].model_name
+    return ModelFactory.model_for_role(role_for_name(role))
 
 
 def get_llm_for_role(role: str) -> ChatOpenAI:

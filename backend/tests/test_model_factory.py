@@ -1,4 +1,9 @@
-from llm.model_factory import AgentRole, ModelFactory, create_completion
+from llm.model_factory import (
+    AgentRole,
+    ModelFactory,
+    create_completion,
+    default_model_for_role,
+)
 
 
 def test_role_model_map_uses_deepseek_and_qwen_models():
@@ -74,3 +79,25 @@ def test_without_nemotron_roles_nothing_changes(monkeypatch):
     monkeypatch.setenv("NEMOTRON_MODEL", "nvidia/Nemotron-Ultra")
 
     assert ModelFactory.model_for_role(AgentRole.DEVELOPER) == "deepseek-v4-pro"
+
+
+def test_agent_model_overrides_every_role(monkeypatch):
+    """One key (the assistant's Gemini) must be enough to run every agent."""
+    monkeypatch.delenv("NEMOTRON_ROLES", raising=False)
+    monkeypatch.setenv("AGENT_MODEL", "gemini-flash-latest")
+
+    for role in AgentRole:
+        assert ModelFactory.model_for_role(role) == "gemini-flash-latest"
+
+
+def test_the_worker_and_the_graph_read_the_same_override(monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL", "gemini-flash-latest")
+
+    assert default_model_for_role("QA") == "gemini-flash-latest"
+    assert default_model_for_role("Developer") == "gemini-flash-latest"
+
+
+def test_without_agent_model_the_role_map_is_untouched(monkeypatch):
+    monkeypatch.delenv("AGENT_MODEL", raising=False)
+
+    assert default_model_for_role("QA") == "deepseek-v4-pro"

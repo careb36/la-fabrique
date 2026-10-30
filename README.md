@@ -391,14 +391,22 @@ to the Qwen/DeepSeek defaults in `backend/llm/model_factory.py`:
 
 ```bash
 # Comma-separated role names (case-insensitive).
-NEMOTRON_ROLES=PO,Architect,ScrumMaster,Developer,QA,SecOps,TechWriter
+NEMOTRON_ROLES=po,architect,scrummaster,developer,qa,secops,techwriter,engramprocessor
 
 # The model those roles get. The _STRATEGIC and _FAST variants override it
 # per role: PO, Architect and SecOps read _STRATEGIC; TechWriter reads _FAST.
 NEMOTRON_MODEL=nvidia/nemotron-3-super-120b-a12b
-NEMOTRON_MODEL_STRATEGIC=nvidia/Nemotron-3-Ultra-550b-a55b
-NEMOTRON_MODEL_FAST=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+NEMOTRON_MODEL_STRATEGIC=nvidia/nemotron-3-ultra-550b-a55b
+NEMOTRON_MODEL_FAST=nvidia/nemotron-3-super-120b-a12b
+# Any role NEMOTRON_ROLES does not name.
+AGENT_MODEL=nvidia/nemotron-3-super-120b-a12b
 ```
+
+The proxy checks every id against the provider's live catalogue before a
+request goes out, so a retired or mistyped id fails at the door with its
+reason. With `NVIDIA_API_KEY` (an `nvapi-` key) the same `nvidia/` ids are
+served by NVIDIA's own gateway (`NVIDIA_PROXY_URL`); when both keys are set,
+the first provider whose key works and whose catalogue lists the id answers.
 
 ### Checking the integration end to end
 

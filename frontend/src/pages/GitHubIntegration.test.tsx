@@ -88,7 +88,8 @@ describe('GitHubIntegration', () => {
 
     const done = await within(section).findByRole('status')
     expect(done).toHaveTextContent('acme/app is connected')
-    expect(done).toHaveTextContent('http://localhost:8000/v1/integrations/github/webhook')
+    // Same-origin by default: the UI and the API are one process in the packaged product.
+    expect(done).toHaveTextContent(`${window.location.origin}/v1/integrations/github/webhook`)
     expect(done).toHaveTextContent(secret)
     expect(within(done).getByRole('link', { name: 'Open the repository webhook settings' }))
       .toHaveAttribute('href', 'https://github.com/acme/app/settings/hooks/new')
