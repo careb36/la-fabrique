@@ -3,8 +3,8 @@
 > **Idiomas:** [🇺🇸 English](README.md) | [🇪🇸 Español](README.es.md)
 
 > Esta es la documentación original en español. La versión mantenida para el
-> envío es el [README en inglés](README.md); algunas secciones de Windows
-> describen el checkout de referencia `profesor3/`, que no se distribuye.
+> envío es el [README en inglés](README.md); algunas secciones describen el
+> checkout de referencia `profesor3/`, que no se distribuye.
 
 **Licencia [Apache-2.0](LICENSE)** · Categoría: **Coding & Agents Engineering** ·
 Hackathon Global de IA NVIDIA × Nebius
