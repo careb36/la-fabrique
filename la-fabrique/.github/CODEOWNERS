@@ -1,0 +1,28 @@
+# Un cambio en un workflow puede tocar cualquier cosa: el workflow corre con el
+# token del repositorio, en un runner self-hosted no efímero que también tiene
+# el daemon del workspace. Lo mismo vale para los manifiestos de despliegue y
+# para el proxy, que es el único sitio que ve las claves de los proveedores.
+#
+# Un `CODEOWNERS` no bloquea nada por sí solo: GitHub sólo lo aplica como
+# revisión obligatoria cuando la rama protegida tiene activada la opción
+# "Require review from Code Owners". Sigue pendiente en #182.
+
+*                                   @careb36
+
+/.github/                           @careb36
+/.github/workflows/                 @careb36
+/.github/dependabot.yml             @careb36
+/deployment/                        @careb36
+/db/                                @careb36
+/llm-proxy/                         @careb36
+/vscode-daemon/                     @careb36
+/scripts/e2e/                       @careb36
+
+# Los ficheros de política y de secretos: un cambio aquí reescribe qué se
+# considera evidencia y qué claves entran.
+/backend/app/services/verification.py  @careb36
+/backend/app/services/board.py         @careb36
+/backend/app/routers/auth.py           @careb36
+/backend/app/config.py                     @careb36
+/.env.example                          @careb36
+/SECURITY.md                           @careb36

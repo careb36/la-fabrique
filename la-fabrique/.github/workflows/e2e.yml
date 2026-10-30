@@ -1,0 +1,154 @@
+name: End to end
+
+# The whole loop against a real Postgres and NATS: scripts/e2e/run.sh starts
+# the backend, the workspace daemon and a fake LLM proxy, drives one company
+# from its foundation sprint through a blocked task, the ScrumMaster's triage,
+# the retrospective, a carry-over and a verified delivery, and checks each
+# step through the API. Neo4j is not part of it.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - 'vscode-daemon/**'
+      - 'scripts/e2e/**'
+      - '.github/workflows/e2e.yml'
+
+
+# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
+# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    # upload-artifact needs to write to the run's artifact store; a bare
+    # `contents: read` would make the keep-the-logs step fail.
+    permissions:
+      contents: read
+      actions: write
+    # Runs on the self-hosted runner like every other workflow: hosted runners
+    # are blocked by the account's spending limit, so a job on ubuntu-latest
+    # never starts and reports a failure it never produced.
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    timeout-minutes: 25
+
+
+    # Postgres and NATS are started as plain containers on ports picked at run
+    # time. Binding the service container to a fixed host port made the job die
+    # in eleven seconds with "port is already allocated" whenever anything else
+    # on the runner (another e2e run, a leftover container, a local
+    # `docker compose up`) held 5433 or 4223.
+    env:
+      # A nivel de job: el venv se crea en el paso de install y lo consume el
+      # paso del e2e, que corre en otra shell. Si solo lo tuviera el primero,
+      # el segundo resolvería otro directorio y crearía un venv vacío.
+      # `runner.temp` no vale aquí: el contexto `runner` no existe en un `env`
+      # de job y deja el workflow inválido.
+      POETRY_VIRTUALENVS_PATH: ${{ github.workspace }}/.poetry-backend
+      # Poetry consulta el keyring en cada operación. En un runner sin sesión
+      # de escritorio completa, secretstorage abre DBus, no recibe respuesta y
+      # aborta el `poetry install` ("Cannot install greenlet"). No hay ningún
+      # secreto que buscar aquí: la clave se lee del entorno.
+      POETRY_NO_INTERACTION: "1"
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start Postgres, NATS and pick free ports
+        run: |
+          # Docker itself picks the port (empty host side of -p), then the
+          # mapping is read back. Binding an ephemeral port in Python and
+          # passing it to Docker loses a race: this host runs several
+          # self-hosted agents against one Docker daemon, so two concurrent
+          # e2e runs get the same free port and the second container cannot
+          # bind it ("pg_isready: rejecting connections" for a minute).
+          #
+          # A service container cannot be given arguments and the stock NATS
+          # image starts without JetStream, which the backend needs for the
+          # durable task queue the loop relies on.
+          docker run -d --name "pg-e2e-$GITHUB_RUN_ID" \
+            -e POSTGRES_USER=factory -e POSTGRES_PASSWORD=factorypw -e POSTGRES_DB=factory \
+            -p "127.0.0.1::5432" pgvector/pgvector:pg15
+          docker run -d --name "nats-e2e-$GITHUB_RUN_ID" \
+            -p "127.0.0.1::4222" nats:2.10 -js
+
+          pg_port="$(docker port "pg-e2e-$GITHUB_RUN_ID" 5432/tcp | head -1 | sed 's/.*://')"
+          nats_port="$(docker port "nats-e2e-$GITHUB_RUN_ID" 4222/tcp | head -1 | sed 's/.*://')"
+
+          # TCP, not the Unix socket: the image starts a temporary server that
+          # listens on the socket alone while it runs the init scripts, so
+          # `pg_isready` with no -h answers "accepting" seconds before the real
+          # postmaster is up, the loop breaks on that false positive, and the
+          # next check lands in the gap and exits 1. The backend also connects
+          # over TCP on the mapped port, so that is what has to answer.
+          for _ in $(seq 1 60); do
+            docker exec "pg-e2e-$GITHUB_RUN_ID" pg_isready -U factory -h 127.0.0.1 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/"$nats_port") 2>/dev/null && break
+            sleep 1
+          done
+          # A ready socket is not a ready port, and the port is what the e2e
+          # talks to. Fail here, loudly, instead of inside the run.
+          docker exec "pg-e2e-$GITHUB_RUN_ID" pg_isready -U factory -h 127.0.0.1
+
+          {
+            echo "E2E_POSTGRES_HOST=127.0.0.1"
+            echo "E2E_POSTGRES_PORT=$pg_port"
+            echo "E2E_POSTGRES_USER=factory"
+            echo "E2E_POSTGRES_PASSWORD=factorypw"
+            echo "E2E_NATS_URL=nats://127.0.0.1:$nats_port"
+          } >> "$GITHUB_ENV"
+          echo "postgres port: $pg_port / nats port: $nats_port"
+
+      - name: Set up Python 3.12 (uv)
+        shell: bash
+        run: |
+          python3 -m pip install --user --break-system-packages uv >/dev/null
+          ~/.local/bin/uv python install 3.12
+          ~/.local/bin/uv venv --python 3.12 --seed "$RUNNER_TEMP/venv-3.12"
+          echo "$RUNNER_TEMP/venv-3.12/bin" >> "$GITHUB_PATH"
+
+      - name: Install the backend
+        working-directory: ./backend
+        run: |
+          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
+          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
+          # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
+          # `poetry: command not found`.
+          ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
+          poetry env use python
+          poetry install --no-interaction
+
+      - name: Run the loop end to end
+        env:
+          E2E_WORKDIR: ${{ runner.temp }}/e2e
+        run: |
+          # Ask Poetry which interpreter has the dependencies: it owns the
+          # backend's virtualenv, so this is the only reliable answer.
+          pick_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
+          E2E_BACKEND_PORT="$(pick_port)"
+          E2E_LLM_PORT="$(pick_port)"
+          export E2E_BACKEND_PORT E2E_LLM_PORT
+          echo "backend port: $E2E_BACKEND_PORT / llm port: $E2E_LLM_PORT"
+          E2E_PYTHON="$(cd backend && poetry run python -c 'import sys; print(sys.executable)')" \
+            bash scripts/e2e/run.sh
+
+      - name: Stop the containers
+        if: always()
+        run: |
+          docker rm -f "pg-e2e-$GITHUB_RUN_ID" "nats-e2e-$GITHUB_RUN_ID" || true
+
+      - name: Keep the logs
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-logs
+          path: ${{ runner.temp }}/e2e/*.log
+          if-no-files-found: ignore

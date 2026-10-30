@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fabrique-backend
+  labels:
+    app: fabrique
+    component: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fabrique
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: fabrique
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: fabrique-backend:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: fabrique-secrets
+        - configMapRef:
+            name: fabrique-config
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fabrique-backend-service
+spec:
+  selector:
+    app: fabrique
+    component: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer

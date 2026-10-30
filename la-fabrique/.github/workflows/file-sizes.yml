@@ -1,0 +1,40 @@
+# File sizes — a source file over the line limit may not grow
+# (scripts/check_file_sizes.py, baseline in scripts/file_size_baseline.json).
+#
+# Run the same check locally with:
+#   python3 scripts/check_file_sizes.py
+
+name: File Sizes
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/src/**'
+      - 'vscode-daemon/**'
+      - 'llm-proxy/**'
+      - 'scripts/**'
+      - '.github/workflows/file-sizes.yml'
+
+permissions:
+  contents: read
+
+
+# One self-hosted runner takes jobs one at a time: a new push cancels the
+# runs of the commit it replaces instead of queueing behind them.
+concurrency:
+  group: file-sizes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: No file over the limit grows
+        run: python3 scripts/check_file_sizes.py

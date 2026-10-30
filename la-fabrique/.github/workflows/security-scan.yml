@@ -1,0 +1,60 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 6 * * 1'
+
+
+# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
+# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12 (uv)
+        shell: bash
+        run: |
+          python3 -m pip install --user --break-system-packages uv >/dev/null
+          ~/.local/bin/uv python install 3.12
+          ~/.local/bin/uv venv --python 3.12 --seed "$RUNNER_TEMP/venv-3.12"
+          echo "$RUNNER_TEMP/venv-3.12/bin" >> "$GITHUB_PATH"
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          # v0.36.0 defaults to the v0.70.0 engine, while the previously used
+          # @master defaults to v0.76.1. Pin the engine so this change only
+          # fixes the action reference and leaves scan results identical.
+          version: 'v0.76.1'
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Safety check (Python dependencies)
+        working-directory: ./backend
+        run: |
+          pip install safety
+          safety check || true

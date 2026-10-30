@@ -1,0 +1,17 @@
+{
+  "backend/agents/graph.py": 720,
+  "backend/app/routers/enterprise.py": 693,
+  "backend/app/routers/sprint.py": 644,
+  "backend/app/services/console_assistants.py": 624,
+  "backend/app/services/discovery_service.py": 767,
+  "backend/app/services/sprint_planner.py": 860,
+  "backend/app/services/task_worker.py": 3648,
+  "frontend/src/components/GlassRoom.tsx": 1494,
+  "frontend/src/pages/AgentSettings.tsx": 1193,
+  "frontend/src/pages/CompanyNew.tsx": 1242,
+  "frontend/src/pages/Dashboard.tsx": 809,
+  "frontend/src/services/api.ts": 1098,
+  "llm-proxy/app.py": 684,
+  "scripts/verify_infra.py": 722,
+  "vscode-daemon/daemon.py": 911
+}

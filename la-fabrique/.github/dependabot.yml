@@ -1,0 +1,183 @@
+version: 2
+
+# Weekly, grouped dependency updates. Security updates are opened as soon as
+# GitHub publishes them; grouped version updates keep the PR queue small.
+updates:
+  # Python — backend y llm-proxy usan Poetry; vscode-daemon usa requirements.txt.
+  - package-ecosystem: pip
+    directory: /backend
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:15"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    # sqlmodel 0.0.48 exige datetimes con zona horaria; el codigo crea las
+    # columnas con datetime.utcnow(). Las tres cifras estan en 0.0.x, asi que
+    # para Dependabot todo salto es minor o patch: hay que ignorarlas todas
+    # hasta que exista la migracion del modelo de datos.
+    ignore:
+      - dependency-name: "sqlmodel"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+    groups:
+      backend-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /llm-proxy
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:20"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      llm-proxy-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /vscode-daemon
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:25"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      vscode-daemon-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  # Node — frontend/package.json + package-lock.json.
+  - package-ecosystem: npm
+    directory: /frontend
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    # @vitejs/plugin-react 6 exige vite ^8 y el proyecto esta en vite ^5;
+    # react 19 deja react-dom desemparejado y rompe tsc y los 49 ficheros de
+    # test. Ambos necesitan una migracion propia, no un bump automatico.
+    ignore:
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+    groups:
+      frontend-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  # Docker — un directorio por Dockerfile.
+  - package-ecosystem: docker
+    directory: /backend
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:35"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: docker
+    directory: /backend/janitor
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:36"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: docker
+    directory: /frontend
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:40"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: docker
+    directory: /llm-proxy
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:45"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: docker
+    directory: /vscode-daemon
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:50"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker Compose — la raíz solo tiene docker-compose.yml, sin Dockerfile,
+  # así que el ecosistema "docker" no detectaría ese archivo.
+  - package-ecosystem: docker-compose
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:55"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions — los workflows de .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]

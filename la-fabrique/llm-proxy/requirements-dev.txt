@@ -1,0 +1,6 @@
+# Test-only dependencies for llm-proxy/tests.  Runtime dependencies come from
+# pyproject.toml / poetry.lock (as in the Dockerfile).
+pytest>=9.1.1,<10
+# opentelemetry-instrumentation imports pkg_resources; the Dockerfile installs
+# the same pin alongside gunicorn.
+setuptools<85

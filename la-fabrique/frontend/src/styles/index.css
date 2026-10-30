@@ -1,0 +1,333 @@
+@import 'react-big-calendar/lib/css/react-big-calendar.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background-color: #030712;
+    color: #f9fafb;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code, pre, kbd {
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  }
+
+  /* Scrollbar — dark themed */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+  /* Focus ring */
+  :focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ── Component classes ─────────────────────────────────────────────────────── */
+
+@layer components {
+
+  /* Cards */
+  .card {
+    @apply bg-surface-800 border border-surface-700 rounded-card shadow-card;
+  }
+  .card-hover {
+    @apply card transition-colors duration-150 hover:bg-surface-750 hover:border-surface-600;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-150 focus-visible:outline-none focus-visible:ring-2
+           focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-900
+           disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-700 shadow-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-700 text-gray-200 hover:bg-surface-600 border border-surface-600;
+  }
+  .btn-ghost {
+    @apply btn text-gray-400 hover:text-gray-200 hover:bg-surface-800;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 text-white hover:bg-red-800;
+  }
+  .btn-success {
+    @apply btn bg-green-700 text-white hover:bg-green-800;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .btn-icon {
+    @apply btn p-2 rounded-md;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full rounded-lg bg-surface-800 border border-surface-600 text-gray-100
+           px-3 py-2 text-sm placeholder:text-gray-500
+           focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors duration-150;
+  }
+  .input-label {
+    @apply block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5;
+  }
+  .textarea {
+    @apply input resize-none;
+  }
+  .select {
+    @apply input appearance-none cursor-pointer;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-priority-critical { @apply badge bg-red-900/60 text-red-300 ring-1 ring-red-700/50; }
+  .badge-priority-high     { @apply badge bg-orange-900/60 text-orange-300 ring-1 ring-orange-700/50; }
+  .badge-priority-medium   { @apply badge bg-blue-900/60 text-blue-300 ring-1 ring-blue-700/50; }
+  .badge-priority-low      { @apply badge bg-gray-800 text-gray-400; }
+
+  .badge-status-open        { @apply badge bg-sky-900/60 text-sky-300; }
+  .badge-status-in_progress { @apply badge bg-blue-900/60 text-blue-300; }
+  .badge-status-waiting     { @apply badge bg-yellow-900/60 text-yellow-300; }
+  .badge-status-resolved    { @apply badge bg-green-900/60 text-green-300; }
+  .badge-status-closed      { @apply badge bg-gray-800 text-gray-500; }
+
+  .badge-risk-high   { @apply badge bg-red-900/70 text-red-300; }
+  .badge-risk-medium { @apply badge bg-orange-900/70 text-orange-300; }
+  .badge-risk-low    { @apply badge bg-green-900/70 text-green-300; }
+
+  /* Status dot */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full flex-shrink-0;
+  }
+  .status-dot-online    { @apply status-dot bg-green-400; }
+  .status-dot-offline   { @apply status-dot bg-gray-600; }
+  .status-dot-warning   { @apply status-dot bg-yellow-400; }
+  .status-dot-error     { @apply status-dot bg-red-400; }
+  .status-dot-pulse     { @apply status-dot-online animate-pulse; }
+  .status-dot-active    { @apply w-2 h-2 rounded-full bg-green-500 ring-2 ring-green-500/30 animate-pulse flex-shrink-0; }
+
+  /* Section headers */
+  .section-header {
+    @apply flex items-center gap-2 px-4 py-3 bg-surface-800 border-b border-surface-700;
+  }
+  .section-title {
+    @apply text-sm font-semibold text-gray-200;
+  }
+  .section-subtitle {
+    @apply text-xs text-gray-500;
+  }
+
+  /* Page layout */
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24;
+  }
+  .page-header {
+    @apply mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4;
+  }
+  .page-title {
+    @apply text-2xl font-bold text-white;
+  }
+  .page-subtitle {
+    @apply text-sm text-gray-400 mt-1;
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply bg-surface-700 rounded animate-pulse;
+  }
+
+  /* Alert / feedback */
+  .alert {
+    @apply flex items-start gap-3 p-4 rounded-card border text-sm;
+  }
+  .alert-error   { @apply alert bg-red-900/30 border-red-800/60 text-red-300; }
+  .alert-warning { @apply alert bg-yellow-900/30 border-yellow-800/60 text-yellow-300; }
+  .alert-success { @apply alert bg-green-900/30 border-green-800/60 text-green-300; }
+  .alert-info    { @apply alert bg-blue-900/30 border-blue-800/60 text-blue-300; }
+
+  /* Empty state */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-3 py-16 text-center;
+  }
+  .empty-state-icon  { @apply text-gray-600; }
+  .empty-state-title { @apply text-base font-semibold text-gray-400; }
+  .empty-state-desc  { @apply text-sm text-gray-600 max-w-xs; }
+}
+
+/* ── GlassRoom CLS stabilization ─────────────────────────────────────────── */
+.glassroom-message-container {
+  min-height: 50px;
+  contain-intrinsic-size: 0 50px;
+}
+
+.glassroom-status-indicator {
+  width: 6px;
+  height: 6px;
+  display: inline-block;
+}
+
+/* ── React Big Calendar (Sprint) ─────────────────────────────────────────── */
+
+.sprint-rbc .rbc-calendar,
+.google-calendar-shell {
+  background: #ffffff;
+  border: 1px solid #dde3ea;
+  border-radius: 16px;
+}
+
+.google-calendar-surface {
+  background: #ffffff;
+}
+
+.google-calendar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid #d2d7de;
+  background: #ffffff;
+  color: #3c4043;
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.google-calendar-toggle:hover {
+  background: #f1f3f4;
+}
+
+.google-calendar-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid #1a73e8;
+  background: #1a73e8;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.google-calendar-primary:hover {
+  background: #1765cc;
+}
+
+.sprint-rbc .rbc-time-view,
+.sprint-rbc .rbc-month-view,
+.sprint-rbc .rbc-agenda-view {
+  background: #ffffff;
+  color: #3c4043;
+  border-color: #e0e3e7;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.sprint-rbc .rbc-toolbar {
+  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+}
+
+.sprint-rbc .rbc-toolbar .rbc-toolbar-label {
+  font-weight: 600;
+  color: #3c4043;
+}
+
+.sprint-rbc .rbc-btn-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.sprint-rbc .rbc-toolbar button {
+  color: #3c4043;
+  background: #ffffff;
+  border: 1px solid #d2d7de;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+}
+
+.sprint-rbc .rbc-toolbar button:hover,
+.sprint-rbc .rbc-toolbar button:focus {
+  background: #f1f3f4;
+  color: #202124;
+}
+
+.sprint-rbc .rbc-toolbar button.rbc-active {
+  background: #e8f0fe;
+  border-color: #c6dafc;
+  color: #185abc;
+}
+
+.sprint-rbc .rbc-header,
+.sprint-rbc .rbc-month-row,
+.sprint-rbc .rbc-day-bg,
+.sprint-rbc .rbc-time-header-content,
+.sprint-rbc .rbc-time-content,
+.sprint-rbc .rbc-timeslot-group {
+  border-color: #e0e3e7;
+}
+
+.sprint-rbc .rbc-off-range-bg {
+  background: #f8f9fa;
+}
+
+.sprint-rbc .rbc-today {
+  background: #e8f0fe;
+}
+
+.sprint-rbc .rbc-show-more {
+  color: #1a73e8;
+  background: transparent;
+}
+
+.sprint-rbc-event {
+  border: 0;
+  border-radius: 0.375rem;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sprint-rbc-window {
+  background: #d2e3fc;
+  color: #174ea6;
+}
+
+.sprint-rbc-checkpoint {
+  background: #e8eaed;
+  color: #3c4043;
+}
+
+.sprint-rbc-deadline {
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.sprint-rbc .rbc-agenda-table,
+.sprint-rbc .rbc-agenda-table tbody > tr > td,
+.sprint-rbc .rbc-agenda-table .rbc-agenda-time-cell {
+  border-color: #e0e3e7;
+  color: #3c4043;
+}

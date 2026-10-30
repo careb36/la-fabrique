@@ -1,0 +1,65 @@
+# Botón «Informe de estado»: crea un issue en este repositorio con la etiqueta
+# `informe`. La automatización de documentación de la fábrica reacciona a esa
+# etiqueta y publica el informe ejecutivo como comentario en ese mismo issue.
+#
+# El informe NO se commitea: este repositorio es público y el informe detalla el
+# estado operativo de los cinco sistemas, incluidos los que son privados (qué CI
+# falla, cuántas alertas de dependencias hay abiertas y cuántas son críticas).
+# El issue queda igual de accesible para dirección y no lo indexa un buscador.
+#
+# Corre en el runner propio porque los jobs hospedados de la cuenta están
+# bloqueados por el límite de gasto de Actions.
+
+name: Informe de estado
+
+on:
+  workflow_dispatch:
+    inputs:
+      foco:
+        description: "Foco opcional del informe (p. ej. 'entrega del pendrive', 'seguridad')"
+        required: false
+        type: string
+      periodo:
+        description: "Ventana a comparar (por defecto, desde el informe anterior)"
+        required: false
+        type: string
+
+concurrency:
+  group: informe-estado
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  solicitar:
+    name: Solicitar informe
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    timeout-minutes: 5
+
+    steps:
+      - name: Crear el issue y etiquetarlo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOCO: ${{ inputs.foco }}
+          PERIODO: ${{ inputs.periodo }}
+          SOLICITANTE: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          fecha="$(date -u +%Y-%m-%d)"
+          foco="${FOCO:-estado general de los cinco sistemas}"
+          periodo="${PERIODO:-desde el informe anterior; si no existe, últimos 30 días}"
+          body="$(printf 'Informe ejecutivo de estado de los cinco sistemas.\n\n**Foco:** %s\n**Ventana:** %s\n\nSolicitado por @%s desde el botón «Informe de estado».\n' "$foco" "$periodo" "$SOLICITANTE")"
+
+          url="$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Informe de estado — $fecha" \
+            --body "$body")"
+          number="${url##*/}"
+
+          # La etiqueta se agrega en un segundo paso a propósito: así GitHub
+          # emite el evento `issues.labeled` que dispara la automatización.
+          gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label informe
+
+          echo "Issue #$number etiquetado; la fábrica generará el informe."

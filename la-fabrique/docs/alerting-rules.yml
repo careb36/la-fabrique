@@ -1,0 +1,66 @@
+# Prometheus alerting rules for La Fabrique
+# Place in your Prometheus configuration
+
+groups:
+  - name: fabrique-alerts
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: FabriqueHighErrorRate
+        expr: rate(fabrique_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate in La Fabrique"
+          description: "Error rate is above 0.1 errors/sec for 5 minutes"
+
+      # High latency
+      - alert: FabriqueHighLatency
+        expr: histogram_quantile(0.95, rate(fabrique_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency in La Fabrique"
+          description: "p95 latency is above 2 seconds for 5 minutes"
+
+      # Service down
+      - alert: FabriqueServiceDown
+        expr: up{job="fabrique-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "La Fabrique backend is down"
+          description: "The backend service has been down for more than 1 minute"
+
+      # High active connections
+      - alert: FabriqueHighConnections
+        expr: fabrique_active_connections > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of active connections"
+          description: "Active connections exceed 1000 for 5 minutes"
+
+      # Agent run ingestion stopped
+      - alert: FabriqueNoAgentRuns
+        expr: rate(fabrique_agent_runs_ingested_total[1h]) == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No agent runs ingested in the last hour"
+          description: "No agent runs have been ingested for 1 hour"
+
+      # Sprint completion rate drop
+      - alert: FabriqueLowSprintCompletion
+        expr: rate(fabrique_sprints_completed_total[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No sprints completed in the last 2 hours"
+          description: "No sprints have been completed for 2 hours"

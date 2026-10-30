@@ -1,0 +1,113 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "La Fabrique — System Metrics",
+    "tags": ["fabrique", "backend"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(fabrique_requests_total[5m])",
+            "legendFormat": "{{method}} {{endpoint}} — {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Request Latency (p95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(fabrique_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Active Connections",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "fabrique_active_connections",
+            "legendFormat": "Active"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Agent Runs Ingested",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(fabrique_agent_runs_ingested_total[1h])",
+            "legendFormat": "{{producer}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Agent Run Verdicts",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 18, "y": 8},
+        "targets": [
+          {
+            "expr": "fabrique_agent_runs_verified_total",
+            "legendFormat": "{{verdict}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Sprints Created by Scope",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "fabrique_sprints_created_total",
+            "legendFormat": "{{scope}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Sprint Completions by Status",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "fabrique_sprints_completed_total",
+            "legendFormat": "{{status}}"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Errors by Type",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(fabrique_errors_total[5m])",
+            "legendFormat": "{{type}}"
+          }
+        ]
+      }
+    ]
+  }
+}
