@@ -13,66 +13,56 @@ import os
 import time
 import threading
 import logging
-import math
 from flask import Flask, request, jsonify
 import requests
 from sqlalchemy import create_engine, text
 import upstream
-from catalogue import fetch_model_ids
+from catalogue import GEMINI_ALIASES as _GEMINI_ALIASES
+from catalogue import GEMINI_DEPRECATED as _GEMINI_DEPRECATED
+from catalogue import classify_model as _classify_model
+from catalogue import fetch_model_ids, open_model_tier
 from provider_keys import validate_api_keys
+from usage import fallback_embedding as _fallback_embedding
 from usage import estimated_usage, openai_reported_count, openai_text, reported_count, with_usage
 
 # --- OpenTelemetry ---
-from opentelemetry import trace
+from tracing import instrument
 from opentelemetry.trace import StatusCode
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 app = Flask(__name__)
 
 
-def _is_truthy(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _resolve_otlp_endpoint() -> str | None:
-    if _is_truthy(os.getenv("OTEL_SDK_DISABLED")):
-        return None
-    explicit_endpoint = os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    if explicit_endpoint:
-        return explicit_endpoint.rstrip("/")
-    if _is_truthy(os.getenv("OTEL_EXPORTER_OTLP_ENABLED")):
-        return "http://localhost:4318"
-    return None
-
-resource = Resource.create({SERVICE_NAME: "llm-proxy"})
-tracer_provider = TracerProvider(resource=resource)
-endpoint_base = _resolve_otlp_endpoint()
-if endpoint_base:
-    otlp_exporter = OTLPSpanExporter(endpoint=endpoint_base + "/v1/traces")
-    span_processor = BatchSpanProcessor(otlp_exporter)
-    tracer_provider.add_span_processor(span_processor)
-trace.set_tracer_provider(tracer_provider)
-FlaskInstrumentor().instrument_app(app)
-RequestsInstrumentor().instrument()
-_tracer = trace.get_tracer(__name__)
+_tracer = instrument(app)
 
 # --- Config & Logging ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+def _env(name: str, default: str = "") -> str:
+    """One env value, trimmed.
+
+    A ``.env`` edited on Windows ends its lines with CRLF, and a ``\r`` inside
+    an API key makes the provider reject every request ("invalid header
+    value") while the key itself is fine. Trimming here is what keeps a Windows
+    checkout working.
+    """
+    return os.getenv(name, default).strip()
+
+
+GEMINI_API_KEY = _env("GEMINI_API_KEY")
+DEEPSEEK_API_KEY = _env("DEEPSEEK_API_KEY")
+QWEN_API_KEY = _env("QWEN_API_KEY")
+NEBIUS_API_KEY = _env("NEBIUS_API_KEY")
+# NVIDIA's own gateway serves the Nemotron family with an ``nvapi-`` key and
+# publishes the same model ids as the Nebius catalogue.  Which one answers is
+# decided by the key that is configured, never by the id alone.
+NVIDIA_API_KEY = _env("NVIDIA_API_KEY")
 GEMINI_PROXY_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEEPSEEK_PROXY_URL = "https://api.deepseek.com/v1"
 QWEN_PROXY_URL = "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1"
 # Nebius Token Factory serves the NVIDIA open models (Nemotron) behind an
 # OpenAI-compatible API.  Overridable so a self-hosted Serverless Endpoint can
 # be pointed at without touching code.
-NEBIUS_PROXY_URL = os.getenv("NEBIUS_PROXY_URL", "https://api.tokenfactory.nebius.com/v1")
+NEBIUS_PROXY_URL = _env("NEBIUS_PROXY_URL", "https://api.tokenfactory.nebius.com/v1")
+# NVIDIA's catalog gateway: the endpoint used by ``integrate.api.nvidia.com``.
+NVIDIA_PROXY_URL = _env("NVIDIA_PROXY_URL", "https://integrate.api.nvidia.com/v1")
 # Upper bound for one chat request's provider calls, fallbacks included.  It
 # stays below the backend task client's 120 s timeout so the proxy answers
 # (with an error if need be) before the caller gives up on it.
@@ -82,10 +72,6 @@ LLM_UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("LLM_UPSTREAM_TIMEOUT_SECONDS", "
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("llm-proxy")
-if endpoint_base:
-    logger.info("OpenTelemetry exporter enabled for llm-proxy: %s/v1/traces", endpoint_base)
-else:
-    logger.info("OpenTelemetry exporter disabled for llm-proxy")
 
 
 # --- API Key Validation ---
@@ -97,27 +83,20 @@ def _validate_api_keys():
             "deepseek": DEEPSEEK_API_KEY,
             "qwen": QWEN_API_KEY,
             "nebius": NEBIUS_API_KEY,
+            "nvidia": NVIDIA_API_KEY,
         },
         {
             "gemini": GEMINI_PROXY_URL,
             "deepseek": DEEPSEEK_PROXY_URL,
             "qwen": QWEN_PROXY_URL,
             "nebius": NEBIUS_PROXY_URL,
+            "nvidia": NVIDIA_PROXY_URL,
         },
     )
 
 
 _validate_api_keys()
 
-
-def _fallback_embedding(text: str, dims: int = 1536) -> list[float]:
-    """Deterministic local embedding fallback used only when provider embedding fails."""
-    vector = [0.0] * dims
-    for index, byte in enumerate(text.encode("utf-8")):
-        slot = (index * 131 + byte) % dims
-        vector[slot] += (byte % 17) + 1
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [value / norm for value in vector]
 
 # --- Database ---
 def _build_database_url() -> str:
@@ -141,36 +120,17 @@ _PREFERENCE_TIERS = {
                  "gemini-2.5-pro"],
 }
 
-# Tier classification rules applied in order — first match wins.
-# Tuple: (substring_tests, tier_name, description)
-_TIER_RULES: list[tuple[list[str], str, str]] = [
-    (["preview"],            "preview",    "Experimental preview — may be unstable"),
-    (["flash-lite", "lite"], "fast",       "Lightweight, fastest responses"),
-    (["2.5-pro", "3-pro"],   "strategic",  "Deep reasoning, architecture, stakeholder decisions"),
-    (["pro"],                "strategic",  "Deep reasoning, architecture, stakeholder decisions"),
-    (["flash"],              "balanced",   "Fast reasoning, coordination, reviews"),
-    (["coder"],              "code",       "Specialised code generation & refactoring (~10x cheaper)"),
-    (["chat"],               "balanced",   "General-purpose reasoning and conversation"),
-]
-
 _available_models: set[str] = set()
 _available_deepseek_models: set[str] = set()
 _available_qwen_models: set[str] = set()
 _available_nebius_models: set[str] = set()
+_available_nvidia_models: set[str] = set()
 _model_refresh_lock = threading.Lock()
 _last_refresh: float = 0
 _deepseek_last_refresh: float = 0
 _qwen_last_refresh: float = 0
 _nebius_last_refresh: float = 0
-
-
-def _classify_model(model_id: str) -> tuple[str, str]:
-    """Return (tier, description) for a model ID based on naming conventions."""
-    lower = model_id.lower()
-    for substrings, tier, desc in _TIER_RULES:
-        if any(s in lower for s in substrings):
-            return tier, desc
-    return "balanced", "General-purpose model"
+_nvidia_last_refresh: float = 0
 
 
 def _refresh_gemini_models():
@@ -199,6 +159,13 @@ def _refresh_nebius_models():
         _available_nebius_models, _nebius_last_refresh)
 
 
+def _refresh_nvidia_models():
+    global _available_nvidia_models, _nvidia_last_refresh
+    _available_nvidia_models, _nvidia_last_refresh = _refresh(
+        "nvidia", NVIDIA_API_KEY, NVIDIA_PROXY_URL,
+        _available_nvidia_models, _nvidia_last_refresh)
+
+
 def _refresh(provider, key, base_url, current, last_refresh):
     """Fetch one provider's catalogue. A failure keeps the previous one."""
     if not key:
@@ -212,24 +179,18 @@ def _refresh(provider, key, base_url, current, last_refresh):
     return ids, time.time()
 
 
-# Deprecated Gemini ids mapped to their working equivalents.
-_GEMINI_ALIASES = {
-    "gemini-2.5-flash": "gemini-3.8-flash",
-    "gemini-2.5-pro": "gemini-3.1-pro-preview",
-    "gemini-2.0-flash": "gemini-3.8-flash",
-}
-
-# Models that are no longer available to new users (Google deprecation).
-_GEMINI_DEPRECATED = {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"}
-
 # A model id names its provider by prefix.  The id must also be in that
 # provider's fetched catalogue before a request is sent anywhere.
 # Nebius ids carry a vendor segment ("nvidia/…", "meta-llama/…"), hence the
 # vendor/ prefix rather than a bare model-name prefix.
+# Order matters: the first provider whose key answers a matching id wins, so
+# "nvidia/" is listed twice on purpose (NVIDIA's own gateway, then Nebius as
+# the alternative host for the same open models).
 _PROVIDER_PREFIXES: dict[str, tuple[str, ...]] = {
     "gemini": ("gemini-", "gemma-"),
     "deepseek": ("deepseek-",),
     "qwen": ("qwen", "qwq-", "qvq-"),
+    "nvidia": ("nvidia/",),
     "nebius": ("nvidia/", "meta-llama/", "mistralai/", "deepseek-ai/", "qwen/", "google/"),
 }
 
@@ -242,18 +203,21 @@ _FALLBACK_CANDIDATES: list[tuple[str, list[str]]] = [
 ]
 
 
-def provider_for_model(model_id: str) -> str | None:
-    """The provider whose prefix *model_id* carries, or ``None``."""
+def providers_for_model(model_id: str) -> list[str]:
+    """Every provider whose prefix *model_id* carries, most specific first."""
     lower = (model_id or "").strip().lower()
-    for provider, prefixes in _PROVIDER_PREFIXES.items():
-        if lower.startswith(prefixes):
-            return provider
-    return None
+    return [p for p, prefixes in _PROVIDER_PREFIXES.items() if lower.startswith(prefixes)]
+
+
+def provider_for_model(model_id: str) -> str | None:
+    """The first provider that could serve *model_id*, or ``None``."""
+    candidates = providers_for_model(model_id)
+    return candidates[0] if candidates else None
 
 
 def _provider_key(provider: str) -> str:
     return {"gemini": GEMINI_API_KEY, "deepseek": DEEPSEEK_API_KEY, "qwen": QWEN_API_KEY,
-            "nebius": NEBIUS_API_KEY}.get(provider, "")
+            "nebius": NEBIUS_API_KEY, "nvidia": NVIDIA_API_KEY}.get(provider, "")
 
 
 def _provider_catalogue(provider: str) -> set[str]:
@@ -263,6 +227,7 @@ def _provider_catalogue(provider: str) -> set[str]:
         "deepseek": (_refresh_deepseek_models, lambda: _available_deepseek_models),
         "qwen": (_refresh_qwen_models, lambda: _available_qwen_models),
         "nebius": (_refresh_nebius_models, lambda: _available_nebius_models),
+        "nvidia": (_refresh_nvidia_models, lambda: _available_nvidia_models),
     }
     if provider not in sources:
         return set()
@@ -271,7 +236,7 @@ def _provider_catalogue(provider: str) -> set[str]:
         refresh()
     with _model_refresh_lock:
         ids = set(current())
-    return {mid for mid in ids if provider_for_model(mid) == provider}
+    return {mid for mid in ids if provider in providers_for_model(mid)}
 
 
 def available_model_ids() -> list[str]:
@@ -288,20 +253,25 @@ def available_model_ids() -> list[str]:
 def resolve_model(requested: str) -> tuple[str, str] | None:
     """
     Return ``(provider, model_id)`` for *requested*, or ``None`` when no
-    provider serves it.  A deprecated Gemini id is aliased to its replacement
-    when the replacement is in the catalogue.  Nothing else is substituted:
-    an id that is not in its provider's catalogue is unknown.
+    provider serves it.  Providers that share a vendor prefix (``nvidia/`` on
+    NVIDIA's gateway and on Nebius) are tried in order and only those with a
+    configured key are considered, so one id works whichever key exists.  A
+    deprecated Gemini id is aliased to its replacement when the replacement is
+    in the catalogue.  Nothing else is substituted.
     """
-    provider = provider_for_model(requested)
-    if provider is None:
+    candidates = providers_for_model(requested)
+    if not candidates:
         return None
-    catalogue = _provider_catalogue(provider)
-    if provider == "gemini":
-        alias = _GEMINI_ALIASES.get(requested)
-        if alias and alias in catalogue:
-            return provider, alias
-    if requested in catalogue:
-        return provider, requested
+    for provider in candidates:
+        if not _provider_key(provider):
+            continue
+        catalogue = _provider_catalogue(provider)
+        if provider == "gemini":
+            alias = _GEMINI_ALIASES.get(requested)
+            if alias and alias in catalogue:
+                return provider, alias
+        if requested in catalogue:
+            return provider, requested
     return None
 
 
@@ -324,10 +294,12 @@ _refresh_gemini_models()
 _refresh_deepseek_models()
 _refresh_qwen_models()
 _refresh_nebius_models()
+_refresh_nvidia_models()
 threading.Thread(target=lambda: (time.sleep(3600), _refresh_gemini_models()), daemon=True).start()
 threading.Thread(target=lambda: (time.sleep(3600), _refresh_deepseek_models()), daemon=True).start()
 threading.Thread(target=lambda: (time.sleep(3600), _refresh_qwen_models()), daemon=True).start()
 threading.Thread(target=lambda: (time.sleep(3600), _refresh_nebius_models()), daemon=True).start()
+threading.Thread(target=lambda: (time.sleep(3600), _refresh_nvidia_models()), daemon=True).start()
 
 # --- Governance Middleware ---
 @app.before_request
@@ -440,19 +412,16 @@ def list_models():
             models.append({"id": mid, "provider": "qwen", "tier": tier,
                            "description": f"Qwen {mid}"})
 
-    # Nebius models host the NVIDIA open models (Nemotron) and are available
-    # only when the API key is configured.
-    if NEBIUS_API_KEY:
-        for mid in sorted(_provider_catalogue("nebius")):
-            lower = mid.lower()
-            if "nano" in lower:
-                tier = "fast"
-            elif "ultra" in lower or "253b" in lower or "340b" in lower:
-                tier = "strategic"
-            else:
-                tier = "balanced"
-            models.append({"id": mid, "provider": "nebius", "tier": tier,
-                           "description": f"NVIDIA/Nebius {mid}"})
+    # NVIDIA's own gateway, then Nebius, serve the open models (Nemotron); an
+    # id both serve is listed once, under the provider that would answer it.
+    listed: set[str] = set()
+    for provider, key, label in (("nvidia", NVIDIA_API_KEY, "NVIDIA"), ("nebius", NEBIUS_API_KEY, "NVIDIA/Nebius")):
+        if not key:
+            continue
+        for mid in sorted(_provider_catalogue(provider) - listed):
+            models.append({"id": mid, "provider": provider, "tier": open_model_tier(mid),
+                           "description": f"{label} {mid}"})
+            listed.add(mid)
 
     # Pick the best non-preview balanced/fast model for orchestration tasks
     # (team suggestion, routing decisions) — prefer stability over power.
@@ -490,6 +459,7 @@ _OPENAI_COMPATIBLE_BASE_URLS = {
     "deepseek": DEEPSEEK_PROXY_URL,
     "qwen": QWEN_PROXY_URL,
     "nebius": NEBIUS_PROXY_URL,
+    "nvidia": NVIDIA_PROXY_URL,
 }
 
 
@@ -575,11 +545,30 @@ def _complete_with_fallback(provider: str, model: str, data: dict) -> tuple[dict
         raise primary
 
 
+def _flatten_extra_body(data: dict) -> dict:
+    """The OpenAI SDK merges ``extra_body`` into the request; some clients nest it."""
+    extra = data.pop("extra_body", None)
+    if isinstance(extra, dict):
+        return {**extra, **data}
+    return data
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat_completions():
     data = request.get_json(silent=True) or {}
     requested = str(data.get("model") or "").strip()
     bu_id = request.headers.get("X-Business-Unit-ID")
+
+    if data.get("stream"):
+        # The proxy relays one finished answer; an SSE client would hang on a
+        # body it cannot parse.  Saying so beats a 500 from ``resp.json()``.
+        return jsonify({
+            "error": "stream_unsupported",
+            "model": requested,
+            "message": "stream=true is not supported here; send stream=false "
+                       "(or call the provider endpoint directly to stream)",
+        }), 400
+    data = _flatten_extra_body(data)
 
     if not requested:
         return jsonify({
@@ -681,4 +670,9 @@ def embeddings():
         )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PROXY_PORT", 5100)))
+    # 0.0.0.0 inside Docker (the port is only published on the host loopback);
+    # a desktop launcher passes 127.0.0.1 because this process holds the keys.
+    app.run(
+        host=os.getenv("PROXY_HOST", "0.0.0.0"),
+        port=int(os.getenv("PROXY_PORT", 5100)),
+    )

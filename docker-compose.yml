@@ -91,11 +91,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-factory}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-factory}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      QWEN_API_KEY: ${QWEN_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
       NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
       NEBIUS_PROXY_URL: ${NEBIUS_PROXY_URL:-https://api.tokenfactory.nebius.com/v1}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_PROXY_URL: ${NVIDIA_PROXY_URL:-https://integrate.api.nvidia.com/v1}
       LLM_UPSTREAM_TIMEOUT_SECONDS: ${LLM_UPSTREAM_TIMEOUT_SECONDS:-110}
       PROXY_PORT: 5100
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
@@ -148,6 +150,13 @@ services:
       NEMOTRON_MODEL: ${NEMOTRON_MODEL:-}
       NEMOTRON_MODEL_STRATEGIC: ${NEMOTRON_MODEL_STRATEGIC:-}
       NEMOTRON_MODEL_FAST: ${NEMOTRON_MODEL_FAST:-}
+      AGENT_MODEL: ${AGENT_MODEL:-}
+      # The desktop assistant's shared key for /v1/voice/*; empty keeps the
+      # voice routes closed while AUTH_REQUIRED is on.
+      VOICE_API_KEY: ${VOICE_API_KEY:-}
+      VOICE_COMPANY_ID: ${VOICE_COMPANY_ID:-}
+      # Projects the factory writes from a chat sentence (/v1/voice/build).
+      FABRICA_BUILDS_DIR: ${FABRICA_BUILDS_DIR:-/workspace/builds}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
       - "8000:8000"
@@ -224,6 +233,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: factory-frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
     ports:
       - "5173:5173"
     volumes:

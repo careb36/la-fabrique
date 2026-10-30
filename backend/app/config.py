@@ -11,6 +11,7 @@ Usage::
     db_url = settings.POSTGRES_HOST
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -112,6 +113,22 @@ class Settings(BaseSettings):
     AUTH_REQUIRED: bool = True
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # ---------------------------------------------------------------------------
+    # Voice control — shared secret the desktop assistant presents as
+    # ``X-Voice-Key`` on /v1/voice/*. Unset means the voice façade refuses to
+    # answer (503) while AUTH_REQUIRED is on; it never opens anonymously.
+    # ---------------------------------------------------------------------------
+    VOICE_API_KEY: str | None = None
+    # Company the voice façade uses when the caller does not name one. Unset
+    # means "the oldest company", which is what a single-tenant install wants.
+    VOICE_COMPANY_ID: int | None = None
+
+    @field_validator("VOICE_COMPANY_ID", mode="before")
+    @classmethod
+    def _empty_company_is_unset(cls, value):
+        # `.env.example` and docker compose pass it as an empty string.
+        return None if isinstance(value, str) and not value.strip() else value
 
     # Audit signing — separate HMAC key for decision_signature values.
     # ---------------------------------------------------------------------------

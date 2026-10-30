@@ -19,6 +19,8 @@ Concurrency safety:
 -------------------
 ``SELECT ... FOR UPDATE SKIP LOCKED`` acquires row-level locks so that multiple
 worker replicas running in Kubernetes never process the same event simultaneously.
+On SQLite (the desktop build) the clause is skipped: the engine has no row
+locks, and a single process owns the loop.
 
 Retry policy:
 -------------
@@ -29,10 +31,16 @@ Retry policy:
 
 import asyncio
 import json
+from datetime import UTC, datetime
 
-from database import engine
+from database import IS_SQLITE, engine
 from logging_config import logger
 from sqlmodel import Session, text
+
+
+def _utc_now() -> datetime:
+    """Naive UTC, what the ``processed_at`` column stores."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 async def process_outbox(nats_client) -> None:
@@ -54,7 +62,10 @@ async def process_outbox(nats_client) -> None:
 
         try:
             with Session(engine) as session:
-                # Fetch up to 10 pending events; SKIP LOCKED prevents worker conflicts.
+                # Fetch up to 10 pending events; SKIP LOCKED prevents worker
+                # conflicts. SQLite has no row locks and rejects the clause
+                # outright, so the desktop build polls without it — it runs a
+                # single outbox loop, and SQLite serialises the writers anyway.
                 rows = session.exec(
                     text(
                         """
@@ -62,7 +73,9 @@ async def process_outbox(nats_client) -> None:
                         FROM outbox_events
                         WHERE status = 'pending'
                         ORDER BY created_at ASC
-                        FOR UPDATE SKIP LOCKED
+                        """
+                        + ("" if IS_SQLITE else "FOR UPDATE SKIP LOCKED")
+                        + """
                         LIMIT 10
                         """
                     )
@@ -98,10 +111,13 @@ async def process_outbox(nats_client) -> None:
                             )
 
                         # Mark the event as successfully delivered.
+                        # A bound timestamp instead of NOW(): the function is
+                        # Postgres-only and the desktop build runs SQLite.
                         session.exec(
                             text(
-                                "UPDATE outbox_events SET status = 'completed', processed_at = NOW() WHERE id = :id"
-                            ).bindparams(id=event_id)
+                                "UPDATE outbox_events SET status = 'completed', "
+                                "processed_at = :now WHERE id = :id"
+                            ).bindparams(id=event_id, now=_utc_now())
                         )
                         logger.debug("Outbox event_id=%s marked completed", event_id)
                     except Exception as row_e:  # noqa: BLE001 - Retain failed rows for retry without stopping delivery.
@@ -119,10 +135,10 @@ async def process_outbox(nats_client) -> None:
                                 UPDATE outbox_events
                                 SET retry_count = retry_count + 1,
                                     status = CASE WHEN retry_count >= 5 THEN 'failed' ELSE 'pending' END,
-                                    processed_at = NOW()
+                                    processed_at = :now
                                 WHERE id = :id
                                 """
-                            ).bindparams(id=event_id)
+                            ).bindparams(id=event_id, now=_utc_now())
                         )
 
                 session.commit()

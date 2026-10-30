@@ -45,9 +45,9 @@ class AgentState(TypedDict):
 
 def _resolve_model_name(role: str) -> str:
     try:
-        return ModelFactory.ROLE_MODEL_MAP[AgentRole(role)].model_name
+        return ModelFactory.model_for_role(AgentRole(role))
     except Exception:
-        return ModelFactory.ROLE_MODEL_MAP[AgentRole.DEVELOPER].model_name
+        return ModelFactory.model_for_role(AgentRole.DEVELOPER)
 
 
 def _message_text(message: AnyMessage) -> str:

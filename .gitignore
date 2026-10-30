@@ -150,6 +150,9 @@ langgraph_checkpoints/
 
 # --- Project runtime artifacts ---
 .factory/
+# Runtime state of the merged desktop install (run_fusion.py): SQLite database
+# used when no Postgres is configured.
+.fusion/
 factory-workspaces/
 support_logs/
 engrams_backup/
@@ -165,3 +168,6 @@ openproject/
 
 # --- Memoria local de agentes (nunca versionar: el repo es publico) ---
 .openhands/
+
+# Projects generated from a chat sentence (/v1/voice/build).
+builds/

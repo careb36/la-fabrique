@@ -43,7 +43,10 @@ class LLMProxyClient:
 
     def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("LLM_PROXY_URL", "http://localhost:5100")
-        self.timeout = 60  # Increased for complex agentic prompts
+        # Has to outlast the proxy's own upstream budget (110 s by default):
+        # timing out first makes the proxy look dead while it is still working,
+        # and the retry loop then multiplied the wait by three.
+        self.timeout = float(os.getenv("LLM_PROXY_TIMEOUT_SECONDS", "150"))
         self.max_retries = int(os.getenv("LLM_PROXY_MAX_RETRIES", "2"))
         self.retry_backoff_sec = float(os.getenv("LLM_PROXY_RETRY_BACKOFF_SEC", "1.0"))
 
@@ -68,12 +71,23 @@ class LLMProxyClient:
         model: str = "gemini-pro",
         role: str = "Developer",
         bu_id: int | None = None,
+        max_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Send a multi-turn chat request to the LLM proxy (OpenAI-compatible).
+
+        ``max_tokens`` is forwarded as-is when given: an answer made of whole
+        files does not fit in the provider's default, and the proxy passes the
+        payload through unchanged. ``extra`` carries provider-specific switches
+        (``chat_template_kwargs``) that the proxy also forwards untouched.
         """
         headers = self._get_headers(role, bu_id)
-        payload = {"messages": messages, "model": model}
+        payload: dict[str, Any] = {"messages": messages, "model": model}
+        if max_tokens:
+            payload["max_tokens"] = int(max_tokens)
+        if extra:
+            payload.update(extra)
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -116,6 +130,12 @@ class LLMProxyClient:
                     "status_code": response.status_code,
                     "detail": _json_body(response),
                 }
+
+            except requests.Timeout as e:
+                # Retrying a read timeout only triples the wait: the provider
+                # was already given the whole budget for this answer.
+                logger.error(f"LLM proxy timed out after {self.timeout:.0f}s: {e}")
+                return {"error": str(e), "ok": False, "timed_out": True}
 
             except requests.RequestException as e:
                 if attempt < self.max_retries:

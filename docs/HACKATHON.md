@@ -43,14 +43,15 @@ appear without a code change:
 
 | Route | Setting | Example model |
 | --- | --- | --- |
-| strategic | `NEMOTRON_MODEL_STRATEGIC` | `nvidia/Nemotron-3-Ultra-550b-a55b` |
+| strategic | `NEMOTRON_MODEL_STRATEGIC` | `nvidia/nemotron-3-ultra-550b-a55b` |
 | default | `NEMOTRON_MODEL` | `nvidia/nemotron-3-super-120b-a12b` |
-| fast | `NEMOTRON_MODEL_FAST` | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` |
+| fast | `NEMOTRON_MODEL_FAST` | `nvidia/nemotron-3-super-120b-a12b` (a Nano id once your catalogue lists one) |
 
 `NEMOTRON_ROLES` says which agent roles run on Nemotron. The shipped
 `.env.example` opts **every role** in, so a stack started from it with a
-`NEBIUS_API_KEY` runs PO, Architect and SecOps on Nemotron 3 Ultra, the
-TechWriter on Nemotron 3 Nano and the rest on Nemotron 3 Super; clearing the
+`NEBIUS_API_KEY` runs PO, Architect and SecOps on Nemotron 3 Ultra and every other role on
+Nemotron 3 Super (point `NEMOTRON_MODEL_FAST` at a Nano id to move the
+TechWriter); clearing the
 variable falls back to the Qwen/DeepSeek defaults. `scripts/verify-nebius.sh`
 proves the three layers separately so a failure points at the broken one. See
 [Model Providers](../README.md#model-providers-nebius--nvidia-nemotron).

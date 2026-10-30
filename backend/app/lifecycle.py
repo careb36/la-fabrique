@@ -25,6 +25,12 @@ _background_tasks: set[asyncio.Task] = set()
 # NATS connection state exposed by the health endpoints.
 NATS_STATE_CONNECTING = "connecting"
 NATS_STATE_CONNECTED = "connected"
+NATS_STATE_DISABLED = "disabled"
+
+
+def _nats_disabled() -> bool:
+    return os.getenv("NATS_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 # Reconnect backoff for the initial NATS connection: 1s, 2s, 4s, ... capped.
 NATS_CONNECT_BACKOFF_BASE_SECONDS = 1.0
@@ -135,16 +141,26 @@ async def startup(app):
     # even when the NATS broker is not yet running.  ``app.state.nats_client``
     # stays ``None`` until the connection succeeds.
     app.state.nats_client = None
-    app.state.nats_state = NATS_STATE_CONNECTING
     app.state.nats_workers_started = False
     app.state.jetstream = False
-    client = NATSClient(os.getenv("NATS_URL", "nats://localhost:4222"))
-    connect_task = asyncio.create_task(
-        _connect_nats_and_start_workers(app, client), name="nats_connector"
-    )
-    app.state.nats_connect_task = connect_task
-    _background_tasks.add(connect_task)
-    connect_task.add_done_callback(_on_task_done)
+    if _nats_disabled():
+        # Desktop/single-node installs have no broker: skip the reconnect loop
+        # so the console is not flooded with tracebacks every few seconds.
+        app.state.nats_state = NATS_STATE_DISABLED
+        app.state.nats_connect_task = None
+        logger.warning(
+            "NATS disabled (NATS_DISABLED=true): agents, outbox publishing and "
+            "SSE fanout are off; board endpoints work from the database only."
+        )
+    else:
+        app.state.nats_state = NATS_STATE_CONNECTING
+        client = NATSClient(os.getenv("NATS_URL", "nats://localhost:4222"))
+        connect_task = asyncio.create_task(
+            _connect_nats_and_start_workers(app, client), name="nats_connector"
+        )
+        app.state.nats_connect_task = connect_task
+        _background_tasks.add(connect_task)
+        connect_task.add_done_callback(_on_task_done)
 
     # The Support agent needs only the database and the LLM proxy.
     if settings.SUPPORT_AGENT_ENABLED:
