@@ -21,10 +21,12 @@ from auth_policy import current_user_if_required, is_support_admin, require_comp
 from config import settings
 from database import get_session
 from fastapi import APIRouter, Depends, HTTPException, Request
-from models import Company, CompanyMember, User
+from models import CompanyMember, User
 from passwords import hash_password, needs_rehash, rehash_password, verify_password
 from schemas import InviteMemberRequest, LoginRequest, UserCreateRequest
 from sqlmodel import Session, select
+
+from routers.voice_support import key_company
 
 router = APIRouter(prefix="/v1", tags=["Auth"])
 
@@ -42,6 +44,10 @@ async def register_user(
 
     Returns the new user's ``user_id`` and ``email``.
     """
+    if req.email.strip().lower().endswith(RESERVED_EMAIL_DOMAIN):
+        # The desktop operator lives on this domain; an account registered
+        # there would be handed Owner rights by POST /v1/auth/desktop.
+        raise HTTPException(status_code=400, detail="This email domain is reserved.")
     existing = session.exec(select(User).where(User.email == req.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered.")
@@ -86,7 +92,8 @@ async def login(req: LoginRequest, session: Session = Depends(get_session)):  # 
     }
 
 
-DESKTOP_EMAIL = "escritorio@fabrica.local"
+RESERVED_EMAIL_DOMAIN = "@fabrica.local"
+DESKTOP_EMAIL = "escritorio" + RESERVED_EMAIL_DOMAIN
 
 
 def _desktop_owner(session: Session) -> User:
@@ -97,7 +104,13 @@ def _desktop_owner(session: Session) -> User:
     key the launcher already holds.
     """
     user = session.exec(select(User).where(User.email == DESKTOP_EMAIL)).first()
-    if user is None:
+    if user is not None:
+        # Nobody may hold a password for this account: a copy registered
+        # before the domain was reserved loses whatever password it had.
+        user.password_hash = hash_password(secrets.token_urlsafe(32))
+        session.add(user)
+        session.commit()
+    else:
         user = User(
             email=DESKTOP_EMAIL,
             full_name="Operador de escritorio",
@@ -107,7 +120,8 @@ def _desktop_owner(session: Session) -> User:
         session.commit()
         session.refresh(user)
 
-    company = session.exec(select(Company).order_by(Company.id)).first()
+    # The same company the voice key reaches, never any other.
+    company = key_company(session)
     if company is not None:
         member = session.exec(
             select(CompanyMember).where(
@@ -140,7 +154,9 @@ async def desktop_session(
     """
     configured = (settings.VOICE_API_KEY or "").strip()
     provided = (request.headers.get("X-Voice-Key") or "").strip()
-    if not configured or not secrets.compare_digest(provided, configured):
+    if not configured or not secrets.compare_digest(
+        provided.encode(), configured.encode()
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-Voice-Key",

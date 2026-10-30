@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **Voice routes: tenant isolation and the desktop account (security review of the `fusion` port).** A signed-in user could read and change any company through `/v1/voice/*` (no membership check), the voice key reached every company, the desktop Owner account could be claimed by registering its email first, approvals by key were recorded under a name the assistant chose, a non-ASCII key header gave a 500, `extra_body.stream` slipped past the proxy's stream refusal, and the URL session handoff replaced an open session. Each is fixed and covered by `test_voice_access.py` or the proxy tests; build previews also get a random folder name, a 4,000-character request cap and no `allow-forms`.
+
 * **Orchestration health KPIs were structurally zero.** `GET /v1/analytics/orchestration_health` filtered `audit_log` on `details.role` / `details.company_id` and counted `ARCHITECT_CONSULTED:` comments, but the task pipeline never wrote either. The worker now records every Developer execution and QA review to `audit_log` (canonical role, company scope, `result_type`, proxy-reported token cost) via the new `services/orchestration_metrics.py` module, so *Avg Developer Tokens* and the QA *NEEDS WORK* rate read real data.
 
 ---
