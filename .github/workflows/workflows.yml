@@ -1,0 +1,43 @@
+# Workflows — the YAML a pull request touches is checked before it lands.
+#
+# A workflow GitHub cannot evaluate does not fail at the step that broke it: it
+# produces a job with no steps that fails in two seconds, and the log is empty
+# (the blob never exists). `actionlint` catches the same class of problem —
+# an unknown `env` context, a duplicated key, a typo in a `uses` — as a line
+# number and an explanation.
+#
+# Run the same check locally with:
+#   actionlint .github/workflows/*.yml
+
+name: Workflows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actionlint.yaml'
+
+permissions:
+  contents: read
+
+
+# One self-hosted runner takes jobs one at a time: a new push cancels the
+# runs of the commit it replaces instead of queueing behind them.
+concurrency:
+  group: workflows-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Every workflow parses and every expression resolves
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color

@@ -1,0 +1,12 @@
+[
+  {
+    "commit": {
+      "message": "Add AnalyticsDashboard test coverage"
+    }
+  },
+  {
+    "commit": {
+      "message": "Update frontend dependencies"
+    }
+  }
+]

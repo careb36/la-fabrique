@@ -1,0 +1,111 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'llm-proxy/**'
+      - '.github/workflows/backend-tests.yml'
+
+
+# Un único runner self-hosted atiende un job a la vez: al llegar un push nuevo
+# se cancelan las ejecuciones del commit que reemplaza en vez de encolarse.
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    # upload-artifact needs to write to the run's artifact store; a bare
+    # `contents: read` would make the keep-the-logs step fail.
+    permissions:
+      contents: read
+      actions: write
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    # Un cuelgue de red en `poetry install` dejó este job 40 minutos parado sin
+    # que nadie se enterara (el default son 6 horas). El job entero tarda ~5
+    # minutos, así que cortar a los 20 convierte un cuelgue en un fallo visible.
+    timeout-minutes: 20
+    env:
+      # A nivel de job, no de paso: si solo lo tiene `poetry install`, el paso
+      # de tests resuelve otro directorio, no encuentra el venv recién creado y
+      # hace uno vacío ("Creating virtualenv ...n9PHBxPn" -> "Command not found:
+      # pytest"). Con el mismo path, los dos pasos hablan del mismo venv.
+      # `runner.temp` no vale aquí: el contexto `runner` solo existe en un `env`
+      # de paso, y a nivel de job deja el workflow inválido.
+      POETRY_VIRTUALENVS_PATH: ${{ github.workspace }}/.poetry-backend
+      # Poetry consulta el keyring en cada operación. En un runner sin sesión
+      # de escritorio completa, secretstorage abre DBus, no recibe respuesta y
+      # aborta el `poetry install` ("Cannot install greenlet"). No hay ningún
+      # secreto que buscar aquí: la clave se lee del entorno.
+      POETRY_NO_INTERACTION: "1"
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12 (uv)
+        shell: bash
+        run: |
+          python3 -m pip install --user --break-system-packages uv >/dev/null
+          ~/.local/bin/uv python install 3.12
+          ~/.local/bin/uv venv --python 3.12 --seed "$RUNNER_TEMP/venv-3.12"
+          echo "$RUNNER_TEMP/venv-3.12/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
+          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
+          # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
+          # `poetry: command not found`.
+          ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
+          poetry env use python
+          poetry install --no-interaction
+
+      - name: Lint with ruff
+        working-directory: ./backend
+        run: |
+          pip install "ruff==0.17.1"
+          ruff check app tests
+          ruff format --check app tests
+
+      - name: Type check with mypy
+        working-directory: ./backend
+        run: |
+          pip install mypy
+          # `app` has no __init__.py and imports itself both as `config` and
+          # `app.config`, so mypy finds every file twice and aborts before it
+          # checks anything. explicit-package-bases keeps it to one module name.
+          mypy app --ignore-missing-imports --explicit-package-bases || true
+
+      - name: Run tests
+        working-directory: ./backend
+        run: |
+          PYTHONPATH=.:app poetry run pytest tests -v --tb=short
+
+      - name: Run llm-proxy tests
+        working-directory: .
+        env:
+          # El proxy tiene su propio pyproject y necesita un venv separado.
+          POETRY_VIRTUALENVS_CREATE: "true"
+          POETRY_VIRTUALENVS_PATH: ${{ runner.temp }}/poetry-llm
+        run: |
+          # `timeout` para que un registro de PyPI que no responde falle con el
+          # comando a la vista en vez de colgar el job entero. El install va
+          # siempre: es idempotente y sale del caché en segundos, y una guarda
+          # del tipo "¿existe pip?" da por bueno un venv vacío.
+          # Todo por `poetry run`: `poetry env info --path` puede resolver a otro
+          # venv del que `poetry install` acaba de llenar.
+          timeout 900 bash -c 'cd llm-proxy && poetry install --no-interaction --no-root'
+          timeout 300 poetry run --directory llm-proxy pip install -r requirements-dev.txt
+          poetry run --directory llm-proxy python -m pytest -q
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: backend-coverage
+          path: ./backend/htmlcov/

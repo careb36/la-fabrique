@@ -1,0 +1,112 @@
+name: Docker Build
+
+# Construir cada imagen desde cero detecta lo que ningún test unitario ve: un
+# `COPY` que se olvidó un módulo (el proxy arrancaba a `ModuleNotFoundError:
+# No module named 'upstream'`), una dependencia que solo existe en el venv de
+# desarrollo, un `setuptools` que instaló bien y rompe al importar. Los tests
+# corren sobre el árbol de trabajo; esto corre sobre lo que realmente se
+# despliega.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'llm-proxy/**'
+      - 'vscode-daemon/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker-build.yml'
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux, x64, lafabrique]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      # Una imagen rota no debe esconder el estado de las otras cuatro.
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+          - name: janitor
+            # El Dockerfile copia `backend/janitor/main.py`, así que el
+            # contexto es la raíz (igual que en docker-compose.yml).
+            context: .
+            dockerfile: ./backend/janitor/Dockerfile
+          - name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+          - name: llm-proxy
+            context: ./llm-proxy
+            dockerfile: ./llm-proxy/Dockerfile
+          - name: vscode-daemon
+            context: ./vscode-daemon
+            dockerfile: ./vscode-daemon/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.name }}
+        run: |
+          docker build \
+            --file "${{ matrix.dockerfile }}" \
+            --tag "fabrique-${{ matrix.name }}:ci" \
+            "${{ matrix.context }}"
+
+      # Construir no prueba que el proceso arranque: el proxy compilaba bien y
+      # moría en el primer import. Estos pasos ejecutan la imagen.
+      - name: Smoke test llm-proxy (serves /health)
+        if: matrix.name == 'llm-proxy'
+        env:
+          # El runner es compartido y dos corridas de refs distintas no se
+          # serializan por el bloque `concurrency`: nombre y puerto fijos se
+          # pisarían entre ellas.
+          CONTAINER: fabrique-llm-proxy-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker run -d --name "$CONTAINER" \
+            --publish 127.0.0.1::5100 "fabrique-${{ matrix.name }}:ci"
+          PORT=$(docker port "$CONTAINER" 5100 | head -1 | sed 's/.*://')
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$PORT/health" > /dev/null 2>&1; then
+              echo "llm-proxy responds on /health (port $PORT)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "llm-proxy did not answer on /health; container logs:"
+          docker logs "$CONTAINER"
+          exit 1
+
+      # El backend necesita Postgres para arrancar, así que aquí solo se
+      # comprueba lo que el `COPY` incompleto rompía: que todo import resuelva.
+      - name: Smoke test backend (imports resolve)
+        if: matrix.name == 'backend'
+        run: |
+          docker run --rm --entrypoint python "fabrique-${{ matrix.name }}:ci" \
+            -c "import app.main; print('imports OK')"
+
+      # Este Dockerfile copiaba un solo archivo, así que un módulo nuevo al lado
+      # de daemon.py se quedaba fuera de la imagen. Importarlo lo detecta.
+      - name: Smoke test vscode-daemon (imports resolve)
+        if: matrix.name == 'vscode-daemon'
+        run: |
+          docker run --rm --entrypoint python "fabrique-${{ matrix.name }}:ci" \
+            -c "import daemon; print('daemon imports OK')"
+
+      - name: Clean up ${{ matrix.name }}
+        if: always()
+        env:
+          CONTAINER: fabrique-llm-proxy-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f "$CONTAINER" 2>/dev/null || true
+          docker rmi -f "fabrique-${{ matrix.name }}:ci" 2>/dev/null || true

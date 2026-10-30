@@ -1,0 +1,249 @@
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: factory-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4318:4318"     # OTLP/HTTP receiver
+    networks:
+      - factory-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:latest
+    container_name: factory-nats
+    # JetStream keeps task assignments and queued deliveries on disk, so they
+    # survive a backend or daemon that is down when they are published.
+    command: ["-js", "-sd", "/data"]
+    ports:
+      # The workspace daemon on this computer connects here. Only this machine
+      # by default: anything that reaches NATS can ask the daemon to run commands.
+      - "${NATS_BIND:-127.0.0.1}:4222:4222"
+    volumes:
+      - nats-data:/data
+    networks:
+      - factory-network
+    healthcheck:
+      test: ["CMD", "nats-server", "-v"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: factory-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-factory}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init-db:/docker-entrypoint-initdb.d
+    networks:
+      - factory-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.25-enterprise
+    container_name: factory-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/factory}
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "eval"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 512M
+      NEO4J_dbms_memory_heap_initial__size: 512M
+      NEO4J_dbms_memory_heap_max__size: 2G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    networks:
+      - factory-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  llm-proxy:
+    build:
+      context: ./llm-proxy
+      dockerfile: Dockerfile
+    container_name: factory-llm-proxy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-factory}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      QWEN_API_KEY: ${QWEN_API_KEY}
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
+      NEBIUS_PROXY_URL: ${NEBIUS_PROXY_URL:-https://api.tokenfactory.nebius.com/v1}
+      LLM_UPSTREAM_TIMEOUT_SECONDS: ${LLM_UPSTREAM_TIMEOUT_SECONDS:-110}
+      PROXY_PORT: 5100
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    ports:
+      - "5100:5100"
+    volumes:
+      - ./llm-proxy/app.py:/app/app.py
+      - ./llm-proxy/usage.py:/app/usage.py
+    networks:
+      - factory-network
+    depends_on:
+      - jaeger
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5100/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: factory-backend
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-factory}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      FERNET_SECRET_KEY: ${FERNET_SECRET_KEY:-}
+      AUDIT_SIGNING_KEY: ${AUDIT_SIGNING_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-}
+      SUPPORT_ADMIN_EMAILS: ${SUPPORT_ADMIN_EMAILS:-}
+      SUPPORT_AGENT_ENABLED: ${SUPPORT_AGENT_ENABLED:-false}
+      NATS_URL: nats://nats:4222
+      NATS_NAMESPACE: ${NATS_NAMESPACE:-}
+      LLM_PROXY_URL: http://llm-proxy:5100
+      AUDIT_LOG_PATH: /app/.factory/logs
+      AGENT_WORKSPACE_ROOT: ${CONTAINER_WORKSPACE_ROOT:-/workspace}
+      AGENT_GRAPH_ENABLED: ${AGENT_GRAPH_ENABLED:-true}
+      DELIVERY_TESTS_ENABLED: ${DELIVERY_TESTS_ENABLED:-false}
+      DELIVERY_TEST_COMMAND: ${DELIVERY_TEST_COMMAND:-}
+      NEMOTRON_ROLES: ${NEMOTRON_ROLES:-}
+      NEMOTRON_MODEL: ${NEMOTRON_MODEL:-}
+      NEMOTRON_MODEL_STRATEGIC: ${NEMOTRON_MODEL_STRATEGIC:-}
+      NEMOTRON_MODEL_FAST: ${NEMOTRON_MODEL_FAST:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/agents:/app/agents
+      - ./backend/llm:/app/llm
+      - ./backend/memory:/app/memory
+      - ./backend/telemetry.py:/app/telemetry.py
+      - factory-logs:/app/.factory
+      - ./:${CONTAINER_WORKSPACE_ROOT:-/workspace}:rw
+    networks:
+      - factory-network
+    depends_on:
+      llm-proxy:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+
+  # The workspace daemon normally runs natively on your computer
+  # (scripts/start-daemon.sh or scripts/start-daemon.ps1), where it sees your
+  # projects at their real paths on macOS, Linux and Windows. This container
+  # is an opt-in alternative for Linux hosts only:
+  #   docker compose --profile docker-daemon up -d
+  # It mounts PROJECTS_ROOT at the same path, so host paths stay valid. Run
+  # one daemon, not both.
+  vscode-daemon:
+    image: python:3.12-slim
+    container_name: factory-vscode-daemon
+    profiles: ["docker-daemon"]
+    environment:
+      NATS_URL: nats://nats:4222
+      NATS_NAMESPACE: ${NATS_NAMESPACE:-}
+      WORKSPACE_ROOT: ${CONTAINER_WORKSPACE_ROOT:-/workspace}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    working_dir: /app
+    command: sh -lc "pip install --no-cache-dir -r /app/requirements.txt && python /app/daemon.py"
+    volumes:
+      - ./:${CONTAINER_WORKSPACE_ROOT:-/workspace}
+      - ${PROJECTS_ROOT:-${HOME:-/tmp}}:${PROJECTS_ROOT:-${HOME:-/tmp}}:rw
+      - ./vscode-daemon/daemon.py:/app/daemon.py:ro
+      - ./vscode-daemon/requirements.txt:/app/requirements.txt:ro
+    networks:
+      - factory-network
+    depends_on:
+      nats:
+        condition: service_healthy
+
+  janitor:
+    build:
+      context: .
+      dockerfile: backend/janitor/Dockerfile
+    container_name: factory-janitor
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-factory}
+    networks:
+      - factory-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: factory-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+    networks:
+      - factory-network
+    depends_on:
+      - backend
+
+volumes:
+  nats-data:
+  postgres-data:
+  neo4j-data:
+  neo4j-logs:
+  factory-logs:
+
+networks:
+  factory-network:
+    driver: bridge

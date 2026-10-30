@@ -1,0 +1,7 @@
+[
+  {
+    "commit": {
+      "message": "Implement Fernet encryption for ProjectCredential values"
+    }
+  }
+]
