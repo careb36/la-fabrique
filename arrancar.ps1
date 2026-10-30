@@ -755,9 +755,17 @@ function Initialize-NetworkEnvironment {
         if (-not $env:PIP_CERT) { $env:PIP_CERT = $bundle }
     }
     if ($env:HTTPS_PROXY -or $env:HTTP_PROXY) {
-        Write-Ok "Uso el proxy configurado ($($env:HTTPS_PROXY)$($env:HTTP_PROXY))"
+        $proxies = @(@($env:HTTPS_PROXY, $env:HTTP_PROXY) | Where-Object { $_ } | Select-Object -Unique) -join ' / '
+        Write-Ok "Uso el proxy configurado ($proxies)"
     }
 }
+
+# Módulos de Python puro que el asistente ya tiene y que el backend puede
+# reutilizar cuando no hay red (los necesita httpx/anyio/google-genai).
+$script:BorrowModules = @(
+    'annotated_types', 'anyio', 'distro', 'h11', 'httpcore', 'httpx',
+    'sniffio', 'typing_extensions', 'typing_inspection'
+)
 
 function Show-InstallFailure([string]$Salida) {
     Write-Detalle $Salida
@@ -765,6 +773,97 @@ function Show-InstallFailure([string]$Salida) {
         Write-Aviso "Parece un problema de red/TLS, no de dependencias. Comprueba en una consola:"
         Write-Host "         python -m pip download --no-deps --dest $env:TEMP\probe httpx" -ForegroundColor DarkGray
     }
+}
+
+# --- Red ----------------------------------------------------------------
+
+function Show-NetworkDiagnosis([string]$PythonExe) {
+    $lineas = New-Object System.Collections.ArrayList
+    $dns = $false
+    try {
+        $null = [System.Net.Dns]::GetHostAddresses('pypi.org')
+        $dns = $true
+        [void]$lineas.Add('DNS de pypi.org: resuelve')
+    } catch {
+        [void]$lineas.Add("DNS de pypi.org: FALLA ($($_.Exception.Message))")
+    }
+    $https = $false
+    if ($dns) {
+        try {
+            $resp = Invoke-WebRequest -Uri 'https://pypi.org/simple/' -Method Head -TimeoutSec 25 -UseBasicParsing
+            $https = ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400)
+            [void]$lineas.Add("HTTPS a pypi.org: código $($resp.StatusCode)")
+        } catch {
+            [void]$lineas.Add("HTTPS a pypi.org: FALLA ($($_.Exception.Message))")
+        }
+    }
+    foreach ($clave in @('HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY')) {
+        $valor = [Environment]::GetEnvironmentVariable($clave)
+        if ($valor) { [void]$lineas.Add("$clave=$valor") }
+    }
+    if ($PythonExe) {
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('pip-probe-' + [Guid]::NewGuid().ToString('N'))
+        try {
+            # Pocos reintentos: esto es un diagnóstico, no una instalación.
+            $probe = Invoke-Python -Exe $PythonExe -Arguments @('-m', 'pip', 'download', '--no-deps', '--retries', '1', '--timeout', '15', '--dest', $tmp, 'six') -TimeoutSeconds 90
+            if ($probe.ExitCode -eq 0) {
+                [void]$lineas.Add('pip puede descargar: sí')
+            } else {
+                $corto = ($probe.StdErr -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -First 3) -join ' / '
+                [void]$lineas.Add("pip puede descargar: NO (código $($probe.ExitCode)) $corto")
+            }
+        } finally {
+            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($linea in $lineas) { Write-Detalle $linea }
+    return [pscustomobject]@{ Dns = $dns; Https = $https }
+}
+
+# Último recurso sin red: el entorno del asistente trae httpx, httpcore, distro,
+# sniffio, anyio, h11 y annotated_types (los pide google-genai). Son módulos de
+# Python puro, así que se pueden copiar. Nunca sobrescribe: sólo rellena huecos.
+function Get-SitePackages([string]$Venv) {
+    if (-not $Venv -or -not (Test-Path -LiteralPath $Venv)) { return $null }
+    if ($script:OnWindows) {
+        $directo = Join-Path $Venv 'Lib\site-packages'
+        if (Test-Path -LiteralPath $directo) { return $directo }
+        return $null
+    }
+    $lib = Join-Path $Venv 'lib'
+    if (-not (Test-Path -LiteralPath $lib)) { return $null }
+    $pyDir = Get-ChildItem -LiteralPath $lib -Directory -Filter 'python*' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $pyDir) { return $null }
+    $ruta = Join-Path $pyDir.FullName 'site-packages'
+    if (Test-Path -LiteralPath $ruta) { return $ruta }
+    return $null
+}
+
+function Copy-MissingModulesFrom([string]$SourceVenv, [string]$TargetVenv, [string[]]$Modules) {
+    $src = Get-SitePackages $SourceVenv
+    $dst = Get-SitePackages $TargetVenv
+    if (-not $src -or -not $dst) { return 0 }
+    $copiados = 0
+    foreach ($mod in $Modules) {
+        if (Test-Path -LiteralPath (Join-Path $dst $mod)) { continue }
+        $origen = Join-Path $src $mod
+        if (-not (Test-Path -LiteralPath $origen)) { continue }
+        $binarios = Get-ChildItem -LiteralPath $origen -Recurse -Include '*.pyd', '*.so' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($binarios) {
+            Write-Detalle "$mod tiene código compilado en el otro entorno: no se copia"
+            continue
+        }
+        Copy-Item -LiteralPath $origen -Destination (Join-Path $dst $mod) -Recurse -Force
+        foreach ($info in Get-ChildItem -LiteralPath $src -Directory -Filter "$mod-*.dist-info" -ErrorAction SilentlyContinue) {
+            $destino = Join-Path $dst $info.Name
+            if (-not (Test-Path -LiteralPath $destino)) {
+                Copy-Item -LiteralPath $info.FullName -Destination $destino -Recurse -Force
+            }
+        }
+        Write-Detalle "copiado $mod desde $SourceVenv"
+        $copiados++
+    }
+    return $copiados
 }
 
 # --- Instalación de dependencias --------------------------------------------
@@ -832,14 +931,33 @@ function Install-BackendDependencies([string]$PythonExe) {
         if (-not (Test-Path -LiteralPath $export)) {
             throw "No encuentro tools\lock_requirements.py: el proyecto está incompleto."
         }
-        $exportResult = Invoke-Python -Exe $PythonExe -Arguments @($export, $LockFile, '--groups', 'main,dev', '--output', $requirements) -TimeoutSeconds 120
-        if ($exportResult.ExitCode -ne 0) {
-            Write-Detalle $exportResult.StdErr
+        $exportResult = Invoke-Python -Exe $PythonExe -Arguments @($export, $LockFile, '--groups', 'main,dev', '--output', $requirements) -TimeoutSeconds 180 -AllowDirectRetry
+        # Manda el archivo, no el código: si el requirements se escribió, sirve.
+        $exportOk = (Test-Path -LiteralPath $requirements) -and ((Get-Item -LiteralPath $requirements).Length -gt 0)
+        if (-not $exportOk) {
+            Write-Detalle "código $($exportResult.ExitCode)"
+            if ($exportResult.StdOut) { Write-Detalle $exportResult.StdOut }
+            if ($exportResult.StdErr) { Write-Detalle $exportResult.StdErr }
             throw "No pude leer poetry.lock para generar el requirements."
+        }
+        if ($exportResult.ExitCode -ne 0) {
+            Write-Aviso "El exportador salió con código $($exportResult.ExitCode), pero escribió el requirements; sigo."
         }
         Write-Detalle $exportResult.StdOut
         & $PythonExe -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r $requirements
         if ($LASTEXITCODE -ne 0) {
+            Write-Aviso "pip tampoco pudo instalar. Reviso la red:"
+            $null = Show-NetworkDiagnosis $PythonExe
+            # Sin red todavía se puede arrancar: el entorno del asistente ya trae
+            # esos módulos (Python puro) y se copian.
+            $prestados = Copy-MissingModulesFrom $AssistantVenv $BackendVenv $script:BorrowModules
+            if ($prestados -gt 0) {
+                Write-Aviso "Copié $prestados módulos del entorno del asistente. Es provisional: con red, ejecuta '.\arrancar.ps1 -Instalar'."
+                if (Test-BackendReady $PythonExe) {
+                    Write-Ok "Backend utilizable con los módulos prestados"
+                    return
+                }
+            }
             Show-InstallFailure "pip falló instalando las dependencias del backend."
             throw "pip no pudo instalar las dependencias del backend (código $LASTEXITCODE)."
         }
@@ -856,6 +974,8 @@ function Install-AssistantDependencies([string]$PythonExe) {
     Update-Pip $PythonExe
     & $PythonExe -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r $requirements
     if ($LASTEXITCODE -ne 0) {
+        Write-Aviso "pip no pudo instalar el asistente. Reviso la red:"
+        $null = Show-NetworkDiagnosis $PythonExe
         Show-InstallFailure "pip falló instalando las dependencias del asistente."
         throw "No pude instalar las dependencias del asistente (código $LASTEXITCODE)."
     }
@@ -910,6 +1030,9 @@ try {
             if ($exe) { Write-Detalle "$($item.Nombre): $exe" }
             else { Write-Detalle "$($item.Nombre): sin intérprete válido en $($item.Dir)" }
         }
+        Write-Detalle "Red:"
+        $exeRed = if ($found) { $found.Exe } elseif ($backendPython) { $backendPython } else { $null }
+        $null = Show-NetworkDiagnosis $exeRed
         Write-Detalle "Registro: $LogFile"
         exit 0
     }

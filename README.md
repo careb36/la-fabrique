@@ -89,6 +89,7 @@ Todo queda en `logs\arranque-<fecha>.log`. Los avisos `!!` son recuperables; los
 | Síntoma | Causa | Qué hace el lanzador |
 |---|---|---|
 | `All attempts to connect to pypi.org failed` en Poetry | Poetry solo confía en `certifi`; pip y PowerShell usan el almacén de certificados de Windows (antivirus/proxy con inspección TLS) | exporta las raíces del sistema a `logs\windows-ca-bundle.pem`, reintenta y, si sigue fallando, instala con pip las versiones de `poetry.lock` |
+| Lo mismo **y pip tampoco descarga** | sin red, DNS caído o proxy que no responde | imprime el veredicto (DNS, HTTPS a pypi, `pip download` de prueba y proxy configurado) y, si el entorno del asistente ya trae `httpx`, `annotated-types`, `distro`, `sniffio`…, los copia al backend para arrancar sin red |
 | `langchain-core requires httpx … which is not installed` | instalación anterior interrumpida | detecta los módulos que faltan y completa solo esos |
 | `no se puede ejecutar un documento en medio de una canalización: …\bin\python` | ruta de venv de Linux usada en Windows | en Windows solo se acepta `Scripts\python.exe` |
 | `NativeCommandError` al comprobar módulos | PowerShell 5.1 convierte el stderr de Python en error | las comprobaciones se ejecutan sin pasar por el pipeline y se informa «falta» o «roto» con su traceback |
@@ -96,6 +97,10 @@ Todo queda en `logs\arranque-<fecha>.log`. Los avisos `!!` son recuperables; los
 | `Necesito Python 3.11 o superior` aunque esté instalado | la sonda no devolvía salida (carrera al leer la redirección) y parecía que ningún intérprete servía | se espera a que el proceso cierre del todo, se reintenta la sonda en el propio proceso y, si aun así falla, se acepta la ruta que declaran `pyvenv.cfg`, el registro o `py --list-paths`; `-Diagnostico` muestra candidato por candidato qué pasó |
 
 Comandos de diagnóstico (opcionales):
+
+Si el arranque dice «Backend utilizable con los módulos prestados», la fábrica
+funciona pero esos módulos salieron del entorno del asistente. Cuando vuelvas a
+tener internet, `\.\arrancar.ps1 -Instalar` los sustituye por los del lock.
 
 ```powershell
 .\arrancar.ps1 -Preparar -SoloBackend        # deja el entorno listo y sale

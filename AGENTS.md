@@ -125,8 +125,18 @@ slow container because importing `agents.graph` is heavy — raise `--wait` if
   here; `Test-Path 'C:\...'` on Linux raises "Cannot find drive" and pollutes
   the output. Wrap the reachability check in `try/catch`.
 * `.\arrancar.ps1 -Diagnostico` is the support tool: it lists every candidate,
-  its version, its source, each probe result, and which interpreter would be
-  used, without installing anything. Keep it working and in the README table.
+  its version, its source, each probe result, which interpreter would be used
+  and the network verdict (DNS, HTTPS to pypi, a real `pip download`, proxy
+  variables), without installing anything. Keep it working and in the README.
+* Installing needs PyPI. When poetry and pip both fail,
+  `Show-NetworkDiagnosis` explains why (DNS vs TLS vs proxy) and
+  `Copy-MissingModulesFrom` borrows the pure-Python wheels the backend shares
+  with the assistant env (httpx, httpcore, distro, sniffio, anyio, h11,
+  annotated_types, typing_extensions) so the factory still boots offline. The
+  copy never overwrites and skips anything with `.pyd`/`.so`; the launcher
+  warns that it is provisional and `-Instalar` fixes it with the network.
+  Locate site-packages with `Get-SitePackages` (Lib\site-packages on Windows,
+  lib/pythonX.Y/site-packages elsewhere).
 * Broken environments are moved to `<venv>.roto-<timestamp>`, never deleted:
   `-Reinstalar` is explicit and the backup is the user's safety net.
 * `logs/` holds the transcript, the exported CA bundle and the generated
