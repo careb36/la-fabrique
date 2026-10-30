@@ -13,6 +13,11 @@ import pytest
 STATIC = Path(__file__).resolve().parents[1] / "profesor3" / "dashboard" / "static"
 PAGE = STATIC / "app.html"
 
+pytestmark = pytest.mark.skipif(
+    not PAGE.is_file(),
+    reason="profesor3/ no se distribuye: el panel de referencia no está",
+)
+
 
 @pytest.fixture(scope="module")
 def page() -> str:

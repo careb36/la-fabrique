@@ -14,9 +14,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-for extra in (ROOT, ROOT / "profesor3"):
-    if str(extra) not in sys.path:
-        sys.path.insert(0, str(extra))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from demo.coding_agent import (CodingAgent, parse_reply, run_tests,   # noqa: E402
                                write_files, _safe_path)

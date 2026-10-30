@@ -35,10 +35,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "profesor3"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from core import fabrica_env                      # noqa: E402
-from providers.llm_openai import OpenAICompatLLM  # noqa: E402
+from demo import nemotron
 
 PROTOCOL = """\
 You are a coding agent working alone in an empty directory.
@@ -188,18 +188,19 @@ def open_llm(key: str, url: str, model: str, probe: bool = True, log=print):
     fábrica ya lleva media hora trabajando.
     """
     doors = [url] if not probe else [url] + [
-        u for _, u in fabrica_env.DOORS if u.rstrip("/") != url.rstrip("/")]
+        u for _, u in nemotron.DOORS if u.rstrip("/") != url.rstrip("/")]
     last: Exception | None = None
     for door in doors:
-        llm = OpenAICompatLLM({"base_url": door, "model": model, "api_key": key,
-                               "temperature": 0.2, "max_tokens": 8192})
+        llm = nemotron.ChatClient({"base_url": door, "model": model,
+                                   "api_key": key, "temperature": 0.2,
+                                   "max_tokens": 8192})
         try:
             offered = llm.models()
         except Exception as exc:
             last = exc
             continue
         if offered and model not in offered:
-            strategic, _ = fabrica_env.tier_models(offered, model)
+            strategic, _ = nemotron.tier_models(offered, model)
             if strategic and strategic != model:
                 log(f"El modelo {model} no está en {door}: uso {strategic}")
                 llm.model = strategic
@@ -280,12 +281,12 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     log = (lambda *a, **k: None) if args.quiet else print
-    env = fabrica_env.read_env()
-    key = (os.getenv("NEBIUS_API_KEY") or env.get(fabrica_env.KEY_NAME) or "").strip()
+    env = nemotron.read_env()
+    key = (os.getenv("NEBIUS_API_KEY") or env.get(nemotron.KEY_NAME) or "").strip()
     url = (args.url or os.getenv("NEBIUS_PROXY_URL")
-           or env.get("NEBIUS_PROXY_URL") or fabrica_env.DEFAULT_NEMOTRON_URL)
+           or env.get("NEBIUS_PROXY_URL") or nemotron.DEFAULT_NEMOTRON_URL)
     model = (args.model or os.getenv("AGENT_MODEL") or env.get("AGENT_MODEL")
-             or fabrica_env.DEFAULT_NEMOTRON_MODEL)
+             or nemotron.DEFAULT_NEMOTRON_MODEL)
 
     llm = None
     if not args.offline:

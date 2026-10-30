@@ -21,7 +21,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "profesor3"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 OK, BAD, SKIP = "\033[32m✔\033[0m", "\033[31m✘\033[0m", "\033[33m…\033[0m"
 
@@ -72,21 +73,21 @@ def check_readme(report: Report) -> None:
 
 
 def check_config(report: Report) -> None:
-    from core import fabrica_env
+    from demo import nemotron
 
-    report.check(fabrica_env.DEFAULT_NEMOTRON_URL.startswith(
+    report.check(nemotron.DEFAULT_NEMOTRON_URL.startswith(
         "https://api.tokenfactory.nebius.com"),
         "la dirección por defecto es Nebius Token Factory",
-        fabrica_env.DEFAULT_NEMOTRON_URL)
-    report.check("nvidia/" in fabrica_env.DEFAULT_NEMOTRON_MODEL,
+        nemotron.DEFAULT_NEMOTRON_URL)
+    report.check("nvidia/" in nemotron.DEFAULT_NEMOTRON_MODEL,
                  "el modelo por defecto es un modelo abierto de NVIDIA",
-                 fabrica_env.DEFAULT_NEMOTRON_MODEL)
-    strategic, fast = fabrica_env.tier_models(
-        [fabrica_env.DEFAULT_NEMOTRON_MODEL, fabrica_env.DEFAULT_FAST_MODEL])
+                 nemotron.DEFAULT_NEMOTRON_MODEL)
+    strategic, fast = nemotron.tier_models(
+        [nemotron.DEFAULT_NEMOTRON_MODEL, nemotron.DEFAULT_FAST_MODEL])
     report.check(bool(strategic and fast),
                  "hay dos niveles: razonamiento y respuestas rápidas",
                  f"{strategic} / {fast}")
-    report.check("developer" in fabrica_env.FACTORY_ROLES,
+    report.check("developer" in nemotron.FACTORY_ROLES,
                  "los roles de la fábrica se reparten entre esos niveles")
 
 
@@ -120,16 +121,16 @@ def check_live(report: Report, key: str) -> None:
     y se dice en cuál cayó: una clave de otra puerta sirve para desarrollar,
     pero no para el envío, y eso tiene que verse aquí y no en el formulario.
     """
-    from core import fabrica_env
-    from providers.llm_openai import OpenAICompatLLM
+    from demo import nemotron
+    from demo.nemotron import ChatClient
 
-    doors = [(name, url) for name, url in fabrica_env.DOORS]
+    doors = [(name, url) for name, url in nemotron.DOORS]
     doors.sort(key=lambda d: "tokenfactory" not in d[1])
     accepted = None
     for name, url in doors:
         try:
-            OpenAICompatLLM({"base_url": url, "model": "x",
-                             "api_key": key}).models(timeout=10)
+            ChatClient({"base_url": url, "model": "x",
+                        "api_key": key}).models(timeout=10)
         except Exception:
             continue
         accepted = (name, url)
@@ -142,14 +143,14 @@ def check_live(report: Report, key: str) -> None:
         report.warn("esta clave NO es de Nebius Token Factory",
                     "sirve para desarrollo local; para el envío hace falta una "
                     "de Token Factory o de Nebius AI Cloud")
-    llm = OpenAICompatLLM({"base_url": url, "model": fabrica_env.DEFAULT_NEMOTRON_MODEL,
-                           "api_key": key, "max_tokens": 64})
+    llm = ChatClient({"base_url": url, "model": nemotron.DEFAULT_NEMOTRON_MODEL,
+                      "api_key": key, "max_tokens": 64})
     offered = llm.models()
-    nemotron = [m for m in offered if "nemotron" in m.lower()]
-    report.check(bool(nemotron), "el catálogo sirve modelos Nemotron",
-                 ", ".join(nemotron[:4]))
-    if nemotron and llm.model not in offered:
-        llm.model = fabrica_env.tier_models(offered)[0] or nemotron[0]
+    nemotron_models = [m for m in offered if "nemotron" in m.lower()]
+    report.check(bool(nemotron_models), "el catálogo sirve modelos Nemotron",
+                 ", ".join(nemotron_models[:4]))
+    if nemotron_models and llm.model not in offered:
+        llm.model = nemotron.tier_models(offered)[0] or nemotron_models[0]
         report.warn("el modelo por defecto no está en este catálogo",
                     f"se probó con {llm.model}")
     text, _ = llm.complete([{"role": "user",
