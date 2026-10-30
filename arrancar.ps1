@@ -216,7 +216,9 @@ function Invoke-Python {
         try { $process.WaitForExit() } catch { }
         $stdout = Read-TextFile $outFile
         $stderr = Read-TextFile $errFile
-        if (-not $stdout -and -not $stderr -and $AllowDirectRetry) {
+        # Sin salida y con error: se repite en el propio proceso para tener el
+        # mensaje real (si no, un fallo se queda sin explicación).
+        if (-not $stdout -and -not $stderr -and ($AllowDirectRetry -or $process.ExitCode -ne 0)) {
             return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments
         }
         return [pscustomobject]@{ ExitCode = $process.ExitCode; StdOut = $stdout; StdErr = $stderr }
@@ -326,17 +328,44 @@ function Write-ModuleReport($Report, [string]$Etiqueta) {
 
 # --- Entornos ----------------------------------------------------------------
 
+# Comprueba el intérprete de un entorno sin usar las sondas en archivo: sirve
+# para validar un venv recién creado, donde pyvenv.cfg existe aunque el
+# intérprete esté a medias.
+function Test-VenvInterpreter([string]$Dir) {
+    $layouts = New-Object System.Collections.ArrayList
+    if ($script:OnWindows) {
+        [void]$layouts.Add(@('Scripts', 'python.exe'))
+    } else {
+        [void]$layouts.Add(@('bin', 'python'))
+        [void]$layouts.Add(@('bin', 'python3'))
+    }
+    foreach ($parts in $layouts) {
+        $path = $Dir
+        foreach ($part in $parts) { $path = Join-Path $path $part }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $check = Invoke-PythonInProcess -Exe $path -Arguments @('-c', 'import sys')
+        if ($check.ExitCode -eq 0) { return $path }
+    }
+    return $null
+}
+
 function Get-VenvPython([string]$Dir, [switch]$SinAviso) {
     if (-not (Test-Path -LiteralPath $Dir)) { return $null }
     # Un venv de Windows tiene Scripts\python.exe y uno de Linux bin/python.
     # Mezclarlos producía "no se puede ejecutar un documento en medio de una
     # canalización" al usar .venv-backend\bin\python en Windows.
-    $candidates = if ($script:OnWindows) {
-        @(, @('Scripts', 'python.exe'))
+    # Cuidado: 'if' desarma las listas anidadas de un solo elemento, así que
+    # una lista [['Scripts','python.exe']] llegaba como dos cadenas sueltas y
+    # en Windows se buscaba $Dir\Scripts y $Dir\python.exe, nunca
+    # Scripts\python.exe: todo entorno de Windows parecía roto.
+    $layouts = New-Object System.Collections.ArrayList
+    if ($script:OnWindows) {
+        [void]$layouts.Add(@('Scripts', 'python.exe'))
     } else {
-        @(@('bin', 'python'), @('bin', 'python3'))
+        [void]$layouts.Add(@('bin', 'python'))
+        [void]$layouts.Add(@('bin', 'python3'))
     }
-    foreach ($parts in $candidates) {
+    foreach ($parts in $layouts) {
         $path = $Dir
         foreach ($part in $parts) { $path = Join-Path $path $part }
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
@@ -608,14 +637,37 @@ function Resolve-CommandPath([string]$Name) {
 
 function New-Venv([string]$Dir, $PythonInfo, [string]$Etiqueta) {
     Write-Paso "Creando entorno de $Etiqueta en $Dir"
-    $venvArgs = @($PythonInfo.Prefix) + @('-m', 'venv', $Dir)
-    $result = Invoke-Python -Exe $PythonInfo.Exe -Arguments $venvArgs -TimeoutSeconds 600
-    if ($result.ExitCode -ne 0) {
-        Write-Detalle $result.StdErr
-        throw "No pude crear el entorno de $Etiqueta con $($PythonInfo.Exe) ($($PythonInfo.version))."
+    $baseArgs = @($PythonInfo.Prefix) + @('-m', 'venv')
+    # Tres intentos, del más limpio al más tolerante: un antivirus que bloquea
+    # ensurepip deja el entorno a medias, y '--clear' recicla restos.
+    $attempts = @(
+        @{ Args = $baseArgs + @($Dir); Nombre = 'venv' },
+        @{ Args = $baseArgs + @('--clear', $Dir); Nombre = 'venv --clear' },
+        @{ Args = $baseArgs + @('--without-pip', $Dir); Nombre = 'venv --without-pip' }
+    )
+    $result = $null
+    $venvPython = $null
+    foreach ($attempt in $attempts) {
+        $result = Invoke-Python -Exe $PythonInfo.Exe -Arguments $attempt.Args -TimeoutSeconds 600 -AllowDirectRetry
+        # Manda el resultado, no el código: en Windows hay equipos donde
+        # 'python -m venv' sale con código distinto de 0 y el entorno queda bien.
+        $venvPython = Test-VenvInterpreter $Dir
+        if ($venvPython) {
+            if ($result.ExitCode -ne 0) {
+                Write-Aviso "'$($attempt.Nombre)' devolvió código $($result.ExitCode), pero el intérprete del entorno responde; sigo."
+            } elseif ($attempt.Nombre -ne 'venv') {
+                Write-Aviso "El entorno se creó con '$($attempt.Nombre)'."
+            }
+            break
+        }
+        $detalle = "$($result.StdOut)`n$($result.StdErr)".Trim()
+        Write-Detalle "$($attempt.Nombre) -> código $($result.ExitCode)"
+        if ($detalle) { Write-Detalle $detalle }
     }
-    $venvPython = Get-VenvPython $Dir
-    if (-not $venvPython) { throw "El entorno de $Etiqueta se creó pero su python no responde." }
+    if (-not $venvPython) {
+        $last = "$($result.StdOut)`n$($result.StdErr)".Trim()
+        throw "No pude crear el entorno de $Etiqueta con $($PythonInfo.Exe) ($($PythonInfo.version)). $(if ($last) { $last } else { 'python -m venv no dio ninguna salida.' })"
+    }
 
     # ensurepip puede quedar a medias si el antivirus bloquea archivos temporales.
     $pip = Invoke-Python -Exe $venvPython -Arguments @('-m', 'pip', '--version') -TimeoutSeconds 120
@@ -629,6 +681,24 @@ function New-Venv([string]$Dir, $PythonInfo, [string]$Etiqueta) {
     }
     Write-Ok "Entorno creado con Python $($PythonInfo.version)"
     return $venvPython
+}
+
+# Crea el entorno al lado y sólo entonces aparta el viejo: si la creación
+# falla, el usuario se queda con el entorno que ya tenía (con sus paquetes).
+function New-VenvEnSitio([string]$Dir, $PythonInfo, [string]$Etiqueta) {
+    $temp = "$Dir.nuevo"
+    if (Test-Path -LiteralPath $temp) {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $venvPython = New-Venv $temp $PythonInfo $Etiqueta
+    if (Test-Path -LiteralPath $Dir) {
+        Backup-Venv $Dir 'se sustituye por un entorno nuevo que ya funciona'
+    }
+    Move-Item -LiteralPath $temp -Destination $Dir
+    Write-Ok "Entorno de $Etiqueta listo en $Dir"
+    $final = Test-VenvInterpreter $Dir
+    if (-not $final) { return $venvPython }
+    return $final
 }
 
 function Backup-Venv([string]$Dir, [string]$Motivo) {
@@ -869,12 +939,10 @@ try {
     }
 
     if ($needsBackendVenv) {
-        if (Test-Path -LiteralPath $BackendVenv) { Backup-Venv $BackendVenv 'la carpeta existe pero no tiene un python válido' }
-        $backendPython = New-Venv $BackendVenv $systemPython 'el backend'
+        $backendPython = New-VenvEnSitio $BackendVenv $systemPython 'el backend'
     }
     if ($needsAssistantVenv) {
-        if (Test-Path -LiteralPath $AssistantVenv) { Backup-Venv $AssistantVenv 'la carpeta existe pero no tiene un python válido' }
-        $assistantPython = New-Venv $AssistantVenv $systemPython 'el asistente'
+        $assistantPython = New-VenvEnSitio $AssistantVenv $systemPython 'el asistente'
     }
 
     if ((-not $SoloAsistente) -and (-not $backendPython)) { throw "Falta el entorno del backend en $BackendVenv" }
