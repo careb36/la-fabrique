@@ -465,6 +465,33 @@ the assignment from the NATS outbox, asks the LLM proxy, writes through the
 workspace daemon and records an `AgentRun` plus a `Verification`. Claims are
 kept apart from observations.
 
+From *resume* to a verified deliverable:
+
+```mermaid
+sequenceDiagram
+    participant P as Person
+    participant API as FastAPI
+    participant DB as Database
+    participant NJ as NATS JetStream
+    participant TW as Task worker
+    participant LLM as LLM proxy
+    participant WS as Workspace daemon
+
+    P->>API: POST /v1/start_sprint (scope, backlog)
+    API->>DB: sprint + backlog items + outbox events
+    DB-->>NJ: task.assign (durable outbox)
+    NJ->>TW: assignment
+    TW->>LLM: task prompt (procedures, lessons, memory)
+    LLM-->>TW: deliverable with path= file blocks
+    TW->>WS: workspace.generate (write files)
+    WS-->>TW: sha256 of each file read back
+    TW->>DB: AgentRun + Verification
+    TW->>LLM: QA review
+    LLM-->>TW: APPROVED closes the task
+    TW->>DB: done / rework / blocked for a person
+    API-->>P: board + inbox
+```
+
 [⬆ Back to Top](#la-fabrique)
 
 ---
@@ -585,7 +612,7 @@ The voice façade is a thin adapter over the factory's own router functions:
 
 | Method | Endpoint | What it does |
 |---|---|---|
-| `GET` | `/v1/voice/ping` | Checks the shared key and the factory version |
+| `GET` | `/v1/voice/ping` | Checks the shared key and reports whether it was accepted as a key |
 | `GET` | `/v1/voice/status` | Returns `{ok, action, speech, data}`; `data` carries the company, sprint, counts, blocked titles and pending approvals |
 | `POST` | `/v1/voice/command` | Runs one voice action (`status`, `planear`, `crear_sprint`, `pausar`, `reanudar`, `despachar`, `aprobar`, `rechazar`, `asignar`, …) |
 | `POST` | `/v1/voice/build` | Turns a sentence into a project written to disk |
