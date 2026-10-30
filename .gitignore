@@ -10,3 +10,6 @@ __pycache__/
 .fusion/
 *.log
 logs/
+
+# Proyectos generados por la fábrica desde el chat
+builds/

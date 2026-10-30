@@ -25,6 +25,32 @@
 .PARAMETER Python
     Intérprete concreto para crear los entornos (por defecto: 3.12).
 
+.PARAMETER SinNavegador
+    No abre el panel del asistente (con la fábrica dentro) al arrancar.
+
+.PARAMETER Completa
+    Fábrica completa: levanta Postgres, NATS y el proxy de modelos con Docker
+    Desktop y arranca el demonio de trabajo, para que los agentes ejecuten los
+    sprints y escriban los ficheros de verdad. Sin este parámetro el producto
+    funciona igual por voz, pero los agentes no ejecutan tareas.
+
+.PARAMETER Agentes
+    Carpeta donde escriben los agentes (por defecto: .\agentes).
+
+.PARAMETER InterfazWeb
+    Compila la interfaz React de la fábrica (la-fabrique\frontend) para que el
+    backend la sirva en su raíz. No hace falta para el producto: el asistente ya
+    trae su propio tablero en http://127.0.0.1:8770/fabrica. Necesita Node.js y
+    tarda unos minutos la primera vez.
+
+.PARAMETER Recompilar
+    Regenera el ejecutable empaquetado (profesor3\dist) antes de arrancar, para
+    que lleve la apariencia actual del asistente. Si ya está al día no hace nada.
+
+.PARAMETER SoloCompilar
+    Recompila y termina, sin arrancar la fábrica ni el asistente. Es lo que usa
+    regenerar-ejecutable.cmd.
+
 .PARAMETER Instalar
     Revisa y completa las dependencias aunque los entornos ya existan.
 
@@ -52,6 +78,12 @@ param(
     [switch]$Reinstalar,
     [switch]$Preparar,
     [switch]$Diagnostico,
+    [switch]$SinNavegador,
+    [switch]$Completa,
+    [switch]$InterfazWeb,
+    [switch]$Recompilar,
+    [switch]$SoloCompilar,
+    [string]$Agentes,
     [string]$Python
 )
 
@@ -988,6 +1020,66 @@ function Install-AssistantDependencies([string]$PythonExe) {
     Write-Ok "Asistente instalado"
 }
 
+function Install-Frontend {
+    <#
+        La fábrica es su propia interfaz web (React). El backend la sirve desde
+        frontend/dist, así que hay que compilarla una vez: sin ese paso la raíz
+        del backend explica cómo hacerlo en vez de mostrar la fábrica.
+    #>
+    # La SPA vive en la-fabrique\frontend, hermana de la-fabrique\backend; el
+    # backend la sirve desde ahí (app/ui_static.dist_dir). Apuntarla dentro de
+    # backend hacía que npm no encontrara package.json y el arranque abortara.
+    $frontend = Join-Path (Split-Path -Parent $BackendDir) 'frontend'
+    $index = Join-Path $frontend 'dist\index.html'
+    if ((-not $Instalar) -and (Test-Path -LiteralPath $index)) {
+        Write-Ok "Interfaz de la fábrica compilada"
+        return
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $frontend 'package.json'))) {
+        Write-Aviso "No encuentro la interfaz web en ${frontend}: la API y la voz funcionan sin ella."
+        Write-Detalle 'Revisa que exista la-fabrique\frontend en el repositorio.'
+        return
+    }
+    $npm = Resolve-CommandPath 'npm.cmd'
+    if (-not $npm) { $npm = Resolve-CommandPath 'npm' }
+    if (-not $npm) {
+        Write-Aviso "No encuentro npm (Node.js). La API y la voz funcionan, pero la interfaz web no está compilada."
+        Write-Detalle "Instala Node.js 20 o superior y vuelve a ejecutar '.\arrancar.ps1 -Instalar'."
+        return
+    }
+    Write-Paso "Compilando la interfaz de la fábrica (npm); la primera vez tarda unos minutos"
+    Push-Location -LiteralPath $frontend
+    try {
+        if (Test-Path -LiteralPath (Join-Path $frontend 'package-lock.json')) {
+            & $npm ci --no-audit --no-fund
+        } else {
+            & $npm install --no-audit --no-fund
+        }
+        # Un fallo de npm no puede tumbar el arranque: la API y la voz no
+        # dependen de la SPA, y el backend ya sirve una página que explica el
+        # paso que falta (app/ui_static._MISSING).
+        if ($LASTEXITCODE -ne 0) {
+            Write-Aviso "npm no pudo instalar las dependencias de la interfaz (código $LASTEXITCODE)."
+            Write-Detalle 'Sigo sin interfaz web; la API y la voz funcionan igual.'
+            return
+        }
+        & $npm run build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Aviso "npm no pudo compilar la interfaz (código $LASTEXITCODE)."
+            Write-Detalle 'Sigo sin interfaz web; la API y la voz funcionan igual.'
+            return
+        }
+    }
+    finally {
+        Pop-Location
+    }
+    if (-not (Test-Path -LiteralPath $index)) {
+        Write-Aviso 'La compilación terminó pero no encuentro frontend\dist\index.html.'
+        return
+    }
+    Write-Ok "Interfaz de la fábrica compilada"
+}
+
 function Test-BackendReady([string]$PythonExe) {
     $report = Test-PythonModules -Exe $PythonExe -Modules $script:BackendModules
     if ($report.Ready) { Write-Ok "Módulos del backend presentes"; return $true }
@@ -1103,6 +1195,9 @@ try {
                 throw "El backend sigue incompleto después de instalar. Revisa $LogFile."
             }
         }
+        # El producto usa el tablero del asistente (:8770/fabrica), no la SPA
+        # de React, así que compilarla es opcional y nunca bloquea el arranque.
+        if ($InterfazWeb) { Install-Frontend }
         if ($Instalar) {
             Write-Paso "Comprobando el entorno del backend (pip check)"
             & $backendPython -m pip check
@@ -1124,6 +1219,52 @@ try {
         }
     }
 
+    # --- Ejecutable empaquetado ---------------------------------------------
+    # dist\AI-Workspace.exe es el asistente congelado: una copia del código del
+    # día en que se compiló. Si el código cambió después, al abrir ese .exe se
+    # ve la apariencia ANTERIOR del producto, aunque el lanzador arranque la
+    # nueva. Se avisa, y con -Recompilar se regenera antes de arrancar.
+    if ((-not $SoloBackend) -and $assistantPython) {
+        $builder = Join-Path (Join-Path $AssistantDir 'tools') 'build_exe.py'
+        if (Test-Path -LiteralPath $builder) {
+            $check = Invoke-Python -Exe $assistantPython -Arguments @($builder, '--check') -TimeoutSeconds 120 -AllowDirectRetry
+            # Con PyInstaller ya instalado la recompilación es offline y rápida;
+            # sin él, build_exe.py instala lo que falta (una vez, con red).
+            $probe = Invoke-Python -Exe $assistantPython -Arguments @('-c', 'import PyInstaller') -TimeoutSeconds 60 -AllowDirectRetry
+            $buildArgs = @($builder)
+            if ($probe.ExitCode -eq 0) { $buildArgs += '--no-deps' }
+            if ($Recompilar) { $buildArgs += '--if-stale' }
+
+            if ($Recompilar -or $SoloCompilar) {
+                Write-Paso 'Recompilando el ejecutable del asistente (tarda unos minutos)'
+                Write-Detalle $check.StdOut
+                $built = Invoke-Python -Exe $assistantPython -Arguments $buildArgs -TimeoutSeconds 3600 -AllowDirectRetry
+                if ($built.ExitCode -eq 0) {
+                    Write-Ok 'Ejecutable regenerado con la apariencia actual'
+                } else {
+                    Write-Fallo "La recompilación falló (código $($built.ExitCode))."
+                    Write-Detalle $built.StdOut
+                    if ($SoloCompilar) { exit 1 }
+                }
+            } elseif ($check.ExitCode -eq 2) {
+                Write-Aviso 'El ejecutable de profesor3\dist es anterior al código actual:'
+                Write-Aviso 'abrir ese .exe muestra la apariencia vieja del asistente.'
+                Write-Aviso 'Regenéralo con:  .\regenerar-ejecutable.cmd'
+            }
+            if ($SoloCompilar) {
+                Write-Host ''
+                Write-Ok 'Nada más que hacer (-SoloCompilar).'
+                exit 0
+            }
+        }
+    }
+
+    if ($SoloCompilar) {
+        # El bloque de arriba sale con 0 al compilar; llegar aquí es no poder.
+        Write-Fallo 'No pude recompilar: falta el entorno del asistente (profesor3\.venv).'
+        exit 1
+    }
+
     if ($Preparar) {
         Write-Host ""
         Write-Ok "Entornos listos. Arranca con: .\arrancar.ps1"
@@ -1139,6 +1280,9 @@ try {
     if ($Puerto -gt 0) { $launcherArgs += @('--port', "$Puerto") }
     if ($Clave) { $launcherArgs += @('--voice-key', $Clave) }
     if ($Empresa) { $launcherArgs += @('--company', $Empresa) }
+    if ($SinNavegador) { $launcherArgs += '--no-browser' }
+    if ($Completa) { $launcherArgs += '--completa' }
+    if ($Agentes) { $launcherArgs += @('--agentes', $Agentes) }
     if (-not $SoloAsistente) { $launcherArgs += @('--backend-python', $backendPython) }
     if ((-not $SoloBackend) -and $assistantPython) { $launcherArgs += @('--assistant-python', $assistantPython) }
 

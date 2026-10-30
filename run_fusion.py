@@ -32,7 +32,9 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
+import webbrowser
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -47,6 +49,14 @@ DEFAULT_COMPANY = "Mi fábrica"
 # An assistant that dies this fast never showed a window: usually a missing
 # GUI, audio device or Gemini key, so the traceback above is the real answer.
 ASSISTANT_CRASH_SECONDS = 20.0
+# The assistant's panel is the window a launch should show: it wears the new
+# identity and embeds the factory's own UI in its «Fábrica» tab, signed in
+# through /fabrica. The factory's UI is the fallback when the Qt side never
+# comes up; the panel port is fixed by the dashboard (8770, or 8771 with the
+# optional HTTPS).
+ASSISTANT_PANEL_URL = "http://127.0.0.1:8770"
+PANEL_APP_MARKER = "tutor-virtual-a1"   # what the dashboard's /health calls itself
+PANEL_WAIT_SECONDS = 20.0              # then settle for the factory UI
 
 DEFAULT_AGENTS = [
     {"name": "Atlas", "role": "PO", "seniority": "Senior", "specialty": "product"},
@@ -101,17 +111,20 @@ def _child_env(
         # Same for the broker: without it the connector retries forever and
         # prints a traceback every few seconds on the user's console.
         env.setdefault("NATS_DISABLED", "true")
-    if not env.get("JWT_SECRET_KEY"):
-        # Local single-user desktop: login is not available without a JWT key,
-        # so the factory runs in the documented demo mode. The voice key still
-        # guards /v1/voice/*.
-        env.setdefault("AUTH_REQUIRED", "false")
-        if announce:
-            print(
-                "⚠  AUTH_REQUIRED=false (no JWT_SECRET_KEY). This is a local "
-                "single-user install; set both in la-fabrique/.env for a shared one.",
-                flush=True,
-            )
+    # The UI is a web app, so the browser needs a session even on a desktop
+    # instalment. _ensure_app_secrets() always writes a signing key; the session
+    # itself is minted from the voice key by /v1/auth/desktop, so nobody types a
+    # password and the factory is never left open anonymously.
+    env.setdefault("AUTH_REQUIRED", "true")
+    env.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+    # The assistant's dashboard embeds the factory's own UI in an iframe, which
+    # is a different origin: `X-Frame-Options: DENY` (the API default) left that
+    # panel blank. Loopback with any port, because the panel moves to the next
+    # free port when 8770 is taken.
+    env.setdefault("FRAME_ANCESTORS", " ".join(
+        f"{scheme}://{host}:*"
+        for host in ("127.0.0.1", "localhost")
+        for scheme in ("http", "https")))
     if announce and use_sqlite:
         print(
             "⚠  Modo local sin NATS: la voz mueve el tablero (crear, despachar, "
@@ -132,6 +145,7 @@ def _request(
     payload: dict | None = None,
     key: str = "",
     timeout: float = 10,
+    bearer: str = "",
 ) -> tuple[int, dict | None]:
     data = json.dumps(payload).encode() if payload is not None else None
     headers = {"Accept": "application/json"}
@@ -139,6 +153,8 @@ def _request(
         headers["Content-Type"] = "application/json"
     if key:
         headers["X-Voice-Key"] = key
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -169,7 +185,24 @@ def _is_local(url: str) -> bool:
     return (urlsplit(url).hostname or "") in {"127.0.0.1", "localhost", "::1"}
 
 
-def _ensure_company(url: str, key: str, name: str) -> int | None:
+def _desktop_session(url: str, key: str) -> tuple[str, int]:
+    """Trade the voice key for a web session, so the UI opens signed in.
+
+    Returns ``(token, expires_in)``; an empty token means the browser will ask
+    for a password, which the packaged product never sets.
+    """
+    status, body = _request(f"{url}/v1/auth/desktop", payload={}, key=key)
+    if status == 200 and body and body.get("access_token"):
+        return str(body["access_token"]), int(body.get("expires_in") or 3600)
+    print(
+        f"⚠  No pude abrir sesión para la interfaz (HTTP {status}). "
+        "Se abrirá la pantalla de acceso.",
+        flush=True,
+    )
+    return "", 0
+
+
+def _ensure_company(url: str, key: str, name: str, token: str = "") -> int | None:
     status, body = _request(f"{url}/v1/voice/status", key=key)
     if status == 200 and body and body.get("ok"):
         return (body.get("data") or {}).get("company", {}).get("id")
@@ -181,6 +214,7 @@ def _ensure_company(url: str, key: str, name: str) -> int | None:
         {"company_name": name, "agents": DEFAULT_AGENTS},
         key="",
         timeout=30,
+        bearer=token,
     )
     if status in (200, 201) and body:
         company_id = body.get("company_id") or (body.get("company") or {}).get("id")
@@ -366,13 +400,15 @@ def _start_backend(
     )
 
 
-def _start_assistant(extra: list[str], python: str) -> subprocess.Popen:
+def _start_assistant(
+    extra: list[str], python: str, env: dict[str, str] | None = None
+) -> subprocess.Popen:
     entry = ASSISTANT / "main.py"
     print("→  Arrancando el asistente …", flush=True)
     return subprocess.Popen(
         [python, str(entry), *extra],
         cwd=str(ASSISTANT),
-        env=dict(os.environ),
+        env=dict(env or os.environ),
     )
 
 
@@ -387,6 +423,288 @@ def _stop(process: subprocess.Popen | None, name: str) -> None:
         process.kill()
     except OSError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Modo fábrica completa
+# ---------------------------------------------------------------------------
+
+AGENTS_DIR = ROOT / "agentes"
+# Only the services the backend needs. It runs natively here, so its own
+# container is not started; jaeger stays out until telemetry is configured.
+FULL_SERVICES = ("postgres", "nats", "llm-proxy")
+FULL_PORTS = (("postgres", 5432), ("nats", 4222), ("llm-proxy", 5100))
+AGENTS_README = """# Agentes
+
+Aquí escriben los agentes de la fábrica cuando el sprint se despacha por voz:
+un fichero por entrega, en el proyecto que nombre la tarea. La carpeta se crea
+sola y `arrancar.ps1 -Completa` la pasa como `AGENT_WORKSPACE_ROOT` al backend,
+así que es el único sitio del disco que el demonio tiene permitido escribir.
+
+Se puede mover con `-Agentes C:\\ruta\\a\\mi\\carpeta`, y el contenido está en
+`.gitignore`: lo generado no se versiona, el producto sí.
+"""
+
+
+def _ensure_agents_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    ignore = path / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("*\n!.gitignore\n!LEEME.md\n", encoding="utf-8")
+    readme = path / "LEEME.md"
+    if not readme.exists():
+        readme.write_text(AGENTS_README, encoding="utf-8")
+    return path
+
+
+def _docker_cli() -> str | None:
+    """The docker binary, but only if a daemon answers behind it."""
+    docker = shutil.which("docker")
+    if not docker:
+        return None
+    try:
+        probe = subprocess.run(
+            [docker, "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return docker if probe.returncode == 0 else None
+
+
+def _compose(docker: str, *args: str, timeout: float = 1800):
+    return subprocess.run(
+        [docker, "compose", *args],
+        cwd=str(FACTORY),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _write_env_file(values: dict[str, str]) -> None:
+    """Merge *values* into ``la-fabrique/.env`` without dropping the comments."""
+    path = FACTORY / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    written: set[str] = set()
+    merged: list[str] = []
+    for raw in lines:
+        name, sep, _ = raw.partition("=")
+        name = name.strip()
+        if sep and name in values:
+            merged.append(f"{name}={values[name]}")
+            written.add(name)
+        else:
+            merged.append(raw)
+    merged.extend(f"{name}={value}" for name, value in values.items() if name not in written)
+    path.write_text("\n".join(merged).rstrip("\n") + "\n", encoding="utf-8")
+
+
+def _assistant_gemini_key() -> str:
+    """The key the assistant already uses, so the proxy does not ask for another."""
+    config = ASSISTANT / "config" / "api_keys.json"
+    try:
+        data = json.loads(config.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(data.get("gemini_api_key") or "").strip()
+
+
+def _ensure_app_secrets() -> dict[str, str]:
+    """The signing key the web UI's session needs, in both modes.
+
+    It is generated once and kept, so a restart does not log the browser out,
+    and it is the same secret Docker gets in full mode.
+    """
+    values = _parse_env_file(FACTORY / ".env")
+    if values.get("JWT_SECRET_KEY"):
+        return values
+    _write_env_file({"JWT_SECRET_KEY": secrets.token_urlsafe(32)})
+    print("✓  Clave de sesión de la interfaz creada en la-fabrique/.env.", flush=True)
+    return _parse_env_file(FACTORY / ".env")
+
+
+def _ensure_full_secrets() -> dict[str, str]:
+    """Fill what ``docker compose`` requires, once, in ``la-fabrique/.env``."""
+    values = _parse_env_file(FACTORY / ".env")
+    add: dict[str, str] = {}
+    if not values.get("POSTGRES_USER"):
+        add["POSTGRES_USER"] = "factory"
+    if not values.get("POSTGRES_DB"):
+        add["POSTGRES_DB"] = "factory"
+    if not values.get("POSTGRES_PASSWORD"):
+        add["POSTGRES_PASSWORD"] = secrets.token_urlsafe(24)
+    if not values.get("GEMINI_API_KEY"):
+        key = _assistant_gemini_key()
+        if key:
+            add["GEMINI_API_KEY"] = key
+    if not values.get("JWT_SECRET_KEY"):
+        add["JWT_SECRET_KEY"] = secrets.token_urlsafe(32)
+    if add:
+        _write_env_file(add)
+        print(
+            "✓  Secretos de la infraestructura en la-fabrique/.env "
+            f"({', '.join(sorted(add))}).",
+            flush=True,
+        )
+    return {**values, **add}
+
+
+def _wait_tcp(port: int, timeout: float, host: str = "127.0.0.1") -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _port_in_use(host, port):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def _start_full_stack(docker: str, wait: float) -> bool:
+    print(
+        "→  Modo fábrica completa: levantando Postgres, NATS y el proxy de modelos …",
+        flush=True,
+    )
+    result = _compose(docker, "up", "-d", *FULL_SERVICES)
+    if result.returncode != 0:
+        output = (result.stderr or result.stdout or "").strip().splitlines()
+        print("✗  docker compose no pudo levantar la infraestructura:", file=sys.stderr)
+        for line in output[-12:]:
+            print(f"   {line}", file=sys.stderr)
+        return False
+    for name, port in FULL_PORTS:
+        if not _wait_tcp(port, wait):
+            print(
+                f"✗  {name} no abrió el puerto {port} en {wait:.0f}s. "
+                "Revisa `docker compose logs` en la-fabrique.",
+                file=sys.stderr,
+            )
+            return False
+        print(f"✓  {name} escuchando en 127.0.0.1:{port}", flush=True)
+    return True
+
+
+def _agent_model(secrets: dict[str, str]) -> str:
+    """One model id for every role when the install only has the Gemini key.
+
+    The factory's role map mixes Qwen and DeepSeek ids; a desktop install that
+    only carries the assistant's Gemini key would have most roles rejected by
+    the proxy as "unknown model", so those tasks end blocked. Empty means
+    "leave the role map alone", which is right as soon as a second key exists.
+    """
+    explicit = (secrets.get("AGENT_MODEL") or "").strip()
+    if explicit:
+        return explicit
+    if secrets.get("NEBIUS_API_KEY"):
+        # Nemotron: one id for every role, like the Gemini case. Kept in step
+        # with profesor3/core/fabrica_env.DEFAULT_NEMOTRON_MODEL — the old
+        # llama-3.3-nemotron-super-49b-v1 was retired (410 Gone) and every
+        # task came back blocked.
+        return "nvidia/nemotron-3-ultra-550b-a55b"
+    if secrets.get("QWEN_API_KEY") or secrets.get("DEEPSEEK_API_KEY"):
+        return ""
+    return "gemini-flash-latest" if secrets.get("GEMINI_API_KEY") else ""
+
+
+def _full_env(secrets: dict[str, str], agents_dir: Path) -> dict[str, str]:
+    """Backend environment for the complete factory, over the local one."""
+    env = {
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_USER": secrets.get("POSTGRES_USER", "factory"),
+        "POSTGRES_PASSWORD": secrets.get("POSTGRES_PASSWORD", ""),
+        "POSTGRES_DB": secrets.get("POSTGRES_DB", "factory"),
+        "NATS_URL": "nats://127.0.0.1:4222",
+        "LLM_PROXY_URL": "http://127.0.0.1:5100",
+        "NEO4J_DISABLED": "true",
+        "AGENT_WORKSPACE_ROOT": str(agents_dir),
+    }
+    model = _agent_model(secrets)
+    if model:
+        env["AGENT_MODEL"] = model
+    return env
+
+
+def _start_daemon(python: str, env: dict[str, str], agents_dir: Path) -> subprocess.Popen:
+    """The workspace daemon, native, writing only inside the agents' folder."""
+    print(f"→  Arrancando el demonio de trabajo sobre {agents_dir} …", flush=True)
+    daemon_env = dict(env)
+    daemon_env["WORKSPACE_ROOT"] = str(agents_dir)
+    daemon_env.setdefault("PYTHONUNBUFFERED", "1")
+    return subprocess.Popen(
+        [python, str(FACTORY / "vscode-daemon" / "daemon.py")],
+        cwd=str(FACTORY / "vscode-daemon"),
+        env=daemon_env,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
+
+def _panel_url(url: str, token: str, expires_in: int) -> str:
+    """The UI's address, with the session handed over in the fragment.
+
+    The fragment is never sent to the server and `main.tsx` scrubs it from the
+    address bar as soon as it is adopted, so the token does not sit in history.
+    """
+    base = f"{url.rstrip('/')}/"
+    if not token:
+        return base
+    return f"{base}#sesion={token}&caduca={expires_in}"
+
+
+def _panel_answers(url: str = ASSISTANT_PANEL_URL,
+                   timeout: float = 2.0) -> bool:
+    """Is the assistant's dashboard listening there?
+
+    `/health` names the app, so a stranger that happens to hold 8770 is never
+    mistaken for the panel.
+    """
+    try:
+        with urllib.request.urlopen(f"{url}/health", timeout=timeout) as response:
+            if response.status != 200:
+                return False
+            data = json.loads(response.read().decode("utf-8", "replace"))
+        return str((data or {}).get("app") or "") == PANEL_APP_MARKER
+    except Exception:
+        return False
+
+
+def _open_panel(url: str, token: str = "", expires_in: int = 0,
+                timeout: float = 45.0,
+                panel_timeout: float = PANEL_WAIT_SECONDS) -> None:
+    """Open the assistant's panel, or the factory when it never comes up.
+
+    The panel is the product's face: it carries the new identity and embeds
+    the factory in its «Fábrica» tab, so it goes first. It starts with the
+    assistant, hence the polling. The factory's own UI is the fallback for a
+    launch where the Qt side refused to start — a board you can use beats an
+    address that answers nothing.
+    """
+    panel_deadline = time.monotonic() + max(0.0, min(panel_timeout, timeout))
+    while time.monotonic() < panel_deadline:
+        if _panel_answers():
+            webbrowser.open(f"{ASSISTANT_PANEL_URL}/")
+            print("ℹ  Panel del asistente abierto — la fábrica está en «Fábrica».",
+                  flush=True)
+            return
+        time.sleep(1.0)
+
+    target = _panel_url(url, token, expires_in)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{url.rstrip('/')}/", timeout=2) as response:
+                if response.status == 200:
+                    webbrowser.open(target)
+                    return
+        except Exception:
+            pass
+        time.sleep(1.0)
+    print(
+        "⚠  No pude abrir el navegador. Dímelo por voz: «abre la fábrica».",
+        flush=True,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -415,22 +733,57 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-config", action="store_true", help="do not touch the assistant's settings")
     parser.add_argument("--no-bootstrap", action="store_true", help="do not create a company")
     parser.add_argument("--wait", type=float, default=90.0, help="seconds to wait for the backend")
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="do not open the factory board in the browser",
+    )
+    parser.add_argument(
+        "--completa",
+        action="store_true",
+        help=(
+            "fábrica completa: levanta Postgres, NATS y el proxy de modelos con "
+            "Docker y arranca el demonio, para que los agentes ejecuten y escriban"
+        ),
+    )
+    parser.add_argument(
+        "--agentes",
+        default=os.getenv("FUSION_AGENTS_DIR"),
+        help=f"carpeta donde escriben los agentes (por defecto: {AGENTS_DIR})",
+    )
+    parser.add_argument(
+        "--espera-infra",
+        type=float,
+        default=240.0,
+        help="segundos de espera para cada servicio de Docker",
+    )
     parser.add_argument("assistant_args", nargs="*", help="extra arguments for the assistant")
     args = parser.parse_args(argv)
     _configure_console()
 
     explicit_url = args.url is not None
     url = (args.url or f"http://127.0.0.1:{args.port}").rstrip("/")
-    use_sqlite = _is_local(url)
+    agents_dir = _ensure_agents_dir(
+        Path(args.agentes).expanduser() if args.agentes else AGENTS_DIR
+    )
+    full = args.completa and not args.assistant_only
+    # Sin SQLite cuando la fábrica es completa: Postgres y NATS vienen de Docker.
+    use_sqlite = _is_local(url) and not full
+    app_secrets = _ensure_app_secrets()
     env = _child_env(args.voice_key, use_sqlite, announce=not args.assistant_only)
+    if app_secrets.get("JWT_SECRET_KEY"):
+        env["JWT_SECRET_KEY"] = app_secrets["JWT_SECRET_KEY"]
     key = args.voice_key or env.get("VOICE_API_KEY") or secrets.token_urlsafe(32)
     env["VOICE_API_KEY"] = key
 
     backend: subprocess.Popen | None = None
     assistant: subprocess.Popen | None = None
+    daemon: subprocess.Popen | None = None
+    backend_python: str | None = None
 
     def _shutdown(_signum=None, _frame=None):
         _stop(assistant, "el asistente")
+        _stop(daemon, "el demonio")
         _stop(backend, "el backend")
         raise SystemExit(0)
 
@@ -438,6 +791,30 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _shutdown)
 
     try:
+        if full:
+            docker = _docker_cli()
+            if docker is None:
+                print(
+                    "✗  El modo fábrica completa necesita Docker, y aquí no hay "
+                    "ningún demonio que responda.\n"
+                    "   Windows: instala Docker Desktop y ábrelo "
+                    "(https://docs.docker.com/desktop/setup/install/windows-install/).\n"
+                    "   Sin Docker, arranca sin -Completa: el tablero y la voz "
+                    "funcionan, pero los agentes no ejecutan.",
+                    file=sys.stderr,
+                )
+                return 1
+            if not _start_full_stack(docker, args.espera_infra):
+                return 1
+            env.update(_full_env(_ensure_full_secrets(), agents_dir))
+            # El modo local deja DATABASE_URL en SQLite; aquí manda Postgres.
+            env.pop("DATABASE_URL", None)
+            env.pop("NATS_DISABLED", None)
+            print(
+                f"✓  Infraestructura lista. Los agentes escribirán en {agents_dir}",
+                flush=True,
+            )
+
         key_ok = True
         if not args.assistant_only:
             already_up = _wait_until_up(url, timeout=1.0)
@@ -515,6 +892,23 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 print("✓  Fábrica en marcha.", flush=True)
 
+        if full:
+            daemon_python = backend_python or _pick_python(
+                args.backend_python,
+                [ROOT / ".venv-backend", BACKEND / ".venv", BACKEND / "venv"],
+                "nats",
+                poetry_project=BACKEND,
+            )
+            if not _can_import(daemon_python, "nats"):
+                _stop(backend, "el backend")
+                print(
+                    f"✗  {daemon_python} no tiene nats-py, que el demonio necesita "
+                    "para hablar con NATS. Ejecuta .\\arrancar.ps1 -Instalar.",
+                    file=sys.stderr,
+                )
+                return 1
+            daemon = _start_daemon(daemon_python, env, agents_dir)
+
         if args.assistant_only and not _wait_until_up(url, timeout=5.0):
             print(
                 f"✗  No hay ninguna fábrica en {url}: no configuro el asistente "
@@ -524,10 +918,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
 
+        session_token, session_ttl = ("", 0)
+        if key_ok:
+            session_token, session_ttl = _desktop_session(url, key)
+
         if not args.no_bootstrap:
-            company_id = _ensure_company(url, key, args.company) if key_ok else None
+            company_id = (
+                _ensure_company(url, key, args.company, session_token)
+                if key_ok else None
+            )
         else:
             company_id = None
+
+        env["FABRICA_URL"] = url
+        env["FABRICA_API_KEY"] = key
+        env["FABRICA_COMPANY_ID"] = str(company_id) if company_id else ""
 
         if not args.no_config and key_ok:
             _configure_assistant(url, key, company_id)
@@ -549,7 +954,13 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
-            assistant = _start_assistant(args.assistant_args, assistant_python)
+            assistant = _start_assistant(args.assistant_args, assistant_python, env)
+            if not args.no_browser:
+                threading.Thread(
+                    target=_open_panel,
+                    args=(url, session_token, session_ttl),
+                    daemon=True,
+                ).start()
             started_at = time.monotonic()
             while True:
                 if backend is not None and backend.poll() is not None:
@@ -578,6 +989,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     finally:
         _stop(assistant, "el asistente")
+        _stop(daemon, "el demonio")
         _stop(backend, "el backend")
 
 

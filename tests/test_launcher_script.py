@@ -5,6 +5,7 @@ code review and only showed up on a real machine, so the traps are pinned here.
 """
 
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -78,3 +79,58 @@ def test_never_writes_a_readonly_automatic_variable(script):
     """$home, $input, $args... are read-only; assigning one aborts the run."""
     for name in ("$home ", "$input ", "$error "):
         assert name not in script
+
+
+def test_full_factory_mode_is_wired_through(script):
+    """-Completa must reach run_fusion; the flag is the only way to Docker."""
+    assert "[switch]$Completa" in script
+    assert "[string]$Agentes" in script
+    assert "'--completa'" in script
+    assert "@('--agentes', $Agentes)" in script
+
+
+def test_full_factory_mode_is_documented(script):
+    assert ".PARAMETER Completa" in script
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "-Completa" in readme
+
+
+def test_frontend_is_built_where_it_lives(script):
+    """The SPA is la-fabrique/frontend, not la-fabrique/backend/frontend.
+
+    Pointing npm at <backend>/frontend made Push-Location fail and npm look for
+    package.json in the repo root; the run aborted before the backend was up.
+    """
+    assert "Join-Path (Split-Path -Parent $BackendDir) 'frontend'" in script
+    assert "Join-Path $BackendDir 'frontend'" not in script
+    assert (ROOT / "la-fabrique" / "frontend" / "package.json").is_file()
+
+
+def test_frontend_build_failure_does_not_abort_the_launch(script):
+    """The API and the voice do not need the SPA: a broken npm step only warns."""
+    body = script[script.index("function Install-Frontend"):]
+    body = body[:body.index("function Test-BackendReady")]
+    assert 'throw "npm no pudo' not in body
+    assert body.count("Write-Aviso") >= 2
+    assert "return" in body
+
+
+def test_web_ui_build_is_opt_in(script):
+    """The product serves the assistant's own panel (:8770/fabrica), not React.
+
+    Building the SPA on every launch cost minutes of npm on the first start and
+    killed the run when it failed; it is now behind -InterfazWeb.
+    """
+    assert "[switch]$InterfazWeb" in script
+    assert "if ($InterfazWeb) { Install-Frontend }" in script
+    assert "\n        Install-Frontend\n" not in script.replace("\r\n", "\n")
+    assert "-InterfazWeb" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_backend_serves_the_same_frontend_the_launcher_builds():
+    sys.path.insert(0, str(ROOT / "la-fabrique" / "backend" / "app"))
+    try:
+        import ui_static
+    finally:
+        sys.path.pop(0)
+    assert ui_static.dist_dir() == ROOT / "la-fabrique" / "frontend" / "dist"
