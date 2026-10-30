@@ -1,0 +1,24 @@
+Asistente B1
+Copyright 2026 the Asistente B1 authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It is an independent implementation. No source code, prompt text, assets or
+user-facing copy were taken from any other desktop assistant: the wording of
+every prompt, guide and message was written for this project, and the only
+third-party material is the set of libraries listed in requirements.txt, each
+under its own license:
+
+  PyQt6            GPL-3.0 / commercial (Qt Company)   - graphical interface
+  sounddevice      MIT                                  - microphone, playback
+  numpy            BSD-3-Clause                         - audio buffers
+  faster-whisper   MIT                                  - local speech to text
+  piper            MIT                                  - local text to speech
+
+Those are optional: the core (conversation, tools, factory client) runs on the
+Python standard library alone, and the interface degrades to the console when a
+library is missing.
+
+The voice commands reach "La Fabrique", a separate project distributed under the
+Apache License 2.0. Nothing in that project is embedded here; it is called over
+HTTP on the port the user configures.
