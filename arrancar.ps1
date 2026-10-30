@@ -710,8 +710,19 @@ function Install-BackendDependencies([string]$PythonExe) {
     Update-Pip $PythonExe
 
     $poetryOk = $false
-    & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 poetry
+    # Poetry ya suele estar en el entorno: instalarlo otra vez solo añade una
+    # llamada de red que puede fallar por TLS sin necesidad.
+    $hasPoetry = $false
+    & $PythonExe -m poetry --version *> $null
     if ($LASTEXITCODE -eq 0) {
+        $hasPoetry = $true
+        Write-Detalle "Poetry ya está instalado"
+    } else {
+        Write-Detalle "Instalando Poetry…"
+        & $PythonExe -m pip install --quiet --disable-pip-version-check --retries 5 --timeout 60 poetry
+        if ($LASTEXITCODE -eq 0) { $hasPoetry = $true }
+    }
+    if ($hasPoetry) {
         # Poetry ignora el venv desde el que lo lanzas: sin VIRTUAL_ENV instala
         # en el Python del sistema. Se lo decimos y ponemos su Scripts/bin
         # delante en el PATH.
