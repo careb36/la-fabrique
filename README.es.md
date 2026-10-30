@@ -463,16 +463,19 @@ Get-Content (Get-ChildItem logs\arranque-*.log | Sort-Object LastWriteTime | Sel
 ```bash
 python -m venv .venv-backend
 .venv-backend/bin/pip install poetry
+export VIRTUAL_ENV="$PWD/.venv-backend"
+export POETRY_VIRTUALENVS_CREATE=false
 (cd la-fabrique/backend && ../../.venv-backend/bin/poetry install)
+unset VIRTUAL_ENV POETRY_VIRTUALENVS_CREATE
 
-python -m venv profesor3/.venv
-profesor3/.venv/bin/pip install -r profesor3/requirements.txt
+python -m venv asistente-b1/.venv
+(cd asistente-b1 && .venv/bin/pip install -e ".[ui,voice]")
 
 python run_fusion.py
 ```
 
 `run_fusion.py` busca solo el intérprete correcto para cada mitad
-(`.venv-backend/`, `la-fabrique/backend/.venv`, `profesor3/.venv` y, si
+(`.venv-backend/`, `la-fabrique/backend/.venv`, `asistente-b1/.venv` y, si
 existe, el entorno que ya creó Poetry con `poetry env info --path`). Si usas
 otros entornos, pásalos:
 
