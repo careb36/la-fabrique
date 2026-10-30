@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background: Deep Obsidian to Vantablack -->
+    <radialGradient id="voidGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#111827" /> <!-- Very Dark Gray -->
+      <stop offset="100%" stop-color="#000000" /> <!-- Pure Black -->
+    </radialGradient>
+
+    <!-- Energy Core Gradient: Electric Cyan to Hyper Violet -->
+    <linearGradient id="quantumGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe" /> <!-- Cyan -->
+      <stop offset="50%" stop-color="#4facfe" /> <!-- Azure -->
+      <stop offset="100%" stop-color="#7f00ff" /> <!-- Violet -->
+    </linearGradient>
+
+    <!-- Accelerator Ring Gradient: Plasma Pink to Blue -->
+    <linearGradient id="plasmaGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff0844" /> <!-- Pink -->
+      <stop offset="100%" stop-color="#2a0845" /> <!-- Deep Purple -->
+    </linearGradient>
+
+    <!-- Glow Filters -->
+    <filter id="coreGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    <filter id="edgeGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base: Chamfered Square / Obsidian Plate -->
+  <path d="M48 0h416a48 48 0 0 1 48 48v416a48 48 0 0 1-48 48H48a48 48 0 0 1-48-48V48A48 48 0 0 1 48 0z" fill="url(#voidGrad)" />
+
+  <!-- Background Tech Lines (Circuitry trace) -->
+  <path d="M256 0v100 M256 412v100 M0 256h100 M412 256h100 M64 64l50 50 M448 448l-50-50 M64 448l50-50 M448 64l-50 50" stroke="#1f2937" stroke-width="4" opacity="0.6"/>
+
+  <!-- Outer Containment Ring (Hexagon) -->
+  <polygon points="256,64 422,160 422,352 256,448 90,352 90,160" fill="none" stroke="url(#plasmaGrad)" stroke-width="6" opacity="0.4" filter="url(#edgeGlow)"/>
+
+  <!-- Inner Accelerator Ring (Rotated Hexagon) -->
+  <polygon points="256,128 366,192 366,320 256,384 146,320 146,192" fill="none" stroke="url(#quantumGrad)" stroke-width="12" filter="url(#edgeGlow)" />
+
+  <!-- Tesseract/Isometric Cube Lines (Connecting Inner to Outer) -->
+  <line x1="256" y1="64" x2="256" y2="128" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+  <line x1="256" y1="448" x2="256" y2="384" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+  <line x1="90" y1="160" x2="146" y2="192" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+  <line x1="422" y1="352" x2="366" y2="320" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+  <line x1="422" y1="160" x2="366" y2="192" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+  <line x1="90" y1="352" x2="146" y2="320" stroke="url(#quantumGrad)" stroke-width="6" opacity="0.8"/>
+
+  <!-- The Quantum Core (Central Diamond/Octahedron) -->
+  <polygon points="256,192 312,256 256,320 200,256" fill="#ffffff" filter="url(#coreGlow)" />
+  <polygon points="256,192 312,256 256,320 200,256" fill="url(#quantumGrad)" opacity="0.9" />
+
+  <!-- Core Highlights / Energy Spikes -->
+  <circle cx="256" cy="256" r="24" fill="#ffffff" filter="url(#edgeGlow)" />
+  <circle cx="256" cy="192" r="8" fill="#00f2fe" filter="url(#edgeGlow)" />
+  <circle cx="256" cy="320" r="8" fill="#7f00ff" filter="url(#edgeGlow)" />
+  <circle cx="200" cy="256" r="8" fill="#4facfe" filter="url(#edgeGlow)" />
+  <circle cx="312" cy="256" r="8" fill="#4facfe" filter="url(#edgeGlow)" />
+  
+</svg>

@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "llm-proxy"
+version = "2026.4.1"
+description = "Enterprise Multi-Model Gateway for La Fabrique"
+authors = ["La Fabrique Engineering Team"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+flask = "^3.0.0"
+requests = "^2.31.0"
+python-dotenv = "^1.0.0"
+sqlalchemy = "^2.1.6"
+psycopg2-binary = "^2.9.9"
+opentelemetry-api = "^1.45.1"
+opentelemetry-sdk = "^1.45.1"
+opentelemetry-exporter-otlp = "^1.45.1"
+opentelemetry-exporter-otlp-proto-http = "^1.45.1"
+opentelemetry-instrumentation-flask = "^0.66b1"
+opentelemetry-instrumentation-requests = "^0.66b1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed documentation example tokens; not live credentials."
+paths = [
+  '''docs/API\.md''',
+]

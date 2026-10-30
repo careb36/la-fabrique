@@ -1,0 +1,97 @@
+{
+  "name": "fabrique-frontend",
+  "version": "1.0.0",
+  "description": "Fabrique - Electron+React desktop frontend for Multi-Agent System",
+  "homepage": "https://github.com/careb36/la-fabrique",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/careb36/la-fabrique.git"
+  },
+  "main": "dist-electron-main/main.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src",
+    "preview": "vite preview",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "npm run electron:compile && concurrently -k \"vite\" \"electron . --dev\"",
+    "electron:build": "npm run electron:compile && npm run build -- --mode electron && electron-builder"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tanstack/react-query": "^5.105.0",
+    "autoprefixer": "^10.6.2",
+    "date-fns": "^4.4.0",
+    "i18next": "^26.5.11",
+    "lucide-react": "^1.62.0",
+    "moment": "^2.31.0",
+    "postcss": "^8.5.32",
+    "react": "^18.2.0",
+    "react-big-calendar": "^1.20.0",
+    "react-dom": "^18.2.0",
+    "react-i18next": "^17.1.9",
+    "react-router-dom": "^6.21.0",
+    "tailwindcss": "^3.4.0",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^18.2.45",
+    "@types/react-big-calendar": "^1.16.3",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^10.0.6",
+    "electron": "^28.1.0",
+    "electron-builder": "^26.18.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-i18next": "^6.1.5",
+    "jsdom": "^30.0.0",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^5.0.10",
+    "vitest": "^3.2.7"
+  },
+  "build": {
+    "appId": "com.fabrique.enterprise",
+    "productName": "Fabrique",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron-main/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "careb36 <58278841+careb36@users.noreply.github.com>"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
