@@ -27,7 +27,9 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -40,8 +42,11 @@ ROOT = Path(__file__).resolve().parent
 FACTORY = ROOT / "la-fabrique"
 BACKEND = FACTORY / "backend"
 ASSISTANT = ROOT / "profesor3"
-DEFAULT_URL = "http://127.0.0.1:8000"
+DEFAULT_PORT = 8000
 DEFAULT_COMPANY = "Mi fábrica"
+# An assistant that dies this fast never showed a window: usually a missing
+# GUI, audio device or Gemini key, so the traceback above is the real answer.
+ASSISTANT_CRASH_SECONDS = 20.0
 
 DEFAULT_AGENTS = [
     {"name": "Atlas", "role": "PO", "seniority": "Senior", "specialty": "product"},
@@ -89,6 +94,9 @@ def _child_env(
         # The graph backend is optional and absent in a desktop install;
         # failing fast keeps startup at ~2 s instead of a bolt timeout.
         env.setdefault("NEO4J_DISABLED", "true")
+        # Same for the broker: without it the connector retries forever and
+        # prints a traceback every few seconds on the user's console.
+        env.setdefault("NATS_DISABLED", "true")
     if not env.get("JWT_SECRET_KEY"):
         # Local single-user desktop: login is not available without a JWT key,
         # so the factory runs in the documented demo mode. The voice key still
@@ -100,6 +108,13 @@ def _child_env(
                 "single-user install; set both in la-fabrique/.env for a shared one.",
                 flush=True,
             )
+    if announce and use_sqlite:
+        print(
+            "⚠  Modo local sin NATS: la voz mueve el tablero (crear, despachar, "
+            "pausar, aprobar), pero los agentes no ejecutan tareas hasta que "
+            "haya NATS y un modelo. Para eso: cd la-fabrique && docker compose up -d",
+            flush=True,
+        )
     return env
 
 
@@ -208,6 +223,18 @@ def _configure_assistant(url: str, key: str, company_id: int | None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _configure_console() -> None:
+    """Windows consoles are cp1252 by default and choke on «», ✓ and ⚠."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
 def _can_import(python: str, module: str) -> bool:
     try:
         result = subprocess.run(
@@ -220,20 +247,75 @@ def _can_import(python: str, module: str) -> bool:
     return result.returncode == 0
 
 
-def _pick_python(explicit: str | None, venv_dir: Path, module: str) -> str:
-    """The interpreter that can import ``module``: flag, local venv, then ours."""
+def _venv_pythons(venv_dirs: list[Path]):
+    for venv_dir in venv_dirs:
+        for candidate in (
+            venv_dir / "bin" / "python",
+            venv_dir / "Scripts" / "python.exe",
+            venv_dir / "bin" / "python3",
+        ):
+            if candidate.is_file():
+                yield str(candidate)
+
+
+def _poetry_python(project: Path) -> str | None:
+    """Interpreter of the venv Poetry already built for the project, if any.
+
+    ``poetry install`` puts its venv in the Poetry cache by default, so the
+    launcher cannot find it by looking at the project directory.
+    """
+    poetry = shutil.which("poetry")
+    if not poetry:
+        return None
+    try:
+        result = subprocess.run(
+            [poetry, "env", "info", "--path"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    env_dir = Path(result.stdout.strip())
+    candidate = env_dir / ("Scripts" if os.name == "nt" else "bin") / (
+        "python.exe" if os.name == "nt" else "python"
+    )
+    return str(candidate) if candidate.is_file() else None
+
+
+def _pick_python(
+    explicit: str | None,
+    venv_dirs: list[Path],
+    module: str,
+    poetry_project: Path | None = None,
+) -> str:
+    """The interpreter that can import ``module``: flag, local venvs, Poetry, ours."""
     if explicit:
         return explicit
-    for candidate in (
-        venv_dir / "bin" / "python",
-        venv_dir / "Scripts" / "python.exe",
-        venv_dir / "bin" / "python3",
-    ):
-        if candidate.is_file() and _can_import(str(candidate), module):
-            return str(candidate)
-    if _can_import(sys.executable, module):
-        return sys.executable
+    for candidate in _venv_pythons(venv_dirs):
+        if _can_import(candidate, module):
+            return candidate
+    if poetry_project is not None:
+        poetry_python = _poetry_python(poetry_project)
+        if poetry_python and _can_import(poetry_python, module):
+            return poetry_python
     return sys.executable
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex((host, port)) == 0
+
+
+def _choose_port(host: str, start: int, tries: int = 20) -> int | None:
+    for port in range(start, start + tries):
+        if not _port_in_use(host, port):
+            return port
+    return None
 
 
 def _start_backend(
@@ -292,8 +374,13 @@ def _stop(process: subprocess.Popen | None, name: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=os.getenv("FUSION_URL", DEFAULT_URL))
-    parser.add_argument("--port", type=int, default=int(os.getenv("FUSION_PORT", "8000")))
+    parser.add_argument("--url", default=os.getenv("FUSION_URL"))
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("FUSION_PORT", str(DEFAULT_PORT))),
+        help="puerto del backend cuando no se pasa --url",
+    )
     parser.add_argument("--company", default=os.getenv("FUSION_COMPANY", DEFAULT_COMPANY))
     parser.add_argument("--voice-key", default=os.getenv("VOICE_API_KEY", ""))
     parser.add_argument("--backend-only", action="store_true")
@@ -313,8 +400,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait", type=float, default=90.0, help="seconds to wait for the backend")
     parser.add_argument("assistant_args", nargs="*", help="extra arguments for the assistant")
     args = parser.parse_args(argv)
+    _configure_console()
 
-    url = args.url.rstrip("/")
+    explicit_url = args.url is not None
+    url = (args.url or f"http://127.0.0.1:{args.port}").rstrip("/")
     use_sqlite = _is_local(url)
     env = _child_env(args.voice_key, use_sqlite, announce=not args.assistant_only)
     key = args.voice_key or env.get("VOICE_API_KEY") or secrets.token_urlsafe(32)
@@ -354,16 +443,48 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
             else:
-                port = urlsplit(url).port or args.port
+                parsed = urlsplit(url)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or args.port
+                # 8000 is the most contested port on a dev machine. If someone
+                # else holds it (and is not the factory, we just checked), move
+                # instead of failing to bind.
+                if _port_in_use(host, port):
+                    if explicit_url:
+                        print(
+                            f"✗  El puerto {port} está ocupado por otro programa. "
+                            f"Prueba --url http://{host}:{port + 1} o, desde "
+                            f"PowerShell, .\\arrancar.ps1 -Puerto {port + 1}.",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    free = _choose_port(host, port + 1)
+                    if free is None:
+                        print(
+                            f"✗  No encuentro un puerto libre a partir de {port}.",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    print(
+                        f"⚠  El puerto {port} está ocupado; uso {free}.",
+                        flush=True,
+                    )
+                    port = free
+                    url = f"http://{host}:{port}"
+
                 backend_python = _pick_python(
-                    args.backend_python, ROOT / ".venv-backend", "fastapi"
+                    args.backend_python,
+                    [ROOT / ".venv-backend", BACKEND / ".venv", BACKEND / "venv"],
+                    "fastapi",
+                    poetry_project=BACKEND,
                 )
                 if not _can_import(backend_python, "fastapi"):
                     print(
                         f"✗  {backend_python} no tiene las dependencias del "
-                        "backend. Instálalas como explica la-fabrique/README.md "
-                        "(cd la-fabrique/backend && poetry install) sobre ese "
-                        "intérprete, o pasa --backend-python RUTA.",
+                        "backend. Lo más rápido en Windows es ejecutar:\n"
+                        "     .\\arrancar.ps1 -Instalar\n"
+                        "   En macOS/Linux: cd la-fabrique/backend && poetry install\n"
+                        "   …o pasa --backend-python RUTA.",
                         file=sys.stderr,
                     )
                     return 1
@@ -396,7 +517,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if not args.backend_only:
             assistant_python = _pick_python(
-                args.assistant_python, ASSISTANT / ".venv", "PyQt6"
+                args.assistant_python,
+                [ASSISTANT / ".venv", ASSISTANT / "venv"],
+                "PyQt6",
             )
             if not _can_import(assistant_python, "PyQt6"):
                 print(
@@ -410,12 +533,26 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
             assistant = _start_assistant(args.assistant_args, assistant_python)
+            started_at = time.monotonic()
             while True:
                 if backend is not None and backend.poll() is not None:
                     print("✗  El backend se ha detenido.", file=sys.stderr)
                     return backend.returncode or 1
                 if assistant.poll() is not None:
-                    return assistant.returncode or 0
+                    code = assistant.returncode or 0
+                    if code != 0 and time.monotonic() - started_at < ASSISTANT_CRASH_SECONDS:
+                        # A Qt/PortAudio import error kills the window in the
+                        # first seconds; the traceback above is the real cause.
+                        print(
+                            "✗  El asistente se cerró nada más arrancar (mira el "
+                            "error de arriba). Sin entorno gráfico, micrófono o "
+                            "altavoces no puede abrir la ventana; la fábrica sí "
+                            "funciona sola:\n"
+                            "     .\\arrancar.ps1 -SoloBackend\n"
+                            "   o, en macOS/Linux: python run_fusion.py --backend-only",
+                            file=sys.stderr,
+                        )
+                    return code
                 time.sleep(0.5)
 
         print("Listo. Ctrl+C para parar.", flush=True)

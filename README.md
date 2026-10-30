@@ -26,26 +26,54 @@ así que una orden hablada no puede hacer nada que la web no permita.
 
 ## Arranque rápido
 
-Requisitos: Python 3.11+ y las dependencias de cada mitad.
+### Windows (PowerShell)
+
+Requisitos: Python 3.11+ instalado con *Add python.exe to PATH*. Nada más.
+
+```powershell
+.\arrancar.ps1
+```
+
+La primera vez tarda: crea `.venv-backend` y `profesor3\.venv`, instala el
+backend con Poetry y las dependencias del asistente con pip, y luego arranca
+las dos piezas. Las siguientes veces arranca directo.
+
+Si Windows bloquea el script («la ejecución de scripts está deshabilitada»),
+usa cualquiera de estas dos formas:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\arrancar.ps1
+# o doble clic en arrancar.cmd
+```
+
+Opciones:
+
+```powershell
+.\arrancar.ps1 -Instalar          # fuerza comprobar/instalar dependencias
+.\arrancar.ps1 -Reinstalar        # borra los entornos y los rehace
+.\arrancar.ps1 -Preparar          # solo deja los entornos listos, sin arrancar
+.\arrancar.ps1 -SoloBackend       # solo la API de la fábrica
+.\arrancar.ps1 -SoloAsistente     # el asistente contra una API ya viva
+.\arrancar.ps1 -Puerto 8123       # otro puerto (si el 8000 está ocupado)
+.\arrancar.ps1 -Url http://127.0.0.1:8000 -Clave <clave> -Empresa "Mi estudio"
+```
+
+### macOS / Linux
 
 ```bash
-# 1) Entorno del backend (una vez, en la raíz del repo)
 python -m venv .venv-backend
 .venv-backend/bin/pip install poetry
 (cd la-fabrique/backend && ../../.venv-backend/bin/poetry install)
-# Windows: .venv-backend\Scripts\poetry install
 
-# 2) Entorno del asistente (una vez)
 python -m venv profesor3/.venv
 profesor3/.venv/bin/pip install -r profesor3/requirements.txt
-# Windows: profesor3\.venv\Scripts\pip install -r profesor3\requirements.txt
 
-# 3) Arrancar todo
 python run_fusion.py
 ```
 
 `run_fusion.py` busca solo el intérprete correcto para cada mitad
-(`.venv-backend/`, `profesor3/.venv/` y, si no, el que lo ejecuta). Si usas
+(`.venv-backend/`, `la-fabrique/backend/.venv`, `profesor3/.venv` y, si
+existe, el entorno que ya creó Poetry con `poetry env info --path`). Si usas
 otros entornos, pásalos:
 
 ```bash
@@ -83,6 +111,7 @@ siempre; la configuración de la fábrica ya estará puesta.
 | Frase | Acción |
 |---|---|
 | «¿Cómo va la fábrica?» / «estado del sprint» | Resumen del tablero: pendientes, en curso, en revisión, hechas, bloqueadas y entregas por aprobar. |
+| «¿Qué sprints tengo?» | Los últimos cinco, del más nuevo al más viejo, con su estado. |
 | «¿Qué equipo tengo?» | Lista de agentes y roles. |
 | «Planea un sprint para el login con Google» | Vista previa del plan (no escribe nada). |
 | «Crea un sprint para el login con Google» | Lo crea **en pausa** y lo dice. |

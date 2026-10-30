@@ -72,8 +72,18 @@ def test_local_sqlite_mode_disables_optional_services(monkeypatch):
     assert env["DATABASE_URL"].startswith("sqlite:///")
     assert env["DATABASE_URL"].endswith("factory.db")
     assert env["NEO4J_DISABLED"] == "true"
+    assert env["NATS_DISABLED"] == "true"
     assert env["AUTH_REQUIRED"] == "false"
     assert env["VOICE_API_KEY"] == "k"
+
+
+def test_postgres_mode_leaves_nats_alone(monkeypatch):
+    monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
+    monkeypatch.delenv("NATS_DISABLED", raising=False)
+
+    env = run_fusion._child_env(voice_key="k", use_sqlite=False, announce=False)
+
+    assert "NATS_DISABLED" not in env
 
 
 def test_postgres_config_is_left_alone(monkeypatch):
@@ -116,10 +126,53 @@ def test_wait_until_up_ignores_a_foreign_service():
 def test_pick_python_honours_an_explicit_interpreter(tmp_path):
     fake = tmp_path / "python"
     fake.write_text("")
-    assert run_fusion._pick_python(str(fake), tmp_path, "no_such_module") == str(fake)
+    assert (
+        run_fusion._pick_python(str(fake), [tmp_path], "no_such_module") == str(fake)
+    )
 
 
 def test_pick_python_falls_back_when_nothing_matches(tmp_path):
-    assert run_fusion._pick_python(None, tmp_path, "no_such_module_xyz") == (
+    assert run_fusion._pick_python(None, [tmp_path], "no_such_module_xyz") == (
         run_fusion.sys.executable
     )
+
+
+def test_venv_pythons_knows_the_windows_layout(tmp_path):
+    exe = tmp_path / "Scripts" / "python.exe"
+    exe.parent.mkdir()
+    exe.write_text("")
+
+    assert str(exe) in list(run_fusion._venv_pythons([tmp_path]))
+
+
+def test_pick_python_prefers_a_venv_that_has_the_module(tmp_path, monkeypatch):
+    venv = tmp_path / "venv"
+    (venv / "Scripts").mkdir(parents=True)
+    (venv / "Scripts" / "python.exe").write_text("")
+    (venv / "bin").mkdir()
+    posix = venv / "bin" / "python"
+    posix.write_text("")
+    monkeypatch.setattr(
+        run_fusion, "_can_import", lambda python, module: python == str(posix)
+    )
+
+    assert run_fusion._pick_python(None, [venv], "sys") == str(posix)
+
+
+def test_port_in_use_sees_a_real_listener():
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+
+        assert run_fusion._port_in_use("127.0.0.1", port) is True
+        free = run_fusion._choose_port("127.0.0.1", port + 1)
+        assert free is not None and free > port
+
+
+def test_choose_port_returns_none_when_everything_is_taken(monkeypatch):
+    monkeypatch.setattr(run_fusion, "_port_in_use", lambda host, port: True)
+
+    assert run_fusion._choose_port("127.0.0.1", 8000, tries=3) is None
