@@ -51,6 +51,7 @@ param(
     [switch]$Instalar,
     [switch]$Reinstalar,
     [switch]$Preparar,
+    [switch]$Diagnostico,
     [string]$Python
 )
 
@@ -78,6 +79,7 @@ $script:BackendModules = @(
 )
 $script:AssistantModules = @('PyQt6', 'PyQt6.QtWidgets', 'google.genai', 'sounddevice', 'numpy')
 $script:PreferredMinor = 12
+$script:Diagnostico = [bool]$Diagnostico
 
 # --- Dónde estamos -----------------------------------------------------------
 
@@ -155,29 +157,82 @@ function ConvertTo-ArgumentString([string[]]$Arguments) {
 # Ejecuta Python sin que PowerShell interprete su stderr. Devuelve código de
 # salida y ambos flujos: así un import roto nunca se confunde con una
 # dependencia ausente ni aborta el script con NativeCommandError.
+function Read-TextFile([string]$Path) {
+    for ($intento = 0; $intento -lt 14; $intento++) {
+        if (Test-Path -LiteralPath $Path) {
+            $text = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+            if ($text) { return $text }
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    return ''
+}
+
+# Ejecuta Python en el propio proceso de PowerShell, mezclando los flujos. Es
+# la red de seguridad cuando la redirección a archivo no devuelve nada.
+function Invoke-PythonInProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$Exe,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $Exe @Arguments 2>&1
+        $code = $LASTEXITCODE
+        $text = (@($output) | ForEach-Object { "$_" }) -join "`n"
+        return [pscustomobject]@{ ExitCode = $code; StdOut = $text; StdErr = $text }
+    } catch {
+        return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Invoke-Python {
     param(
         [Parameter(Mandatory = $true)][string]$Exe,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
-        [int]$TimeoutSeconds = 120
+        [int]$TimeoutSeconds = 120,
+        [switch]$AllowDirectRetry
     )
     $outFile = [IO.Path]::GetTempFileName()
     $errFile = [IO.Path]::GetTempFileName()
     try {
-        $process = Start-Process -FilePath $Exe -ArgumentList (ConvertTo-ArgumentString $Arguments) `
-            -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        try {
+            $process = Start-Process -FilePath $Exe -ArgumentList (ConvertTo-ArgumentString $Arguments) `
+                -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        } catch {
+            if ($AllowDirectRetry) { return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments }
+            return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
+        }
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try { $process.Kill() } catch { }
             return [pscustomobject]@{ ExitCode = -2; StdOut = ''; StdErr = "no terminó en $TimeoutSeconds s" }
         }
-        $stdout = if (Test-Path -LiteralPath $outFile) { Get-Content -LiteralPath $outFile -Raw -ErrorAction SilentlyContinue } else { '' }
-        $stderr = if (Test-Path -LiteralPath $errFile) { Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue } else { '' }
+        # La segunda espera, sin límite, es imprescindible: los lectores
+        # asíncronos de .NET pueden no haber volcado el archivo todavía y se lee
+        # vacío. Ese fallo hacía que ningún intérprete pareciera válido.
+        try { $process.WaitForExit() } catch { }
+        $stdout = Read-TextFile $outFile
+        $stderr = Read-TextFile $errFile
+        if (-not $stdout -and -not $stderr -and $AllowDirectRetry) {
+            return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments
+        }
         return [pscustomobject]@{ ExitCode = $process.ExitCode; StdOut = $stdout; StdErr = $stderr }
     } catch {
+        if ($AllowDirectRetry) { return Invoke-PythonInProcess -Exe $Exe -Arguments $Arguments }
         return [pscustomobject]@{ ExitCode = -1; StdOut = ''; StdErr = $_.Exception.Message }
     } finally {
         Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
     }
+}
+
+function ConvertFrom-ProbeJson([string]$Text) {
+    if (-not $Text) { return $null }
+    $line = ($Text -split "`r?`n" | Where-Object { $_.Trim().StartsWith('{') } | Select-Object -Last 1)
+    if (-not $line) { return $null }
+    try { return ($line | ConvertFrom-Json) } catch { return $null }
 }
 
 # Sondas en archivo: nada de código con comillas dentro de -c.
@@ -215,13 +270,14 @@ function Get-PythonInfo([string]$Exe, [string[]]$Prefix = @()) {
     if ([string]::IsNullOrWhiteSpace($Exe)) { return $null }
     # El prefijo importa: 'py' sin -3.12 resuelve la versión por defecto del
     # sistema, así que hay que preguntar por la versión concreta.
-    $probe = Invoke-Python -Exe $Exe -Arguments (@($Prefix) + @($script:InfoProbe)) -TimeoutSeconds 90
-    if ($probe.ExitCode -ne 0 -or -not $probe.StdOut) { return $null }
-    $line = ($probe.StdOut -split "`r?`n" | Where-Object { $_.Trim().StartsWith('{') } | Select-Object -Last 1)
-    if (-not $line) { return $null }
-    try {
-        $info = $line | ConvertFrom-Json
-    } catch {
+    $probe = Invoke-Python -Exe $Exe -Arguments (@($Prefix) + @($script:InfoProbe)) `
+        -TimeoutSeconds 90 -AllowDirectRetry
+    $info = ConvertFrom-ProbeJson $probe.StdOut
+    if ($null -eq $info) {
+        if ($script:Diagnostico) {
+            Write-Detalle "sonda de $Exe$($Prefix -join ' ') -> código $($probe.ExitCode)"
+            if ($probe.StdErr) { Write-Detalle $probe.StdErr }
+        }
         return $null
     }
     $info | Add-Member -NotePropertyName Exe -NotePropertyValue $Exe -Force
@@ -235,12 +291,9 @@ function Test-PythonModules {
         [Parameter(Mandatory = $true)][string]$Exe,
         [string[]]$Modules = @()
     )
-    $result = Invoke-Python -Exe $Exe -Arguments (@($script:ModuleProbe) + @($Modules)) -TimeoutSeconds 300
-    $payload = $null
-    if ($result.StdOut) {
-        $line = ($result.StdOut -split "`r?`n" | Where-Object { $_.Trim().StartsWith('{') } | Select-Object -Last 1)
-        if ($line) { try { $payload = $line | ConvertFrom-Json } catch { $payload = $null } }
-    }
+    $result = Invoke-Python -Exe $Exe -Arguments (@($script:ModuleProbe) + @($Modules)) `
+        -TimeoutSeconds 300 -AllowDirectRetry
+    $payload = ConvertFrom-ProbeJson $result.StdOut
     $missing = @()
     $broken = @()
     if ($payload) {
@@ -273,7 +326,7 @@ function Write-ModuleReport($Report, [string]$Etiqueta) {
 
 # --- Entornos ----------------------------------------------------------------
 
-function Get-VenvPython([string]$Dir) {
+function Get-VenvPython([string]$Dir, [switch]$SinAviso) {
     if (-not (Test-Path -LiteralPath $Dir)) { return $null }
     # Un venv de Windows tiene Scripts\python.exe y uno de Linux bin/python.
     # Mezclarlos producía "no se puede ejecutar un documento en medio de una
@@ -288,55 +341,259 @@ function Get-VenvPython([string]$Dir) {
         foreach ($part in $parts) { $path = Join-Path $path $part }
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         # Que exista no basta: comprobamos que el intérprete responde.
-        $info = Get-PythonInfo $path
-        if ($info) { return $path }
-        Write-Aviso "El intérprete $path existe pero no responde; lo ignoro."
+        if (Get-PythonInfo $path) { return $path }
+        # Mover un entorno de 260 paquetes porque la sonda no contesta sería
+        # mucho peor que seguir: si el venv está completo, se usa.
+        if (Test-Path -LiteralPath (Join-Path $Dir 'pyvenv.cfg')) {
+            if (-not $SinAviso) { Write-Aviso "No pude verificar $path; lo uso igual (el entorno existe)." }
+            return $path
+        }
+        if (-not $SinAviso) { Write-Aviso "El intérprete $path existe pero no responde; lo ignoro." }
     }
     return $null
 }
 
+# Base con la que se creó un entorno: pyvenv.cfg guarda su carpeta 'home' y
+# la versión exacta, así que sirve incluso si la sonda no responde.
+function Get-VenvBasePython([string]$Dir) {
+    $cfg = Join-Path $Dir 'pyvenv.cfg'
+    if (-not (Test-Path -LiteralPath $cfg)) { return $null }
+    # Nunca $home: es una variable automática de solo lectura en PowerShell.
+    $baseHome = $null
+    $version = $null
+    foreach ($line in @(Get-Content -LiteralPath $cfg -ErrorAction SilentlyContinue)) {
+        if ($line -match '^\s*home\s*=\s*(.+?)\s*$') { $baseHome = $Matches[1] }
+        if ($line -match '^\s*version\s*=\s*(.+?)\s*$') { $version = $Matches[1] }
+    }
+    if (-not $baseHome) { return $null }
+    # Un pyvenv.cfg copiado desde otro sistema apunta a una ruta que aquí no
+    # existe: Test-Path lanzaría "Cannot find drive" y ensuciaría la salida.
+    $reachable = $false
+    try { $reachable = Test-Path -LiteralPath $baseHome } catch { $reachable = $false }
+    if (-not $reachable) { return $null }
+    foreach ($name in @('python.exe', 'python')) {
+        $exe = Join-Path $baseHome $name
+        if (-not $exe) { continue }
+        if (Test-Path -LiteralPath $exe -PathType Leaf) {
+            return [pscustomobject]@{ Path = $exe; Version = $version }
+        }
+    }
+    return $null
+}
+
+# 'py --list-paths' enumera todas las versiones instaladas sin ejecutarlas.
+function Get-PyLauncherPythons {
+    $results = New-Object System.Collections.ArrayList
+    $pyExe = Resolve-CommandPath 'py'
+    if (-not $pyExe) { return $results }
+    $output = Invoke-Python -Exe $pyExe -Arguments @('--list-paths') -TimeoutSeconds 60 -AllowDirectRetry
+    foreach ($line in (($output.StdOut + "`n" + $output.StdErr) -split "`r?`n")) {
+        $match = [regex]::Match($line, '-V:(\d+\.\d+)\s*\*?\s*(.+?\.exe)')
+        if (-not $match.Success) { continue }
+        [void]$results.Add([pscustomobject]@{
+            Path    = $match.Groups[2].Value.Trim()
+            Version = $match.Groups[1].Value
+            Source  = "py --list-paths ($($match.Groups[1].Value))"
+        })
+    }
+    return $results
+}
+
+function Get-RegistryPythons {
+    $results = New-Object System.Collections.ArrayList
+    $roots = @(
+        'HKCU:\SOFTWARE\Python\PythonCore',
+        'HKLM:\SOFTWARE\Python\PythonCore',
+        'HKLM:\SOFTWARE\WOW6432Node\Python\PythonCore'
+    )
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+            $version = $key.PSChildName
+            $installKey = Join-Path $key.PSPath 'InstallPath'
+            if (-not (Test-Path -LiteralPath $installKey)) { continue }
+            $props = Get-ItemProperty -LiteralPath $installKey -ErrorAction SilentlyContinue
+            if (-not $props) { continue }
+            $exe = $null
+            if ($props.PSObject.Properties.Name -contains 'ExecutablePath') { $exe = $props.ExecutablePath }
+            if (-not $exe -and ($props.PSObject.Properties.Name -contains '(default)')) {
+                if ($props.'(default)') { $exe = Join-Path $props.'(default)' 'python.exe' }
+            }
+            if ($exe -and (Test-Path -LiteralPath $exe -PathType Leaf)) {
+                [void]$results.Add([pscustomobject]@{
+                    Path    = $exe
+                    Version = $version
+                    Source  = "registro de Windows ($version)"
+                })
+            }
+        }
+    }
+    return $results
+}
+
+function Get-DirectoryPythons {
+    $results = New-Object System.Collections.ArrayList
+    $roots = @()
+    if ($env:LOCALAPPDATA) { $roots += (Join-Path $env:LOCALAPPDATA 'Programs\Python') }
+    if ($env:ProgramFiles) { $roots += $env:ProgramFiles }
+    if (${env:ProgramFiles(x86)}) { $roots += ${env:ProgramFiles(x86)} }
+    $roots += 'C:\'
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue)) {
+            $exe = Join-Path $dir.FullName 'python.exe'
+            if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
+            $version = $null
+            if ($dir.Name -match 'Python(\d)(\d+)') { $version = "$($Matches[1]).$($Matches[2])" }
+            [void]$results.Add([pscustomobject]@{
+                Path    = $exe
+                Version = $version
+                Source  = "carpeta $($dir.Name)"
+            })
+        }
+    }
+    return $results
+}
+
+function Get-PathPythons {
+    $results = New-Object System.Collections.ArrayList
+    $names = if ($script:OnWindows) {
+        @('python3.12', 'python3.11', 'python')
+    } else {
+        @('python3.12', 'python3.11', 'python3', 'python')
+    }
+    foreach ($name in $names) {
+        $exe = Resolve-CommandPath $name
+        if (-not $exe) { continue }
+        [void]$results.Add([pscustomobject]@{ Path = $exe; Version = $null; Source = "$name del PATH" })
+    }
+    return $results
+}
+
 function Find-SystemPython {
     $candidates = New-Object System.Collections.ArrayList
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]'
 
-    if ($Python) {
-        [void]$candidates.Add(@{ Exe = $Python; Prefix = @(); Label = 'parámetro -Python' })
+    function Add-PythonCandidate {
+        param([string]$Path, [string]$Version, [string]$Source, [string[]]$Prefix = @())
+        if ([string]::IsNullOrWhiteSpace($Path)) { return }
+        if ($Prefix -and ($Prefix[0] -eq '-3')) { $Version = $null }
+        $key = ($Path.ToLowerInvariant() + '|' + ($Prefix -join ' '))
+        if (-not $seen.Add($key)) { return }
+        [void]$candidates.Add([pscustomobject]@{
+            Path = $Path; Version = $Version; Source = $Source; Prefix = @($Prefix)
+        })
     }
-    if ($env:FUSION_PYTHON) {
-        [void]$candidates.Add(@{ Exe = $env:FUSION_PYTHON; Prefix = @(); Label = 'variable FUSION_PYTHON' })
-    }
+
+    if ($Python) { Add-PythonCandidate $Python $null 'parámetro -Python' @() }
+    if ($env:FUSION_PYTHON) { Add-PythonCandidate $env:FUSION_PYTHON $null 'variable FUSION_PYTHON' @() }
+
     if ($script:OnWindows) {
-        # El lanzador 'py' elige la versión instalada aunque no esté en PATH.
-        [void]$candidates.Add(@{ Exe = 'py'; Prefix = @('-3.12'); Label = 'py -3.12' })
-        [void]$candidates.Add(@{ Exe = (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'); Prefix = @(); Label = 'Python312 del usuario' })
-        [void]$candidates.Add(@{ Exe = (Join-Path $env:ProgramFiles 'Python312\python.exe'); Prefix = @(); Label = 'Python312 de Program Files' })
-        [void]$candidates.Add(@{ Exe = 'python3.12'; Prefix = @(); Label = 'python3.12' })
-        [void]$candidates.Add(@{ Exe = 'py'; Prefix = @('-3.11'); Label = 'py -3.11' })
-        [void]$candidates.Add(@{ Exe = 'py'; Prefix = @('-3'); Label = 'py -3' })
-        [void]$candidates.Add(@{ Exe = 'python'; Prefix = @(); Label = 'python' })
+        # Varias fuentes independientes: si una falla (py sin instalar, PATH
+        # con el alias de la Store) las demás siguen encontrando el 3.12.
+        foreach ($item in @(Get-PyLauncherPythons)) {
+            Add-PythonCandidate $item.Path $item.Version $item.Source @()
+        }
+        foreach ($item in @(Get-RegistryPythons)) {
+            Add-PythonCandidate $item.Path $item.Version $item.Source @()
+        }
+        foreach ($item in @(Get-DirectoryPythons)) {
+            Add-PythonCandidate $item.Path $item.Version $item.Source @()
+        }
+        foreach ($item in @(Get-PathPythons)) {
+            Add-PythonCandidate $item.Path $item.Version $item.Source @()
+        }
+        # 'py' como última opción: sin prefijo resuelve la versión por defecto.
+        $pyExe = Resolve-CommandPath 'py'
+        if ($pyExe) {
+            foreach ($prefix in @('-3.12', '-3.11', '-3')) {
+                Add-PythonCandidate $pyExe $null "py $prefix" @($prefix)
+            }
+        }
     } else {
-        [void]$candidates.Add(@{ Exe = 'python3.12'; Prefix = @(); Label = 'python3.12' })
-        [void]$candidates.Add(@{ Exe = 'python3.11'; Prefix = @(); Label = 'python3.11' })
-        [void]$candidates.Add(@{ Exe = 'python3'; Prefix = @(); Label = 'python3' })
-        [void]$candidates.Add(@{ Exe = 'python'; Prefix = @(); Label = 'python' })
+        foreach ($item in @(Get-PathPythons)) {
+            Add-PythonCandidate $item.Path $item.Version $item.Source @()
+        }
+    }
+
+    # La base con la que se crearon los entornos existentes: si sigue
+    # instalada, se sabe que funciona, y en un equipo recién configurado suele
+    # ser la única pista fiable.
+    foreach ($venvDir in @($BackendVenv, $AssistantVenv)) {
+        $base = Get-VenvBasePython $venvDir
+        if ($base) {
+            Add-PythonCandidate $base.Path $base.Version "pyvenv.cfg de $(Split-Path -Leaf $venvDir)" @()
+        }
+        $own = Get-VenvPython $venvDir -SinAviso
+        if ($own) { Add-PythonCandidate $own $null "intérprete de $(Split-Path -Leaf $venvDir)" @() }
+    }
+
+    if ($script:Diagnostico) {
+        Write-Detalle "candidatos encontrados: $($candidates.Count)"
+        foreach ($candidate in $candidates) {
+            $shown = if ($candidate.Version) { $candidate.Version } else { 'versión desconocida' }
+            Write-Detalle "  · $($candidate.Source) -> $($candidate.Path) ($shown)"
+        }
     }
 
     $usable = New-Object System.Collections.ArrayList
+    $unproven = New-Object System.Collections.ArrayList
     foreach ($candidate in $candidates) {
-        $exe = Resolve-CommandPath $candidate.Exe
-        if (-not $exe) { continue }
-        $info = Get-PythonInfo $exe $candidate.Prefix
-        if ($null -eq $info) { continue }
-        if ($info.major -lt 3 -or ($info.major -eq 3 -and $info.minor -lt 11)) {
-            Write-Detalle "$($candidate.Label) ($($info.version)) es demasiado antiguo; lo salto."
+        $exe = Resolve-CommandPath $candidate.Path
+        if (-not $exe) {
+            if ($script:Diagnostico) { Write-Detalle "$($candidate.Source): no existe $($candidate.Path)" }
             continue
         }
-        $info | Add-Member -NotePropertyName Label -NotePropertyValue $candidate.Label -Force
+        if ($candidate.Version -match '^(\d+)\.(\d+)') {
+            $major = [int]$Matches[1]
+            $minor = [int]$Matches[2]
+            if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+                Write-Detalle "$($candidate.Source) ($($candidate.Version)) es demasiado antiguo; lo salto."
+                continue
+            }
+        } elseif ($candidate.Version -and ($candidate.Version -notmatch '^\d')) {
+            # Versión desconocida (nunca un número): se prueba igual.
+        }
+        $info = Get-PythonInfo $exe $candidate.Prefix
+        if ($null -eq $info) {
+            if ($candidate.Version) { [void]$unproven.Add($candidate) }
+            continue
+        }
+        if ($info.major -lt 3 -or ($info.major -eq 3 -and $info.minor -lt 11)) {
+            Write-Detalle "$($candidate.Source) ($($info.version)) es demasiado antiguo; lo salto."
+            continue
+        }
+        $info | Add-Member -NotePropertyName Label -NotePropertyValue $candidate.Source -Force
         [void]$usable.Add($info)
     }
+
     foreach ($info in $usable) {
         if ($info.minor -eq $script:PreferredMinor) { return $info }
     }
     if ($usable.Count -gt 0) { return $usable[0] }
+
+    # Ninguna sonda respondió, pero el sistema declara dónde está el 3.x: se
+    # usa esa ruta con aviso en vez de rendirse.
+    $fallback = $null
+    foreach ($candidate in $unproven) {
+        if ($candidate.Version -notmatch '^(\d+)\.(\d+)') { continue }
+        $minor = [int]$Matches[2]
+        if ($minor -lt 11) { continue }
+        $entry = [pscustomobject]@{
+            Exe     = (Resolve-CommandPath $candidate.Path)
+            Prefix  = @($candidate.Prefix)
+            version = "$($candidate.Version) sin verificar"
+            major   = 3
+            minor   = $minor
+            Label   = $candidate.Source
+        }
+        if ($minor -eq $script:PreferredMinor) { return $entry }
+        if (-not $fallback) { $fallback = $entry }
+    }
+    if ($fallback) {
+        Write-Aviso "Ningún Python respondió a la sonda, pero el sistema dice que $($fallback.Exe) es 3.$($fallback.minor). Sigo con él."
+        return $fallback
+    }
     return $null
 }
 
@@ -550,6 +807,30 @@ try {
         Write-Detalle "Registro: $LogFile"
     } catch {
         Write-Aviso "No pude abrir el registro en $LogFile"
+    }
+
+    if ($Diagnostico) {
+        Write-Paso "Diagnóstico de intérpretes (no se instala ni se arranca nada)"
+        Write-Detalle "Windows: $script:OnWindows | PowerShell: $($PSVersionTable.PSVersion) | 64 bits: $([Environment]::Is64BitProcess)"
+        Write-Detalle "Python preferido: 3.$($script:PreferredMinor)"
+        $found = Find-SystemPython
+        if ($found) {
+            Write-Ok "Usaría $($found.Exe)"
+            Write-Detalle "versión $($found.version) · origen: $($found.Label)"
+        } else {
+            Write-Fallo "No encontré ningún Python utilizable"
+            Write-Detalle "Revisa que exista %LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+        }
+        foreach ($item in @(
+            @{ Dir = $BackendVenv; Nombre = 'backend' },
+            @{ Dir = $AssistantVenv; Nombre = 'asistente' }
+        )) {
+            $exe = Get-VenvPython $item.Dir -SinAviso
+            if ($exe) { Write-Detalle "$($item.Nombre): $exe" }
+            else { Write-Detalle "$($item.Nombre): sin intérprete válido en $($item.Dir)" }
+        }
+        Write-Detalle "Registro: $LogFile"
+        exit 0
     }
 
     $backendPython = Get-VenvPython $BackendVenv

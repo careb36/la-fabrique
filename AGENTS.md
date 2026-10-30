@@ -106,6 +106,27 @@ slow container because importing `agents.graph` is heavy — raise `--wait` if
 * `py -3.12` needs its prefix passed through, otherwise `py` resolves to
   whatever version is default (3.14 here) — `Get-PythonInfo` and `New-Venv`
   take the candidate's `Prefix`.
+* Never trust one way of finding Python. `Find-SystemPython` merges
+  `py --list-paths`, the registry (`PythonCore\<ver>\InstallPath`), `Python3*`
+  folders under `%LOCALAPPDATA%\Programs\Python`, `Program Files` and `C:\`,
+  the `home` recorded in each venv's `pyvenv.cfg`, and the PATH — then probes
+  each candidate. A machine where `py` is missing but Python 3.12 lives in
+  `AppData\Local\Programs\Python\Python312` is the normal case, not the edge.
+* `Start-Process ... -RedirectStandardOutput` needs a second
+  `$process.WaitForExit()` (no timeout) before reading the file: .NET's async
+  readers may not have flushed yet, the file reads empty and every interpreter
+  looks unusable. `Invoke-Python` also retries in-process
+  (`Invoke-PythonInProcess`) when nothing was captured, and if a probe still
+  fails it accepts the path that `pyvenv.cfg`/the registry declare — with a
+  loud warning instead of aborting.
+* `$home` is a read-only automatic variable in PowerShell: naming a local
+  `$home` throws "Cannot overwrite variable HOME". Use `$baseHome`.
+* A `pyvenv.cfg` copied from another OS points at a `home` that does not exist
+  here; `Test-Path 'C:\...'` on Linux raises "Cannot find drive" and pollutes
+  the output. Wrap the reachability check in `try/catch`.
+* `.\arrancar.ps1 -Diagnostico` is the support tool: it lists every candidate,
+  its version, its source, each probe result, and which interpreter would be
+  used, without installing anything. Keep it working and in the README table.
 * Broken environments are moved to `<venv>.roto-<timestamp>`, never deleted:
   `-Reinstalar` is explicit and the backup is the user's safety net.
 * `logs/` holds the transcript, the exported CA bundle and the generated

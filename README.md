@@ -39,8 +39,12 @@ cd "C:\Users\Felipe\projects\fusion"
 
 Qué hace, en orden:
 
-1. localiza Python 3.12 (`py -3.12`, la ruta del usuario, `python3.12`) y
-   comprueba que responde;
+1. localiza Python 3.12 por **varias vías independientes** —`py --list-paths`,
+   el registro de Windows, las carpetas `Python3*` de `%LOCALAPPDATA%\Programs\Python`
+   y `Program Files`, la base con la que se crearon los entornos (`pyvenv.cfg`)
+   y `python3.12` del PATH— y comprueba con cada candidato que responde de
+   verdad: las sondas se ejecutan en un proceso aparte y se releen sus archivos
+   de salida, con reintento si llegasen vacíos;
 2. reutiliza `.venv-backend` y `profesor3\.venv` si existen y funcionan
    (en Windows el intérprete es `Scripts\python.exe`; `bin/python` solo en
    Linux/macOS);
@@ -73,6 +77,7 @@ Opciones:
 .\arrancar.ps1 -SoloAsistente     # el asistente contra una API ya viva
 .\arrancar.ps1 -Puerto 8123       # otro puerto (si el 8000 está ocupado)
 .\arrancar.ps1 -Python "C:\ruta\python.exe"   # intérprete concreto
+.\arrancar.ps1 -Diagnostico       # qué intérpretes ve y cuál elegiría, sin instalar nada
 .\arrancar.ps1 -Url http://127.0.0.1:8000 -Clave <clave> -Empresa "Mi estudio"
 ```
 
@@ -88,11 +93,13 @@ Todo queda en `logs\arranque-<fecha>.log`. Los avisos `!!` son recuperables; los
 | `no se puede ejecutar un documento en medio de una canalización: …\bin\python` | ruta de venv de Linux usada en Windows | en Windows solo se acepta `Scripts\python.exe` |
 | `NativeCommandError` al comprobar módulos | PowerShell 5.1 convierte el stderr de Python en error | las comprobaciones se ejecutan sin pasar por el pipeline y se informa «falta» o «roto» con su traceback |
 | Se usaba Python 3.13/3.14 | el `python` del PATH no es el 3.12 | busca `py -3.12` y la ruta del usuario antes de caer a otra versión |
+| `Necesito Python 3.11 o superior` aunque esté instalado | la sonda no devolvía salida (carrera al leer la redirección) y parecía que ningún intérprete servía | se espera a que el proceso cierre del todo, se reintenta la sonda en el propio proceso y, si aun así falla, se acepta la ruta que declaran `pyvenv.cfg`, el registro o `py --list-paths`; `-Diagnostico` muestra candidato por candidato qué pasó |
 
 Comandos de diagnóstico (opcionales):
 
 ```powershell
 .\arrancar.ps1 -Preparar -SoloBackend        # deja el entorno listo y sale
+.\arrancar.ps1 -Diagnostico                  # intérpretes detectados y elegido
 .venv-backend\Scripts\python.exe -m pip check
 .venv-backend\Scripts\python.exe -c "import fastapi, httpx, langchain_core"
 .venv-backend\Scripts\python.exe -m uvicorn app.main:app --port 8999   # con PYTHONPATH=.;app
