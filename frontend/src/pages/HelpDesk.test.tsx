@@ -106,11 +106,11 @@ describe('HelpDesk', () => {
     expect(within(detail).getByText(/Write the resolution/)).toBeInTheDocument()
 
     fireEvent.change(within(detail).getByRole('textbox', { name: 'Resolution' }), { target: { value: 'Fixed in 1.2' } })
-    fireEvent.change(within(detail).getByRole('textbox', { name: 'Assigned to' }), { target: { value: 'rebeca' } })
+    fireEvent.change(within(detail).getByRole('textbox', { name: 'Assigned to' }), { target: { value: 'sam' } })
     fireEvent.click(within(detail).getByRole('button', { name: 'Save' }))
 
     expect(await within(detail).findByText('Ticket updated')).toBeInTheDocument()
-    expect(JSON.parse(String(patch.mock.calls[0][0].body))).toEqual({ status: 'resolved', resolution: 'Fixed in 1.2', assigned_to: 'rebeca' })
+    expect(JSON.parse(String(patch.mock.calls[0][0].body))).toEqual({ status: 'resolved', resolution: 'Fixed in 1.2', assigned_to: 'sam' })
   })
 
   it('downloads the logs, and says so when none exist yet', async () => {

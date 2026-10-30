@@ -650,7 +650,7 @@ Copyright © 2026 Carolina Pereira.
 
 ## Support & Maintenance
 
-- **System Support:** La Fabrique is maintained by **Carolina Pereira**. Critical errors are automatically reported to the vendor for resolution.
+- **Error reports:** an unhandled error is logged and opens an incident ticket on NATS. Set `FABRIQUE_VENDOR_SUPPORT_URL` (and `FABRIQUE_VENDOR_ID` to name the installation) to also send each report to a support webhook; the error response says whether it got there.
 - **Project Support:** For issues with AI-generated code in your projects, use the built-in Support Bot.
 - **Contact:** For licensing and Enterprise SLA inquiries, please contact the owner directly.
 
