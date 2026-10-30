@@ -207,7 +207,7 @@ kubectl apply -f deployment/k8s/backend.yaml
 
 ## 10. Proactive Support & Telemetry (Vendor Flow)
 
-Fabrique includes an Enterprise-grade telemetry system that automatically reports core engine failures to the vendor (Carolina Pereira) without exposing sensitive client data or source code.
+Fabrique includes an Enterprise-grade telemetry system that can report core engine failures to a support webhook (`FABRIQUE_VENDOR_SUPPORT_URL`, opt-in) without exposing sensitive client data or source code.
 
 ### The Secure Telemetry Flow:
 1. **Error Detection:** If a critical backend error occurs (HTTP 500), the Global Exception Handler intercepts the crash.

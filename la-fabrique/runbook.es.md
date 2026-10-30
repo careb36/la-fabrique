@@ -202,7 +202,7 @@ kubectl apply -f deployment/k8s/backend.yaml
 
 ## 10. Telemetría y Soporte Proactivo (Flujo del Proveedor)
 
-Fabrique incluye un sistema de telemetría de nivel Enterprise que reporta automáticamente los fallos críticos del motor a la proveedora (Carolina Pereira) sin exponer datos sensibles del cliente ni su código fuente.
+Fabrique incluye un sistema de telemetría de nivel Enterprise que puede reportar los fallos críticos del motor a un webhook de soporte (`FABRIQUE_VENDOR_SUPPORT_URL`, opcional) sin exponer datos sensibles del cliente ni su código fuente.
 
 ### El Flujo de Telemetría Segura:
 1. **Detección de Errores:** Si ocurre un error crítico en el backend (HTTP 500), el Manejador Global de Excepciones intercepta la caída.

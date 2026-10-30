@@ -119,7 +119,7 @@ jobs:
         working-directory: ./backend
         run: |
           # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y en
-          # este runner encuentra /home/caro/Dev/.venv (Python 3.14, del host).
+          # este runner encuentra el `.venv` del host (Python 3.14).
           # Instalaba Poetry ahí, fuera del PATH, y el siguiente paso moría con
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null

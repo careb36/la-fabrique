@@ -407,7 +407,7 @@ Copyright © 2026 Carolina Pereira.
 
 ## Soporte y Mantenimiento
 
-- **Soporte del Sistema:** La Fabrique es mantenido por **Carolina Pereira**. Los errores críticos se reportan automáticamente a la proveedora para su resolución.
+- **Reportes de errores:** un error no controlado queda en el log y abre un ticket de incidente en NATS. Con `FABRIQUE_VENDOR_SUPPORT_URL` (y `FABRIQUE_VENDOR_ID` para nombrar la instalación) además se envía cada reporte a un webhook de soporte; la respuesta de error dice si llegó.
 - **Soporte de Proyectos:** Para incidencias con el código generado por la IA en tus proyectos, usa el Bot de Soporte integrado.
 - **Contacto:** Para consultas sobre licencias y acuerdos SLA Enterprise, contacta directamente con la propietaria.
 
