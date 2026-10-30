@@ -386,3 +386,13 @@ def test_an_id_served_by_both_gateways_is_listed_once(both_gateways, client):
                  if m["id"] == "nvidia/nemotron-3-ultra-550b-a55b"]
 
     assert providers == ["nvidia"]
+
+
+def test_a_stream_nested_in_extra_body_is_refused_too(nvidia, client, upstream):
+    response = client.post("/v1/chat/completions", json={
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "messages": [{"role": "user", "content": "hola"}],
+        "extra_body": {"stream": True},
+    })
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "stream_unsupported"

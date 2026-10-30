@@ -22,7 +22,11 @@ function adoptHandoffSession(): void {
   const token = params.get('sesion')
   if (!token) return
   const seconds = Number(params.get('caduca')) || 3600
-  useAuthStore.getState().adoptSession(token, seconds)
+  // Never replace a session already open in this browser: a link from
+  // anywhere could otherwise swap the person into someone else's account.
+  if (!useAuthStore.getState().getValidToken()) {
+    useAuthStore.getState().adoptSession(token, seconds)
+  }
   window.history.replaceState({}, '', window.location.pathname + window.location.search)
 }
 

@@ -22,11 +22,15 @@ import mimetypes
 import os
 from pathlib import Path
 
+from auth_policy import ROLE_RANK
+from database import get_session
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from llm_proxy_client import LLMProxyClient
+from models import CompanyMember
 from pydantic import BaseModel, Field
 from services import codegen, voice_control
+from sqlmodel import Session, select
 
 from llm.model_factory import AgentRole, ModelFactory
 from routers.voice_support import VoiceCaller, voice_access
@@ -38,7 +42,7 @@ _LANGUAGE = "es"
 # A generated page is untrusted content: it may run its own script, but not
 # talk to this origin, read cookies or navigate the top window away.
 _PREVIEW_HEADERS = {
-    "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-popups",
+    "Content-Security-Policy": "sandbox allow-scripts allow-popups",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
 }
@@ -47,9 +51,18 @@ _PREVIEW_HEADERS = {
 class VoiceBuildRequest(BaseModel):
     """One build request, in the words the person used."""
 
-    texto: str = Field(description="What to build, verbatim.")
-    nombre: str | None = Field(default=None, description="Optional project name.")
+    texto: str = Field(max_length=4000, description="What to build, verbatim.")
+    nombre: str | None = Field(
+        default=None, max_length=120, description="Optional project name."
+    )
     language: str | None = None
+
+
+def _manages_a_company(session: Session, user) -> bool:
+    roles = session.exec(
+        select(CompanyMember.human_role).where(CompanyMember.user_id == user.id)
+    ).all()
+    return any(ROLE_RANK.get(role, 0) >= ROLE_RANK["Manager"] for role in roles)
 
 
 def builds_root() -> Path:
@@ -135,10 +148,24 @@ def _chat(messages: list[dict]) -> str:
 @router.post("/build")
 def voice_build(
     req: VoiceBuildRequest,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
     caller: VoiceCaller = Depends(voice_access),  # noqa: B008 - FastAPI dependency marker.
 ) -> dict:
     """Build the project the person described and leave it ready to open."""
     language = voice_control.normalize_language(req.language or _LANGUAGE)
+    # Each build spends model tokens: a signed-in caller must be a Manager of
+    # some company, the same bar as starting a sprint. The shared key (or a
+    # demo without authentication) needs no company: builds belong to none.
+    if caller.user is not None and not _manages_a_company(session, caller.user):
+        return _reply(
+            False,
+            voice_control.say(
+                language,
+                "No tienes permiso para construir: hace falta ser Manager de una empresa.",
+                "You do not have permission to build: you need to be a Manager of a company.",
+            ),
+            language,
+        )
     text = " ".join((req.texto or "").split())
     if not text:
         return _reply(

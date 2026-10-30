@@ -116,10 +116,15 @@ Copy `.env.example` to `.env` and fill in:
 - `VOICE_API_KEY` — optional. The shared key the desktop assistant sends as
   `X-Voice-Key` to `/v1/voice/*` (`routers/voice.py`, actions in
   `routers/voice_actions.py`) and to `POST /v1/auth/desktop`, which trades it
-  for a session of the desktop operator (an Owner of the oldest company).
-  Unset, those routes answer 503 while `AUTH_REQUIRED` is on and the desktop
-  exchange refuses; they never open anonymously. `VOICE_COMPANY_ID` picks the
-  company when the assistant names none (empty: the oldest).
+  for a session of the desktop operator (an Owner of the key's company; the
+  `@fabrica.local` domain cannot be registered and the operator's password is
+  rotated on every exchange). The key reaches one company only,
+  `VOICE_COMPANY_ID` (empty: the oldest); a signed-in user reaches the
+  companies they belong to, as a Viewer to read and a Manager to change
+  anything or build. Approvals by key are recorded as `voice-key`, never under
+  a name the assistant sends. Unset, those routes answer 503 while
+  `AUTH_REQUIRED` is on and the desktop exchange refuses; they never open
+  anonymously.
 - `FABRICA_BUILDS_DIR` — where `POST /v1/voice/build` (`routers/build.py`,
   `services/codegen.py`) writes a project asked for in one sentence, served
   back sandboxed under `/v1/voice/build/<slug>/<file>`; default
@@ -374,6 +379,7 @@ Test files:
 | `test_tenant_scoping.py` | Every table carries a required `company_id` that references `companies`, or is listed with its reason (the tenant, users, help-desk tickets, the outbox, backlog items through their sprint); `audit_log` alone may hold rows without a company; the lists hold no stale names |
 | `test_exception_handlers.py` | The catch-all 500: it says a report was sent only when the support webhook took it, names the installation from `FABRIQUE_VENDOR_ID`, and publishes the incident ticket on NATS |
 | `test_voice_control.py` / `test_voice_build.py` | The voice façade: the shared key or a real user, never anonymous; each spoken action calls the same endpoint as the web; a voice-created sprint starts paused; a project from one sentence is written inside `FABRICA_BUILDS_DIR` and served sandboxed; an empty `VOICE_COMPANY_ID` is unset |
+| `test_voice_access.py` | Who may use the voice routes: a user only in their own companies (Viewer reads, Manager changes or builds), the key only in its company, a non-ASCII key refused rather than a 500, approvals by key recorded as the key, the desktop email not registrable and a planted copy losing its password |
 | `test_auth_desktop.py` / `test_ui_static.py` | The desktop session exchange (refused without the key); the built UI served same-origin without swallowing API routes |
 | `test_metrics.py` | `/metrics` labels requests by route template, a fixed route by its path, a CORS preflight as `preflight` and a path no route answered as `unmatched`; memory search caps its `limit` |
 

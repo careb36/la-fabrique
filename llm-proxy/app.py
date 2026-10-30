@@ -555,7 +555,8 @@ def _flatten_extra_body(data: dict) -> dict:
 
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat_completions():
-    data = request.get_json(silent=True) or {}
+    # Flatten first, so a ``stream`` nested in ``extra_body`` is refused too.
+    data = _flatten_extra_body(request.get_json(silent=True) or {})
     requested = str(data.get("model") or "").strip()
     bu_id = request.headers.get("X-Business-Unit-ID")
 
@@ -568,7 +569,6 @@ def chat_completions():
             "message": "stream=true is not supported here; send stream=false "
                        "(or call the provider endpoint directly to stream)",
         }), 400
-    data = _flatten_extra_body(data)
 
     if not requested:
         return jsonify({
