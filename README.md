@@ -611,7 +611,7 @@ fusion/
 ├── arrancar.cmd / .ps1        # Windows launcher (installs, diagnoses, starts)
 ├── asistente-b1/              # the assistant that ships (Apache-2.0)
 │   ├── b1/                    # stdlib core, PyQt6 window, factory tools
-│   └── tests/                 # 150 tests, no network and no microphone
+│   └── tests/                 # 150 tests (2 skip without the reference tree)
 ├── la-fabrique/               # the factory (upstream checkout + voice layer)
 │   ├── backend/               # FastAPI, LangGraph, voice façade, codegen
 │   ├── frontend/              # React UI served by the backend
@@ -671,7 +671,7 @@ python3 -m pytest tests -q
 # 126 passed, 7 skipped when the reference profesor3/ checkout is absent.
 
 # The assistant: no network, no microphone, no Qt.
-cd asistente-b1 && python3 -m pytest -q          # 150 tests
+cd asistente-b1 && python3 -m pytest -q          # 148 passed, 2 skipped without the reference tree
 
 # The factory's own suites (needs its environment).
 cd la-fabrique/backend
@@ -683,7 +683,8 @@ NEBIUS_API_KEY=nvapi-... python3 tools/hackathon_check.py
 ```
 
 The seven skipped tests are the reference assistant's web-panel guards; they
-skip themselves when `profesor3/` is not present.
+skip themselves when `profesor3/` is not present. The two assistant skips are
+the originality comparison against that same reference tree.
 
 The demo can also be checked directly:
 

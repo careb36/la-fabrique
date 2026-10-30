@@ -189,7 +189,7 @@ del formulario están en **[SUBMISSION.md](SUBMISSION.md)**.
 
 ```bash
 python -m pytest tests -q                     # 126 pruebas del repositorio (7 se saltan sin profesor3/)
-cd asistente-b1 && python -m pytest -q        # 150 del asistente
+cd asistente-b1 && python -m pytest -q        # 148 pasan y 2 se saltan sin el árbol de referencia
 python tools/hackathon_check.py               # los requisitos del envío
 cd la-fabrique/backend && PYTHONPATH=.:app ../../.venv-backend/bin/python -m pytest tests -q   # backend
 ```
