@@ -539,28 +539,27 @@ casilla que el modelo pueda rellenar solo.
 
 ### El tablero de la fábrica
 
-Al arrancar, el lanzador abre el **panel del asistente** (`http://127.0.0.1:8770`),
-que es la cara nueva del producto y lleva la fábrica dentro, en su pestaña
-**Fábrica** (desactívalo con `--no-browser` o `-SinNavegador`). En el propio
-equipo el panel entra sin clave: el servidor inyecta una sesión local en la
-página solo cuando la petición viene de loopback. Desde otro dispositivo manda
-la clave de emparejamiento de *Control remoto*, como siempre.
-
-Si el asistente no llega a arrancar, el lanzador abre directamente la fábrica
-con la sesión ya abierta: el token viaja en el fragmento (`#sesion=…`), que no
-llega al servidor ni a los registros, y la propia aplicación lo borra de la
-barra de direcciones en cuanto lo adopta. También se llega por voz («abre la
+Al arrancar, el lanzador abre la **interfaz React de la fábrica** en el
+navegador con una sesión de escritorio ya abierta (desactívalo con
+`--no-browser` o `-SinNavegador`). El token viaja en el fragmento (`#sesion=…`),
+que no llega al servidor ni a los registros, y la propia aplicación lo borra de
+la barra de direcciones en cuanto lo adopta. También se llega por voz («abre la
 fábrica») y con el botón **Fábrica** del asistente.
 
-El panel web del asistente (`http://127.0.0.1:8770`, la clave de emparejamiento
-aparece en *Control remoto*) tiene una pestaña **Fábrica** que muestra la
-interfaz React de la fábrica **tal cual, embebida**. `GET /fabrica` es una
-puerta: pide una sesión a `/v1/auth/desktop` con la clave que el asistente ya
-tiene y redirige con `#sesion=…`. Como es otro origen, el backend declara
-`FRAME_ANCESTORS` (loopback, cualquier puerto) para que el iframe no se quede
-en blanco; sin esa variable `X-Frame-Options: DENY` lo bloquea.
+Si está corriendo el checkout de referencia `profesor3`, el lanzador abre
+primero su panel (`http://127.0.0.1:8770`), que muestra la misma interfaz React
+**tal cual, embebida**, en su pestaña **Fábrica**. En el propio equipo ese panel
+entra sin clave: el servidor inyecta una sesión local en la página solo cuando
+la petición viene de loopback. Desde otro dispositivo manda la clave de
+emparejamiento de *Control remoto*, como siempre.
 
-Las órdenes que das con los botones del panel viajan al asistente, no a la
+`GET /fabrica` es la puerta del panel de referencia: pide una sesión a
+`/v1/auth/desktop` con la clave que el asistente ya tiene y redirige con
+`#sesion=…`. Como es otro origen, el backend declara `FRAME_ANCESTORS`
+(loopback, cualquier puerto) para que el iframe no se quede en blanco; sin esa
+variable `X-Frame-Options: DENY` lo bloquea.
+
+Las órdenes que das con los botones de ese panel viajan al asistente, no a la
 fábrica:
 
 ```

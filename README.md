@@ -61,6 +61,7 @@ The demo prints in Spanish; the loop is the same one the factory uses.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [Troubleshooting](#troubleshooting)
 - [Agent Orchestration](#agent-orchestration)
 - [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
 - [Assistant B1](#assistant-b1)
@@ -71,8 +72,10 @@ The demo prints in Spanish; the loop is the same one the factory uses.
 - [Testing](#testing)
 - [Feedback for Nebius and NVIDIA](#feedback-for-nebius-and-nvidia)
 - [What Existed Before the Hackathon](#what-existed-before-the-hackathon)
+- [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)
+- [Support and Maintenance](#support-and-maintenance)
 
 ---
 
@@ -139,7 +142,7 @@ sequenceDiagram
     API->>C: status_snapshot()
     C->>DB: sprint + counts + pending approvals
     DB-->>C: rows
-    C-->>API: {ok, speech, counts}
+    C-->>API: {ok, speech, data}
     API-->>B1: a sentence already phrased for speaking
     B1-->>P: speaks the factory's words
 ```
@@ -281,7 +284,7 @@ profesor3` uses it as a second front end; the product that ships is
 ### 4. Verify the submission
 
 ```bash
-python3 tools/hackathon_check.py                       # licence, README, demo
+python3 tools/hackathon_check.py                       # license, README, demo
 NEBIUS_API_KEY=nvapi-... python3 tools/hackathon_check.py   # + provider and models
 ```
 
@@ -419,6 +422,24 @@ model can fill in on its own.
 
 ---
 
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `No Python 3.12 found` | The launcher probes `py`, the registry, `%LOCALAPPDATA%\Programs\Python`, `Program Files` and `PATH`, and no candidate runs. | Install Python 3.12 with *Add python.exe to PATH*, then run `.\arrancar.ps1 -Diagnostico`. |
+| Port 8000 is taken | Another service owns it. | `.\arrancar.ps1 -Puerto 8100` on Windows, or `python3 run_fusion.py --port 8124`. |
+| Poetry cannot reach PyPI | Poetry trusts certifi only; a TLS-inspecting antivirus or proxy breaks it while pip still works. | The launcher exports the Windows root store to `logs/windows-ca-bundle.pem`; `-Instalar` falls back to pip using `poetry.lock`. |
+| `/v1/voice/*` answers 503 | `AUTH_REQUIRED=true` and `VOICE_API_KEY` is empty. | Set `VOICE_API_KEY`, or start through `run_fusion.py`, which generates one and shares it with the assistant. |
+| Agents never start; tasks stay in `todo` | Local mode has SQLite but no NATS or workspace daemon, so `task.assign` waits in the outbox. | Use `-Completa` / `--completa` with Docker. Local mode is for planning, the board and governance. |
+| `No pude hablar con el proxy de modelos` | No provider key, or nothing answers on `127.0.0.1:5100`. | Put `NEBIUS_API_KEY` in `la-fabrique/.env` and check `GET /v1/models` on the proxy. |
+| The provider answers `410 Gone` | The model id was retired. | The factory proxy refuses an id missing from the catalogue; the reference assistant migrates a `410` automatically. Update `NEMOTRON_MODEL*` and restart. |
+| The assistant opens but does not hear | No microphone, no transcription model, or the wrong device. | Run `python -m b1 --check`, let the assistant install `faster-whisper` once, and choose the device in **Settings**. |
+| The first build takes minutes | The first launch builds `la-fabrique/llm-proxy/.venv`, and a whole-file answer is long. | Wait once; later launches reuse the venv. The client waits up to `LLM_PROXY_TIMEOUT_SECONDS` (150 s). |
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
 ## Agent Orchestration
 
 | Role | What it does | Nemotron tier |
@@ -464,18 +485,29 @@ of halfway through a sprint.
 | Team | `NEMOTRON_MODEL` | any chat model from the catalogue | Developer, QA, ScrumMaster, memory |
 | Fast | `NEMOTRON_MODEL_FAST` | `nvidia/nemotron-3-super-120b-a12b` or a Nano | Documentation and short calls |
 
-The three tiers are written into `la-fabrique/.env` from the assistant's
-**⚙ Nemotron** panel, using the catalogue the provider returns at that moment:
-an id is never invented. The mapping is applied by
+The variables live in `la-fabrique/.env`, and `.env.example` ships the block.
+The reference assistant's **⚙ Nemotron** panel can write the same values from
+the provider's live catalogue (an id is never invented), but it is not part of
+this distribution: here the file is edited directly. The mapping is applied by
 `la-fabrique/backend/llm/model_factory.py`.
+
+```ini
+# la-fabrique/.env
+NEBIUS_API_KEY=nvapi-...
+NEBIUS_PROXY_URL=https://api.tokenfactory.nebius.com/v1
+NEMOTRON_ROLES=po,architect,scrummaster,developer,qa,secops,techwriter,engramprocessor
+NEMOTRON_MODEL=nvidia/nemotron-3-super-120b-a12b
+NEMOTRON_MODEL_STRATEGIC=nvidia/nemotron-3-ultra-550b-a55b
+NEMOTRON_MODEL_FAST=nvidia/nemotron-3-super-120b-a12b
+```
 
 What Token Factory saved us, concretely:
 
 - **One client.** The eight agents, the assistant and the demo speak
   `/v1/chat/completions` against the same address; there are no eight
   integrations.
-- **Catalogue as source of truth.** `GET /models` lets the panel list models
-  and check before spending a turn.
+- **Catalogue as source of truth.** `GET /models` lets the proxy validate an id
+  against the live list before spending a turn.
 - **Two cost tiers, one provider.** Ultra for thinking, Super/Nano for
   answering: the same credit goes much further than using one model for
   everything.
@@ -483,15 +515,17 @@ What Token Factory saved us, concretely:
 
 > The app also accepts **NVIDIA NIM** (`integrate.api.nvidia.com`), which serves
 > the same Nemotron models. Keys from both doors start with `nvapi-` and cannot
-> be told apart by eye, so the panel probes both and keeps the one that accepts
-> the key. The submission uses Token Factory.
+> be told apart by eye, so the reference panel probes both and keeps the one
+> that accepts the key. In this distribution the launcher uses whichever key is
+> present, and the proxy routes each id to a provider that has one. The
+> submission uses Token Factory.
 
-A retired model answers **410 Gone**. The provider answers with a date and the
-proxy consults the catalogue once, prefers the same vendor and the default
-Nemotron, retries before the first word and stores the replacement in both the
-provider config and the factory's `AGENT_MODEL`. A 404 for an id that *is* in
-the catalogue does not migrate: the problem is elsewhere and changing the id
-would hide it.
+If a provider retires an id, the proxy refuses it against the live catalogue
+before sending a request, with the reason. Update `NEMOTRON_MODEL*` in
+`la-fabrique/.env` and restart. The reference assistant additionally migrates a
+`410 Gone` automatically when the catalogue offers a replacement; a 404 for an
+id that *is* in the catalogue does not migrate, because the problem is elsewhere
+and changing the id would hide it.
 
 Codegen sends `chat_template_kwargs.enable_thinking=false` to `nvidia/*` ids:
 reasoning before writing doubled the time for a whole-file answer.
@@ -536,7 +570,9 @@ tool failure returns `{"ok": false, "speech": "..."}`, never an exception into
 the conversation loop.
 
 Settings live in `~/.asistente-b1/config.json`; the launcher writes the factory
-URL and the shared key there. The assistant's own suite is in
+URL and the shared key there, and the **Settings** window edits the model
+endpoint, key and factory URL. `python -m b1 --check` reports what is missing.
+The assistant's own suite is in
 `asistente-b1/tests/` and runs without network, microphone or Qt.
 
 [⬆ Back to Top](#la-fabrique)
@@ -550,7 +586,7 @@ The voice façade is a thin adapter over the factory's own router functions:
 | Method | Endpoint | What it does |
 |---|---|---|
 | `GET` | `/v1/voice/ping` | Checks the shared key and the factory version |
-| `GET` | `/v1/voice/status` | Returns the board snapshot: sprint, counts, pending approvals, `speech` |
+| `GET` | `/v1/voice/status` | Returns `{ok, action, speech, data}`; `data` carries the company, sprint, counts, blocked titles and pending approvals |
 | `POST` | `/v1/voice/command` | Runs one voice action (`status`, `planear`, `crear_sprint`, `pausar`, `reanudar`, `despachar`, `aprobar`, `rechazar`, `asignar`, …) |
 | `POST` | `/v1/voice/build` | Turns a sentence into a project written to disk |
 | `GET` | `/v1/voice/build/<slug>/<file>` | Serves a generated file, sandboxed with its own CSP |
@@ -650,11 +686,15 @@ small on purpose:
 | Method | Path | Body / query | Response |
 |---|---|---|---|
 | `GET` | `/v1/capabilities` | — | What the install supports |
-| `GET` | `/v1/voice/ping` | — | `{ok, version}` |
-| `GET` | `/v1/voice/status` | — | `{ok, speech, sprint, counts, pending_approvals}` |
-| `POST` | `/v1/voice/command` | `{action, text?, company_id?, language?}` | `{ok, speech, …}` |
-| `POST` | `/v1/voice/build` | `{text, name?, language?}` | `{ok, slug, files, entry, preview, seconds, speech}` |
-| `GET` | `/v1/voice/build/<slug>/<file>` | — | The generated file, sandboxed |
+| `GET` | `/v1/voice/ping` | — | `{ok, speech, via_key}` |
+| `GET` | `/v1/voice/status` | `company_id?`, `sprint_id?`, `language?` | `{ok, action, speech, data: {company, sprint, counts, blocked, pending_approvals, total}, company_id}` |
+| `POST` | `/v1/voice/command` | `{action, text?, company_id?, sprint_id?, language?, …}` | `{ok, action, speech, data, company_id}` |
+| `POST` | `/v1/voice/build` | `{texto, nombre?, language?}` | `{ok, action, speech, data: {slug, dir, files, entry, preview, seconds}}` |
+| `GET` | `/v1/voice/build/<slug>/<file>` | — | The generated file, sandboxed; anonymous and read-only |
+
+The build field is `texto` (Spanish) even when `language=en`: it carries the
+sentence the person dictated. Every voice business failure is HTTP 200 with
+`ok: false` and a `speech` that can be read aloud.
 
 Actions understood by `/v1/voice/command`: `estado`, `empresas`, `equipo`,
 `planear`, `crear_sprint`, `despachar`, `pausar`, `reanudar`, `aprobar`,
@@ -710,12 +750,13 @@ What helped and what cost us time, with the detail of what happened:
 - **Friction 1 — indistinguishable keys.** Token Factory and NVIDIA NIM keys
   both start with `nvapi-`, and a 401 says "Couldn't authenticate" in both
   cases: you cannot tell whether the key is bad or belongs to the other door.
-  It cost us an afternoon; the panel now probes both and explains it. A
+  It cost us an afternoon; the reference panel now probes both and explains it. A
   `provider` field in the error response would solve it.
 - **Friction 2 — retired models.** `llama-3.3-nemotron-super-49b-v1` answered
   `410 Gone` with the id stored in the config. A deprecation (or `sunset`)
-  header in `/models` would allow migrating before breaking; today we resolve it
-  by consulting the catalogue and retrying with the replacement.
+  header in `/models` would allow migrating before breaking; the reference
+  assistant resolves it by consulting the catalogue and retrying with the
+  replacement, while the factory proxy refuses the retired id before sending.
 - **Friction 3 — no `/audio/transcriptions`.** The assistant needed voice and
   neither door offers it, so transcription is local (`faster-whisper`, which
   the launcher installs by itself). It is fine to document the API as
@@ -742,10 +783,11 @@ Gemini and a Qwen/DeepSeek model map.
 **During the submission period** — the fusion and everything needed to run it
 on Token Factory:
 
-1. **Nemotron provider in the assistant**, with door detection, catalogue and
+1. **Nemotron on Token Factory** in the factory and the assistant, with
+   catalogue validation. The reference assistant also gained door detection and
    automatic migration of a retired id.
-2. **Ultra/Super/Nano tiers** written from the panel and applied per role in the
-   factory.
+2. **Ultra/Super/Nano tiers** written into `la-fabrique/.env` and applied per
+   role in the factory.
 3. **Voice gate** `/v1/voice/*` plus the assistant plugin: the factory is
    commanded by speaking.
 4. **`demo/coding_agent.py`**: the write → run → test loop, isolated and
@@ -754,12 +796,39 @@ on Token Factory:
    checks.
 6. **A clean-room assistant (`asistente-b1/`)**: the shipped assistant was
    rewritten from scratch — audio, model, tools, interface — so the product does
-   not depend on a non-commercial licence. `profesor3/` remains the reference
+   not depend on a non-commercial license. `profesor3/` remains the reference
    and is not distributed.
 
-Fixes that came from using the real model: migration on `410`, keys in `.env`
-that never reached the header, and the automatic `faster-whisper` install so the
-assistant does not start deaf.
+Fixes that came from using the real model: migration on `410` in the reference
+assistant, keys in `.env` that never reached the header, and the automatic
+`faster-whisper` install so the assistant does not start deaf.
+
+[⬆ Back to Top](#la-fabrique)
+
+---
+
+## Contributing
+
+- Branch from `fusion` and keep the change focused. `la-fabrique/` is an
+  upstream checkout; the voice layer lives inside it (`routers/voice.py`,
+  `services/voice_control.py`), while the demo and the assistant live beside it.
+- Run the suites before opening a pull request:
+
+  ```bash
+  python3 -m pytest tests -q
+  (cd asistente-b1 && python3 -m pytest -q)
+  python3 tools/hackathon_check.py
+  ```
+
+- Voice vocabulary is duplicated on purpose: add an action to
+  `asistente-b1/b1/fabrica.py` and
+  `la-fabrique/backend/app/services/voice_control.py` together, or the voice
+  gets a 400.
+- Do not copy code or prose from `profesor3/` into `asistente-b1/`;
+  `asistente-b1/tests/test_originality.py` checks it when the reference tree is
+  present.
+- Report security issues privately as described in
+  [la-fabrique/SECURITY.md](la-fabrique/SECURITY.md).
 
 [⬆ Back to Top](#la-fabrique)
 
@@ -778,7 +847,7 @@ assistant does not start deaf.
 - `.env` files, API keys, generated projects and agent workspaces are
   git-ignored; `tools/hackathon_check.py` fails if `la-fabrique/.env` is
   tracked.
-- `profesor3/`, when present, keeps its own CC BY-NC 4.0 licence and is not
+- `profesor3/`, when present, keeps its own CC BY-NC 4.0 license and is not
   relicensed as Apache-2.0.
 
 [⬆ Back to Top](#la-fabrique)
@@ -796,15 +865,22 @@ is **not** part of the distributed product and must not be relicensed as
 Apache-2.0.
 
 NVIDIA Nemotron models are served by Nebius Token Factory and NVIDIA NIM under
-their own model licences.
+their own model licenses.
 
 ---
 
-## Support
+## Support and Maintenance
 
 - **Submission details and video script:** [SUBMISSION.md](SUBMISSION.md)
+- **Assistant documentation:** [asistente-b1/README.md](asistente-b1/README.md)
 - **Factory user guide:** [la-fabrique/USER_GUIDE.md](la-fabrique/USER_GUIDE.md)
-- **Issues:** use the repository's issue tracker.
 - **Spanish documentation:** [README.es.md](README.es.md)
+- **Issues and questions:** use the repository's issue tracker.
+- **Security reports:** follow
+  [la-fabrique/SECURITY.md](la-fabrique/SECURITY.md) and do not open a public
+  issue.
+- **Maintenance:** the `fusion` branch is the hackathon submission snapshot;
+  `la-fabrique/` tracks upstream while the voice layer, the demo and
+  `asistente-b1/` are maintained here.
 
 [⬆ Back to Top](#la-fabrique)
