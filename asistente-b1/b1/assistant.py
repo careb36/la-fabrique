@@ -129,12 +129,42 @@ class Assistant:
         hint = normalize(language) if (language or "").strip() else ""
         self.set_language(detect_language(phrase, self.language, hint=hint))
 
+        confirmed = await self._settle_pending(phrase)
+        if confirmed is not None:
+            self._history.append({"role": "user", "content": phrase})
+            self._history.append({"role": "assistant", "content": confirmed})
+            await self.say(confirmed)
+            return confirmed
+
         self._emit("state", value="thinking")
         self._history.append({"role": "user", "content": phrase})
         answer = await self._converse()
         self._history.append({"role": "assistant", "content": answer})
         await self.say(answer)
         return answer
+
+    async def _settle_pending(self, phrase: str) -> str | None:
+        """Run or drop the action waiting for the person's confirmation.
+
+        Only the person's own phrase reaches here; the model never does, so it
+        cannot confirm an action for them. A yes runs it and returns what the
+        factory said; anything else cancels it and the turn goes on as usual.
+        """
+        factory = self.factory
+        pending = getattr(factory, "pending", None) if factory is not None else None
+        if not pending:
+            return None
+        factory.pending = None
+        if not fabrica.is_confirmation(phrase):
+            self._emit("cancelled", action=pending.get("action"))
+            return None
+        action = pending.pop("action")
+        try:
+            answer = await asyncio.to_thread(factory.command, action, **pending)
+        except fabrica.FactoryError as exc:
+            return str(exc)
+        self._after_tool(json.dumps({"ok": answer.ok, "speech": answer.speech, "data": answer.data}))
+        return answer.speech
 
     def set_language(self, code: str) -> None:
         """Switch the whole assistant: prompt, tool text, factory and voice.
@@ -204,12 +234,22 @@ class Assistant:
         data = body.get("data") or {}
         self._emit("factory", ok=bool(body.get("ok")), data=data)
         url = data.get("url") if isinstance(data, dict) else None
+        if url and not self._is_factory_preview(str(url)):
+            self._emit("error", message=f"no abro un enlace fuera de la fábrica: {url}")
+            url = None
         if url and body.get("ok") and self.settings.open_build_in_browser:
             try:
                 webbrowser.open(str(url), new=2)
                 self._emit("opened", url=str(url))
             except Exception as exc:  # noqa: BLE001 - say it, do not crash.
                 self._emit("error", message=f"no pude abrir {url}: {exc}")
+
+    def _is_factory_preview(self, url: str) -> bool:
+        """Only the factory's own build previews are opened, over http(s)."""
+        if self.factory is None:
+            return False
+        prefix = self.factory.base_url.rstrip("/") + "/v1/voice/build/"
+        return url.startswith(prefix) and url.split(":", 1)[0] in {"http", "https"}
 
     def _clean(self, text: str) -> str:
         """Drop formatting that sounds wrong once it is read aloud."""

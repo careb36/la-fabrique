@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,23 @@ _NON_CHAT = ("embed", "rerank", "guard", "parse", "whisper", "tts", "-vl",
 class ModelError(Exception):
     """El proveedor contestó algo que no se puede usar."""
 
+
+
+
+class _SameOriginRedirects(urllib.request.HTTPRedirectHandler):
+    """The key never follows a redirect to another scheme or host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old = urllib.parse.urlsplit(req.full_url)
+        new = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl))
+        if (old.scheme, old.netloc) != (new.scheme, new.netloc):
+            raise urllib.error.HTTPError(
+                newurl, code, "redirect to another origin refused", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SameOriginRedirects)
 
 def clean_key(value: str | None) -> str:
     """La clave como la quiere el encabezado, no como se pega."""
@@ -149,7 +167,7 @@ class ChatClient:
 
     def _json(self, request: urllib.request.Request, timeout: float) -> Any:
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _OPENER.open(request, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")[:300]

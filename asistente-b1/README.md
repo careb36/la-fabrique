@@ -63,6 +63,22 @@ redactada** (`speech`) y el asistente la dice casi textual. El modelo elige la
 herramienta, no inventa el resultado. Si el backend no responde, se dice el
 error en una frase; nunca se simula que salió bien.
 
+## Seguridad
+
+- **Las acciones que deciden o arrancan trabajo esperan tu confirmación.**
+  `aprobar`, `rechazar`, `despachar`, `reanudar` y `asignar` no se ejecutan
+  cuando el modelo las pide: el asistente te pregunta y solo las manda si tu
+  siguiente frase es «sí, confirmo». Esa comprobación está en el código, no en
+  el prompt, así que un texto que el modelo lea (el título de una tarea, una
+  nota de rechazo) no puede confirmarlas por vos.
+- **Solo abre las vistas previas de la fábrica** (`<fábrica>/v1/voice/build/...`),
+  nunca otro enlace que aparezca en una respuesta.
+- **Las claves no siguen redirecciones a otro host.**
+- **`config.json` se crea con permisos 0600** (la carpeta, 0700): guarda la
+  clave del modelo y la de voz.
+- **La voz del sistema nunca ejecuta el texto que lee**: en Windows viaja como
+  datos codificados, no como código de PowerShell.
+
 ## Instalación
 
 ```bash

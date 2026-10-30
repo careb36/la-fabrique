@@ -157,15 +157,17 @@ class Settings:
 
     def save(self, path: Path | None = None) -> Path:
         target = path or config_file()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(asdict(self), indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Created 0600 from the first byte: the file holds the model key and
+        # the voice key, and a chmod after writing leaves a window when it is
+        # readable by others. Windows ignores the mode; the folder is per-user.
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(asdict(self), indent=2, ensure_ascii=False) + "\n")
         try:
-            target.chmod(0o600)
+            target.chmod(0o600)  # an existing file keeps its old mode otherwise
         except OSError:
-            pass  # Windows has no POSIX mode bits; the folder is per-user anyway.
+            pass
         return target
 
     @classmethod

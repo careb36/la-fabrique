@@ -43,13 +43,19 @@ def _decoded(argument: str) -> str:
     return base64.b64decode(argument.encode("ascii")).decode("utf-16-le")
 
 
+def _spoken(script: str) -> str:
+    """The text the script speaks: it travels as base64, never as source."""
+    payload = script.split("FromBase64String('", 1)[1].split("'", 1)[0]
+    return base64.b64decode(payload).decode("utf-8")
+
+
 def test_windows_speaks_through_an_encoded_script():
     speaker = SystemSpeaker("sapi", language="es")
     command = speaker.command("Hola, ¿cómo va la fábrica?")
 
     assert command[1:4] == ["-NoProfile", "-NonInteractive", "-EncodedCommand"]
     script = _decoded(command[-1])
-    assert "Hola, ¿cómo va la fábrica?" in script
+    assert _spoken(script) == "Hola, ¿cómo va la fábrica?"
     assert "$want = 'es'" in script
 
 
@@ -62,7 +68,24 @@ def test_windows_picks_the_english_voice_when_the_answer_is_english():
 def test_apostrophes_survive_the_powershell_string():
     speaker = SystemSpeaker("sapi")
     script = _decoded(speaker.command("It's done")[-1])
-    assert "$engine.Speak('It''s done');" in script
+    assert _spoken(script) == "It's done"
+
+
+@pytest.mark.parametrize("quote", ["'", "\u2018", "\u2019", "\u201a", "\u201b"])
+def test_spoken_text_never_becomes_powershell_code(quote):
+    # PowerShell treats the curly quotes as single quotes too: the text must
+    # not appear in the script at all, only as base64 data.
+    attack = f"done{quote});Start-Process calc;({quote}"
+    script = _decoded(SystemSpeaker("sapi").command(attack)[-1])
+    assert "Start-Process" not in script
+    assert _spoken(script) == attack
+
+
+@pytest.mark.parametrize("engine", ["espeak", "spd-say", "say"])
+def test_a_leading_dash_is_not_read_as_an_option(engine):
+    speaker = SystemSpeaker(engine, voices={}, language="en")
+    command = speaker.command("-w/home/u/.bashrc hello")
+    assert command[-1] == " -w/home/u/.bashrc hello"
 
 
 def test_macos_uses_the_voice_for_the_language():

@@ -15,6 +15,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from . import net
 from .i18n import normalize, t
 from .tools import ToolRegistry, object_schema
 
@@ -136,6 +137,9 @@ class FactoryClient:
         self.language = _lang(language)
         self.timeout = timeout
         self.build_timeout = build_timeout
+        # An action that changes work in the factory, waiting for the person
+        # to confirm it (see CONFIRM_ACTIONS and Assistant.handle).
+        self.pending: dict | None = None
 
     # -- transport ----------------------------------------------------------
     def _call(
@@ -163,7 +167,7 @@ class FactoryClient:
 
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout or self.timeout) as response:
+            with net.urlopen(request, timeout=timeout or self.timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
@@ -343,6 +347,50 @@ DESCRIPTIONS = {
 }
 
 
+# Actions that decide or start work. The model may ask for them, but they run
+# only after the person confirms in their own next phrase: a model can be
+# steered by text it reads back (a task title, a feedback note), a person's
+# "sí, confirmo" cannot be produced by the model.
+CONFIRM_ACTIONS = frozenset({"aprobar", "rechazar", "despachar", "reanudar", "asignar"})
+COMMAND_ACTIONS = (
+    "estado",
+    "empresas",
+    "equipo",
+    "sprints",
+    "planear",
+    "crear_sprint",
+    "despachar",
+    "pausar",
+    "reanudar",
+    "aprobar",
+    "rechazar",
+    "asignar",
+    "ayuda",
+)
+_YES = {"si", "si confirmo", "confirmo", "si, confirmo", "yes", "yes confirm", "confirm", "confirmed"}
+
+
+def is_confirmation(phrase: str) -> bool:
+    """True when *phrase* is the person saying yes to the pending action."""
+    import unicodedata
+
+    plain = unicodedata.normalize("NFKD", phrase or "").encode("ascii", "ignore").decode()
+    plain = " ".join(plain.lower().replace(",", " ").replace(".", " ").replace("!", " ").split())
+    return plain in _YES
+
+
+def confirmation_request(action: str, language: str) -> str:
+    if _lang(language) == "en":
+        return (
+            f"Before I do '{action}' in the factory I need you to confirm it. "
+            "Say: yes, confirm. Anything else cancels it."
+        )
+    return (
+        f"Antes de hacer '{action}' en la fábrica necesito que lo confirmes. "
+        "Decí: sí, confirmo. Cualquier otra cosa lo cancela."
+    )
+
+
 def register_tools(
     registry: ToolRegistry, client: FactoryClient, language: str = "es"
 ) -> None:
@@ -372,6 +420,24 @@ def register_tools(
         feedback: str | None = None,
         agent: str | None = None,
     ) -> dict:
+        if action not in COMMAND_ACTIONS:
+            return {"ok": False, "speech": f"unknown action: {action}"}
+        if action in CONFIRM_ACTIONS:
+            client.pending = {
+                "action": action,
+                "text": text,
+                "sprint_id": sprint_id,
+                "run_id": run_id,
+                "sprint_name": sprint_name,
+                "scope_size": scope_size,
+                "feedback": feedback,
+                "agent": agent,
+            }
+            return {
+                "ok": True,
+                "needs_confirmation": True,
+                "speech": confirmation_request(action, client.language),
+            }
         try:
             answer = client.command(
                 action,
@@ -413,24 +479,7 @@ def register_tools(
         _description("command", language),
         object_schema(
             {
-                "action": {
-                    "type": "string",
-                    "enum": [
-                        "estado",
-                        "empresas",
-                        "equipo",
-                        "sprints",
-                        "planear",
-                        "crear_sprint",
-                        "despachar",
-                        "pausar",
-                        "reanudar",
-                        "aprobar",
-                        "rechazar",
-                        "asignar",
-                        "ayuda",
-                    ],
-                },
+                "action": {"type": "string", "enum": list(COMMAND_ACTIONS)},
                 "text": {"type": "string", "description": _description("text", language)},
                 "sprint_id": {"type": "integer"},
                 "run_id": {"type": "integer"},
