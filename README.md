@@ -113,7 +113,7 @@ Lo que Token Factory nos ahorró, en concreto:
 ### 1. La demo del agente (lo más rápido, 30 segundos)
 
 ```bash
-git clone <este-repositorio> && cd fusion
+git clone -b fusion https://github.com/careb36/la-fabrique.git fusion && cd fusion
 export NEBIUS_API_KEY=nvapi-...          # Token Factory
 python demo/coding_agent.py --task "slugify con pruebas unittest"
 ```

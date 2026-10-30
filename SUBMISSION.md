@@ -14,7 +14,7 @@ que se distribuye.
 
 | Campo del formulario | Valor |
 |---|---|
-| Repositorio público | `https://github.com/<usuario>/fusion` — *completar antes de enviar* |
+| Repositorio público | `https://github.com/careb36/la-fabrique/tree/fusion` (rama `fusion`) |
 | Demostración funcional | `python demo/coding_agent.py` (ver más abajo) + fábrica en `http://localhost:3000` |
 | Vídeo (≤ 3 min) | `https://youtu.be/<id>` — *completar antes de enviar* |
 | Evento IRL | *completar si asististe a un Builders & Brews* |
@@ -78,7 +78,7 @@ reparte entre tres niveles — Ultra para razonar, Super/Nano para el resto.
 ## 3. Demostración funcional
 
 ```bash
-git clone <este-repositorio> && cd fusion
+git clone -b fusion https://github.com/careb36/la-fabrique.git fusion && cd fusion
 export NEBIUS_API_KEY=nvapi-...        # Nebius Token Factory
 python demo/coding_agent.py            # escribe, ejecuta, prueba, corrige
 ```
