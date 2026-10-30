@@ -219,8 +219,10 @@ The canonical way to start a clean local environment is `reset_infra.sh`:
 ```bash
 # 1. Copy and configure environment
 cp .env.example .env
-# Edit .env — fill in GEMINI_API_KEY, DEEPSEEK_API_KEY,
-# POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET_KEY
+# Edit .env — fill in NEBIUS_API_KEY (as shipped, every agent role runs on
+# NVIDIA Nemotron through Nebius Token Factory), POSTGRES_PASSWORD,
+# NEO4J_PASSWORD, JWT_SECRET_KEY. GEMINI_API_KEY, DEEPSEEK_API_KEY and
+# QWEN_API_KEY matter only if you clear NEMOTRON_ROLES.
 
 # 2. Full clean start
 ./reset_infra.sh
@@ -381,12 +383,14 @@ curl -s localhost:5100/v1/models | jq -r '.models[] | select(.provider=="nebius"
 
 ### Giving agent roles an NVIDIA model
 
-The role defaults in `backend/llm/model_factory.py` are Qwen and DeepSeek. To
-run specific roles on Nemotron, opt them in — unset means nothing changes:
+`NEMOTRON_ROLES` names the roles that run on Nemotron. The shipped
+`.env.example` opts every role in, so a stack started from it runs on Nemotron
+as soon as `NEBIUS_API_KEY` is set; clear the variable and the roles fall back
+to the Qwen/DeepSeek defaults in `backend/llm/model_factory.py`:
 
 ```bash
 # Comma-separated role names (case-insensitive).
-NEMOTRON_ROLES=PO,Architect,SecOps,Developer,QA,TechWriter
+NEMOTRON_ROLES=PO,Architect,ScrumMaster,Developer,QA,SecOps,TechWriter
 
 # The model those roles get. The _STRATEGIC and _FAST variants override it
 # per role: PO, Architect and SecOps read _STRATEGIC; TechWriter reads _FAST.
