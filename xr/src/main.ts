@@ -10,7 +10,7 @@ import {
   VisibilityState,
   World,
 } from '@iwsdk/core';
-import { Object3D, Vector3 } from 'three';
+import { Object3D, Quaternion, Vector3 } from 'three';
 
 import { dropOn } from './decide';
 import { Dwell, gazed } from './gaze';
@@ -26,6 +26,9 @@ import { agentPanel, companyPanel, controlPanel, resultPanel, taskPanel, type Pa
 import { guide } from './ui/guide';
 import { highContrast, setContrast } from './ui/kit';
 import { listen, parseCommand, speechSupported, type Command } from './voice';
+import { FrameStats, perfLine } from './perf';
+import { cueFor, Sound } from './sound';
+import { ROLE_COLOR } from './ui/presence';
 import { dropZone, presence, token } from './ui/presence';
 
 /** Seated eye height above the floor. */
@@ -82,6 +85,11 @@ const world = await World.create(container, {
 }).catch((error: unknown) =>
   fail('The room did not start.', `${error instanceof Error ? error.message : String(error)}. Try reloading the page.`),
 );
+
+// Foveated rendering: the edges of each eye's view drawn at lower resolution,
+// where the lenses blur them anyway. A large saving on Quest, invisible to the
+// person; browsers without it ignore the call.
+world.renderer.xr.setFoveation?.(1);
 
 // Live mode follows a real sprint when the build names a backend
 // (VITE_FABRIQUE_API) and the address a sprint (?sprint=); otherwise the demo.
@@ -221,6 +229,31 @@ let voiceLine = '';
 let stopVoice: (() => void) | undefined;
 const VOICE_HINT = 'Listening: say approve, send back, pause, resume, recenter or launch CSV.';
 
+// Sound starts with a person's gesture, as browsers require: the click that
+// enters XR (or any click on the page).
+const sound = new Sound();
+document.addEventListener('click', () => sound.unlock());
+const SOUND_KEY = 'la-fabrique-xr.muted';
+try {
+  sound.muted = localStorage.getItem(SOUND_KEY) === 'yes';
+} catch {
+  /* sound on */
+}
+function setMuted(muted: boolean): void {
+  sound.muted = muted;
+  try {
+    localStorage.setItem(SOUND_KEY, muted ? 'yes' : 'no');
+  } catch {
+    /* not remembered */
+  }
+  touch();
+}
+
+// The frame meter, with ?perf: measured in the room, shown on the Room panel.
+const showPerf = new URLSearchParams(location.search).has('perf');
+const frames = new FrameStats();
+let perfText = '';
+
 function obey(c: Command): string {
   const waiting = awaitingDecision(player.state);
   switch (c.kind) {
@@ -242,6 +275,12 @@ function obey(c: Command): string {
     case 'recenter':
       recenter = true;
       return 'Recentering.';
+    case 'mute':
+      setMuted(true);
+      return 'Sound off.';
+    case 'unmute':
+      setMuted(false);
+      return 'Sound on.';
     case 'launch':
       if (player.launch(c.taskId)) touch();
       return `Launched ${player.state.tasks[c.taskId]?.title ?? c.taskId}.`;
@@ -281,6 +320,12 @@ place(
     onRestart: restart,
     where: () => PLACEMENT_TEXT[placement],
     restartLabel: () => (sprintClosed ? 'Next sprint' : 'Restart'),
+    onSound: () => {
+      sound.unlock();
+      setMuted(!sound.muted);
+    },
+    sound: () => !sound.muted,
+    perf: () => perfText,
     onContrast: () => {
       setContrast(!highContrast);
       try {
@@ -297,7 +342,9 @@ place(
   handPanels,
 );
 // The agents only show: on the wall ahead as the team's board, or above.
-const agentViews = ROLES.map((role) => agentPanel({ ...player.state.agents[role] }));
+const agentViews = ROLES.map((role) =>
+  agentPanel({ ...player.state.agents[role] }, `#${ROLE_COLOR[role].toString(16).padStart(6, '0')}`),
+);
 for (const view of agentViews) place(view, agentPanels);
 // The company's record hangs with the team, after the agents.
 if (!live) {
@@ -429,6 +476,38 @@ const surfaces = world.registerSystem(SurfaceSystem).getSystem(SurfaceSystem)!;
 
 class RoomSystem extends createSystem() {
   private waited = 0;
+  /** How many of the player's events have been heard. */
+  private heard = 0;
+  private perfAge = 0;
+
+  /** Every new event that makes a sound plays it from where it happens. */
+  hear(): void {
+    const history = player.history();
+    if (history.length < this.heard) this.heard = 0; // a restart
+    const head = world.camera.getWorldPosition(new Vector3());
+    const forward = world.camera.getWorldDirection(new Vector3());
+    const up = new Vector3(0, 1, 0).applyQuaternion(world.camera.getWorldQuaternion(new Quaternion()));
+    sound.listen(head, forward, up);
+    for (; this.heard < history.length; this.heard++) {
+      const cue = cueFor(history[this.heard]);
+      if (!cue) continue;
+      const at = cue.role
+        ? presences[ROLES.indexOf(cue.role)].p.group.getWorldPosition(new Vector3())
+        : handPanels[1].object.getWorldPosition(new Vector3());
+      sound.play(cue, at);
+    }
+  }
+
+  /** The frame meter: every frame counted, the line refreshed twice a second. */
+  meter(delta: number): void {
+    if (!showPerf) return;
+    frames.add(delta);
+    if ((this.perfAge += delta) < 0.5) return;
+    this.perfAge = 0;
+    const { calls, triangles } = world.renderer.info.render;
+    perfText = perfLine(frames.report(), calls, triangles);
+    touch();
+  }
 
   /** Which agent the head rests on; that panel opens. */
   look(delta: number): void {
@@ -512,6 +591,8 @@ class RoomSystem extends createSystem() {
     // IWSDK passes seconds; a long frame (tab restored) is clamped.
     if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
     closeIfDone();
+    this.hear();
+    this.meter(delta);
     // The lights and the task move every frame; the panels only on a change.
     for (const x of presences) {
       const now = player.state.agents[x.role].state;
@@ -566,6 +647,7 @@ if (new URLSearchParams(location.search).has('e2e')) {
     open: () => dwell.open,
     guide: () => (live || company.sprints.length ? 'none' : guideStep(player.state, looked)),
     company: () => company,
+    sound,
     restart,
   };
 }

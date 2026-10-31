@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "budget": "node scripts/render-budget.cjs"
   },
   "dependencies": {
     "@iwsdk/core": "1.0.1",

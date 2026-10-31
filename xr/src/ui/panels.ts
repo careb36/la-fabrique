@@ -44,9 +44,11 @@ export interface AgentPanel extends Panel {
 }
 
 /** One agent: its name, role, state and latest lines. Read-only. */
-export function agentPanel(view: AgentView): AgentPanel {
+export function agentPanel(view: AgentView, color: string): AgentPanel {
   const root = panel(0.2, undefined, 'bottom');
   root.setProperties({ padding: 1.5, gap: 0.6 });
+  // A strip in the agent's own color, the same as its light above.
+  root.add(new UIKit.Container({ height: 0.5, borderRadius: 0.25, backgroundColor: color, flexShrink: 0 }));
   const header = row(0.8);
   const dot = new UIKit.Container({ width: 1.4, height: 1.4, borderRadius: 0.7, backgroundColor: agentColor('idle') });
   header.add(dot);
@@ -210,6 +212,11 @@ export function controlPanel(actions: {
   where: () => string;
   /** 'Restart', or 'Next sprint' once the sprint has closed. */
   restartLabel: () => string;
+  /** Sound on or off. */
+  onSound: () => void;
+  sound: () => boolean;
+  /** The frame meter's line, or '' when it is not shown. */
+  perf: () => string;
   /** Switch high contrast; the label says what a press turns it to. */
   onContrast: () => void;
   contrast: () => boolean;
@@ -227,7 +234,11 @@ export function controlPanel(actions: {
   buttons.add(restart.root);
   root.add(buttons);
   // Seated or standing, the room comes back in front of the head.
-  root.add(button('Recenter', actions.onRecenter).root);
+  const placeRow = row(1);
+  placeRow.add(button('Recenter', actions.onRecenter, { grow: true }).root);
+  const sound = button('Mute', actions.onSound, { grow: true });
+  placeRow.add(sound.root);
+  root.add(placeRow);
   // Other ways in: high contrast, and voice where the browser can listen.
   // One per row: side by side, their longer labels outgrow the panel.
   const contrast = button('Contrast', actions.onContrast);
@@ -236,6 +247,8 @@ export function controlPanel(actions: {
   if (voice) root.add(voice.root);
   const heard = text('', 1.2, COLORS.muted);
   root.add(heard);
+  const perf = text('', 1.1, COLORS.muted);
+  root.add(perf);
   const clock = text('', 1.3, COLORS.muted);
   root.add(clock);
   const where = text('', 1.2, COLORS.muted);
@@ -249,6 +262,9 @@ export function controlPanel(actions: {
       clock.setProperties({ text: paused ? 'Paused: nothing moves until you resume.' : 'Live', color: paused ? COLORS.warn : COLORS.ok });
       where.setProperties({ text: actions.where() });
       restart.label.setProperties({ text: actions.restartLabel() });
+      sound.label.setProperties({ text: actions.sound() ? 'Mute' : 'Sound' });
+      const meter = actions.perf();
+      perf.setProperties({ text: meter, display: meter ? 'flex' : 'none' });
       contrast.label.setProperties({ text: actions.contrast() ? 'Contrast off' : 'Contrast' });
       const v = actions.voice();
       voice?.label.setProperties({ text: v ? 'Voice off' : 'Voice' });
