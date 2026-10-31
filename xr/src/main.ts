@@ -11,13 +11,23 @@ import { Object3D, Vector3 } from 'three';
 
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
-import { arc, around, type Placement } from './layout';
+import { layoutRoom, type Placed, type RoomLayout, type Surface } from './room';
+import { SurfaceSystem } from './surfaces';
 import { connectLive, liveConfig } from './live';
 import { ROLES } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
 
 /** Seated eye height above the floor. */
 const HEAD_Y = 1.2;
+/** Seconds after entering XR (or Recenter) before reading the room. */
+const SURFACE_WAIT_S = 1.2;
+
+const PLACEMENT_TEXT: Record<RoomLayout['mode'], string> = {
+  'desk+wall': 'On your desk, the team on your wall.',
+  desk: 'On your desk.',
+  wall: 'The team on your wall.',
+  arc: 'Floating in front of you.',
+};
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
 const notice = document.getElementById('notice') as HTMLDivElement;
@@ -48,12 +58,15 @@ const world = await World.create(container, {
     // Mixed reality: the room stays visible around the panels.
     sessionMode: SessionMode.ImmersiveAR,
     offer: 'always',
-    features: { handTracking: true },
+    // The room's table and walls (plane and mesh detection) and an anchor
+    // that keeps the factory where it was put; optional, so a browser
+    // without them still opens the room.
+    features: { handTracking: true, planeDetection: true, meshDetection: true, anchors: true },
   },
   // The desktop view only: a step back from the seat so every panel fits on
   // a screen. In a headset, tracking puts the camera at the person's eyes.
   render: { fov: 75, camera: { position: [0, HEAD_Y + 0.05, 0.42], lookAt: [0, HEAD_Y - 0.08, -0.45] } },
-  features: { grabbing: false, locomotion: false, physics: false },
+  features: { grabbing: false, locomotion: false, physics: false, sceneUnderstanding: true },
 }).catch((error: unknown) =>
   fail('The room did not start.', `${error instanceof Error ? error.message : String(error)}. Try reloading the page.`),
 );
@@ -75,24 +88,43 @@ const touch = () => {
   dirty = true;
 };
 
-const placed: { object: Object3D; at: Placement }[] = [];
+interface Hosted {
+  object: Object3D;
+  root: Panel['root'];
+}
+const handPanels: Hosted[] = [];
+const agentPanels: Hosted[] = [];
 
-function place(p: Panel, at: Placement): void {
+function place(p: Panel, group: Hosted[]): void {
   // Both ways a hand presses a button: a fingertip crossing it (poke) and a
   // pinch while pointing at it (ray). Either works with controllers too.
   const entity = world.createTransformEntity().addComponent(RayInteractable).addComponent(PokeInteractable);
   entity.object3D!.add(new UIKitDocument(p.root));
-  placed.push({ object: entity.object3D!, at });
+  group.push({ object: entity.object3D!, root: p.root });
   panels.push(p);
 }
 
-/** Put every panel around a head at `head`, facing `yaw` (radians). */
-function arrange(head: Vector3, yaw: number): void {
-  for (const { object, at } of placed) {
-    const p = around(at, head, yaw);
-    object.position.set(p.x, p.y, p.z);
-    object.rotation.set(0, p.yaw, 0);
-  }
+/** Where the panels are now: on the desk and wall, or the floating arc. */
+let placement: RoomLayout['mode'] = 'arc';
+
+function apply(group: Hosted[], spots: Placed[]): void {
+  group.forEach(({ object, root }, i) => {
+    const at = spots[i];
+    object.position.set(at.x, at.y, at.z);
+    // Turn to face the head first, then lean back.
+    object.rotation.set(-at.tilt, at.yaw, 0, 'YXZ');
+    object.scale.setScalar(at.scale);
+    root.setProperties({ anchorY: at.anchor });
+  });
+}
+
+/** Lay the room out around a head, on whatever surfaces the room has. */
+function arrange(head: Vector3, yaw: number, found: Surface[] = []): void {
+  const room = layoutRoom(found, head, yaw, agentPanels.length);
+  apply(handPanels, room.hands);
+  apply(agentPanels, room.agents);
+  placement = room.mode;
+  touch();
 }
 
 const SEATED_HEAD = new Vector3(0, HEAD_Y, 0);
@@ -108,9 +140,8 @@ function headPose(): { head: Vector3; yaw: number } {
   return { head, yaw: Math.atan2(-forward.x, -forward.z) };
 }
 
-// Everything a hand touches hangs from one arc at 45 cm, just below eye
-// level: tasks on the left, the result ahead, the room's controls on the right.
-const [left, center, right] = arc(3, 96, 0.45, 0.04);
+// Tasks on the left, the result ahead, the room's controls on the right:
+// on the desk when there is one, otherwise on a floating arc.
 place(
   taskPanel(
     tasks,
@@ -119,13 +150,13 @@ place(
     },
     live ? 'Watching the factory: tasks start from the web app.' : undefined,
   ),
-  left,
+  handPanels,
 );
 place(
   resultPanel((id, approved) => {
     if (player.decide(id, approved, approved ? '' : 'add a test for a reused token')) touch();
   }, live ? 'Live mode watches: approve or send back in the web app.' : undefined),
-  center,
+  handPanels,
 );
 place(
   controlPanel({
@@ -144,11 +175,12 @@ place(
       if (live) player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
       touch();
     },
+    where: () => PLACEMENT_TEXT[placement],
   }),
-  right,
+  handPanels,
 );
-// The agents only show, so they stand on a slightly farther arc just above it.
-arc(ROLES.length, 100, 0.55, 0).forEach((at, i) => place(agentPanel({ ...player.state.agents[ROLES[i]] }), at));
+// The agents only show: on the wall ahead as the team's board, or above.
+for (const role of ROLES) place(agentPanel({ ...player.state.agents[role] }), agentPanels);
 arrange(SEATED_HEAD, 0);
 
 // Leaving the headset or opening the system menu pauses the room; coming
@@ -157,7 +189,7 @@ world.visibilityState.subscribe((v) => {
   // Entering XR: the room moves to wherever the person's head is, sitting or
   // standing. Leaving it: back to the seated view of the desktop page.
   if (v === VisibilityState.Visible && previous === VisibilityState.NonImmersive) recenter = true;
-  if (v === VisibilityState.NonImmersive) arrange(SEATED_HEAD, 0);
+  if (v === VisibilityState.NonImmersive && previous !== VisibilityState.NonImmersive) arrange(SEATED_HEAD, 0);
   previous = v;
   const away = v === VisibilityState.Hidden || v === VisibilityState.VisibleBlurred;
   if (away && !player.paused) {
@@ -182,17 +214,20 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+const surfaces = world.registerSystem(SurfaceSystem).getSystem(SurfaceSystem)!;
+
 class RoomSystem extends createSystem() {
-  private settle = 0;
+  private waited = 0;
 
   update(delta: number): void {
     if (recenter && world.visibilityState.value !== VisibilityState.NonImmersive) {
-      // A few frames after entering, so the headset has reported a pose.
-      if ((this.settle += 1) > 3) {
+      // Give the headset a moment to report its pose and the room's
+      // surfaces, then lay the factory out on them.
+      if ((this.waited += delta) > SURFACE_WAIT_S) {
         const { head, yaw } = headPose();
-        arrange(head, yaw);
+        arrange(head, yaw, surfaces.room());
         recenter = false;
-        this.settle = 0;
+        this.waited = 0;
       }
     } else if (recenter) {
       recenter = false;
@@ -226,5 +261,5 @@ if (live) {
 // Browser tests drive the emulator's hands against the real scene; `?e2e`
 // lets them find the room. Nothing else reads it.
 if (new URLSearchParams(location.search).has('e2e')) {
-  (window as unknown as { __room: unknown }).__room = { world, player };
+  (window as unknown as { __room: unknown }).__room = { world, player, placement: () => placement, surfaces: () => surfaces.room() };
 }

@@ -11,6 +11,9 @@ export default defineConfig({
     iwsdkDev({
       emulator: {
         device: 'metaQuest3',
+        // A synthetic office: the emulated passthrough shows a real-looking
+        // room, and its desk and walls are detected like a real room's.
+        environment: 'office_small',
         // Judges without a headset get the emulator on the published page too;
         // the Quest browser is skipped by its user agent and runs real WebXR.
         activation: 'always',

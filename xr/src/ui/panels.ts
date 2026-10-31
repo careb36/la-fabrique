@@ -173,7 +173,13 @@ export function resultPanel(
 }
 
 /** Pause, resume, restart, recenter, and the room's last events. */
-export function controlPanel(actions: { onPause: () => void; onRecenter: () => void; onRestart: () => void }): Panel {
+export function controlPanel(actions: {
+  onPause: () => void;
+  onRecenter: () => void;
+  onRestart: () => void;
+  /** Where the room is laid out, in a few words. */
+  where: () => string;
+}): Panel {
   const root = panel(0.24);
   root.add(text('Room', 2.4, COLORS.text, true));
   const buttons = row(1);
@@ -185,13 +191,16 @@ export function controlPanel(actions: { onPause: () => void; onRecenter: () => v
   root.add(button('Recenter', actions.onRecenter).root);
   const clock = text('', 1.3, COLORS.muted);
   root.add(clock);
+  const where = text('', 1.2, COLORS.muted);
+  root.add(where);
   const log = Array.from({ length: LOG_LINES }, () => text('', 1.1, COLORS.muted));
   for (const l of log) root.add(l);
   return {
     root,
     update(state, paused) {
       pause.label.setProperties({ text: paused ? 'Resume' : 'Pause' });
-      clock.setProperties({ text: paused ? 'Paused: nothing moves until you resume.' : 'Live' , color: paused ? COLORS.warn : COLORS.ok });
+      clock.setProperties({ text: paused ? 'Paused: nothing moves until you resume.' : 'Live', color: paused ? COLORS.warn : COLORS.ok });
+      where.setProperties({ text: actions.where() });
       const recent = [...state.log].reverse();
       log.forEach((l, i) => l.setProperties({ text: recent[i] ?? '' }));
     },

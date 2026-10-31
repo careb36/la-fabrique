@@ -78,6 +78,16 @@ workspace daemon wrote, QA's review, and the risk tier that holds
 high-risk work (authentication, secrets, payments, CI) for a person. The
 room's events have the shape of the backend's Glassroom stream.
 
+## Your room is the workspace
+
+In passthrough the room reads your space (WebXR plane and mesh detection
+through IWSDK's scene understanding). The panels you use with your hands
+stand on **your desk**, leaning toward you; the agents hang on **the wall
+ahead** as the team's board. A desk counts when it is within reach of a
+seated person; a wall when it is ahead and readable. Whatever your room
+lacks falls back to a floating arc, and **Recenter** lays it out again.
+The Room panel says where it went.
+
 ## Design for a seated person
 
 - Everything a hand touches hangs on an arc 45 cm from the head, just below
@@ -110,6 +120,7 @@ prints from the Quest browser; accept the self-signed certificate.
 | `src/live.ts` | live mode: the backend's Glassroom stream as room events |
 | `src/ui/` | the panels |
 | `src/layout.ts` | where panels go around a seated person |
+| `src/room.ts`, `src/surfaces.ts` | the desk and wall from the room's detected surfaces |
 | `src/main.ts` | the IWSDK world |
 
 What is new for the Meta VR Start Developer Competition is listed in
