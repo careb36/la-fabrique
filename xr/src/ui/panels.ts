@@ -172,8 +172,8 @@ export function resultPanel(
   };
 }
 
-/** Pause, resume, restart, and the room's last events. */
-export function controlPanel(actions: { onPause: () => void; onRestart: () => void }): Panel {
+/** Pause, resume, restart, recenter, and the room's last events. */
+export function controlPanel(actions: { onPause: () => void; onRecenter: () => void; onRestart: () => void }): Panel {
   const root = panel(0.24);
   root.add(text('Room', 2.4, COLORS.text, true));
   const buttons = row(1);
@@ -181,6 +181,8 @@ export function controlPanel(actions: { onPause: () => void; onRestart: () => vo
   buttons.add(pause.root);
   buttons.add(button('Restart', actions.onRestart, { grow: true }).root);
   root.add(buttons);
+  // Seated or standing, the room comes back in front of the head.
+  root.add(button('Recenter', actions.onRecenter).root);
   const clock = text('', 1.3, COLORS.muted);
   root.add(clock);
   const log = Array.from({ length: LOG_LINES }, () => text('', 1.1, COLORS.muted));

@@ -50,3 +50,18 @@ export function arc(
 export function reach(p: Placement): number {
   return Math.hypot(p.x, p.y, p.z);
 }
+
+/**
+ * A placement made relative to a head at `head` that faces `yaw` radians
+ * (0 looks down -z, positive turns left), in world coordinates.
+ */
+export function around(at: Placement, head: { x: number; y: number; z: number }, yaw: number): Placement {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  return {
+    x: head.x + at.x * cos + at.z * sin,
+    y: head.y + at.y,
+    z: head.z - at.x * sin + at.z * cos,
+    yaw: yaw + at.yaw,
+  };
+}

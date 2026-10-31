@@ -44,3 +44,8 @@ listed here was built during it, in `xr/` and its workflow, and is new.
 - **Poke and pinch on every panel**: panels carry IWSDK's `PokeInteractable`
   (a fingertip crossing a button presses it) beside `RayInteractable`
   (pointing and pinching), so either way a hand works.
+- **The room comes to the person**: on entering XR the panels are placed
+  around wherever the head is and faces, sitting or standing
+  (`around` in `src/layout.ts`, tested), and a **Recenter** button on the
+  Room panel brings them back in front. Checked in IWSDK's Quest 3 emulator,
+  where an emulated hand pointing at **Launch** and pinching starts the task.

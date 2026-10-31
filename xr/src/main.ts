@@ -7,10 +7,11 @@ import {
   VisibilityState,
   World,
 } from '@iwsdk/core';
+import { Object3D, Vector3 } from 'three';
 
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
-import { arc, type Placement } from './layout';
+import { arc, around, type Placement } from './layout';
 import { connectLive, liveConfig } from './live';
 import { ROLES } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
@@ -40,6 +41,7 @@ const tasks = live
   ? [{ id: 'live', title: `Sprint ${live.sprintId}`, summary: 'Live from the factory', script: [] }]
   : DEMO_TASKS;
 const player = new Player(tasks);
+let previous = VisibilityState.NonImmersive as VisibilityState;
 /** Paused by the headset (system menu, headset off), not by the person. */
 let autoPaused = false;
 
@@ -49,14 +51,37 @@ const touch = () => {
   dirty = true;
 };
 
+const placed: { object: Object3D; at: Placement }[] = [];
+
 function place(p: Panel, at: Placement): void {
   // Both ways a hand presses a button: a fingertip crossing it (poke) and a
   // pinch while pointing at it (ray). Either works with controllers too.
   const entity = world.createTransformEntity().addComponent(RayInteractable).addComponent(PokeInteractable);
   entity.object3D!.add(new UIKitDocument(p.root));
-  entity.object3D!.position.set(at.x, HEAD_Y + at.y, at.z);
-  entity.object3D!.rotation.y = at.yaw;
+  placed.push({ object: entity.object3D!, at });
   panels.push(p);
+}
+
+/** Put every panel around a head at `head`, facing `yaw` (radians). */
+function arrange(head: Vector3, yaw: number): void {
+  for (const { object, at } of placed) {
+    const p = around(at, head, yaw);
+    object.position.set(p.x, p.y, p.z);
+    object.rotation.set(0, p.yaw, 0);
+  }
+}
+
+const SEATED_HEAD = new Vector3(0, HEAD_Y, 0);
+/** Set when the room should move to where the person's head is. */
+let recenter = false;
+
+/** Where the head is and which way it faces, from the camera. */
+function headPose(): { head: Vector3; yaw: number } {
+  const head = new Vector3();
+  const forward = new Vector3();
+  world.camera.getWorldPosition(head);
+  world.camera.getWorldDirection(forward);
+  return { head, yaw: Math.atan2(-forward.x, -forward.z) };
 }
 
 // Everything a hand touches hangs from one arc at 45 cm, just below eye
@@ -86,6 +111,9 @@ place(
       autoPaused = false;
       touch();
     },
+    onRecenter: () => {
+      recenter = true;
+    },
     onRestart: () => {
       player.restart();
       // Live mode clears the view; the sprint itself goes on.
@@ -97,10 +125,16 @@ place(
 );
 // The agents only show, so they stand on a slightly farther arc just above it.
 arc(ROLES.length, 100, 0.55, 0).forEach((at, i) => place(agentPanel({ ...player.state.agents[ROLES[i]] }), at));
+arrange(SEATED_HEAD, 0);
 
 // Leaving the headset or opening the system menu pauses the room; coming
 // back resumes it, unless the person had paused it themselves.
 world.visibilityState.subscribe((v) => {
+  // Entering XR: the room moves to wherever the person's head is, sitting or
+  // standing. Leaving it: back to the seated view of the desktop page.
+  if (v === VisibilityState.Visible && previous === VisibilityState.NonImmersive) recenter = true;
+  if (v === VisibilityState.NonImmersive) arrange(SEATED_HEAD, 0);
+  previous = v;
   const away = v === VisibilityState.Hidden || v === VisibilityState.VisibleBlurred;
   if (away && !player.paused) {
     player.pause();
@@ -125,7 +159,20 @@ document.addEventListener('visibilitychange', () => {
 });
 
 class RoomSystem extends createSystem() {
+  private settle = 0;
+
   update(delta: number): void {
+    if (recenter && world.visibilityState.value !== VisibilityState.NonImmersive) {
+      // A few frames after entering, so the headset has reported a pose.
+      if ((this.settle += 1) > 3) {
+        const { head, yaw } = headPose();
+        arrange(head, yaw);
+        recenter = false;
+        this.settle = 0;
+      }
+    } else if (recenter) {
+      recenter = false;
+    }
     // IWSDK passes seconds; a long frame (tab restored) is clamped.
     if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
     if (!dirty) return;
@@ -149,4 +196,10 @@ if (live) {
       touch();
     },
   );
+}
+
+// Browser tests drive the emulator's hands against the real scene; `?e2e`
+// lets them find the room. Nothing else reads it.
+if (new URLSearchParams(location.search).has('e2e')) {
+  (window as unknown as { __room: unknown }).__room = { world, player };
 }

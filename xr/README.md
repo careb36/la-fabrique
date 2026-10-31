@@ -14,8 +14,8 @@ no backend: the page runs a self-contained demo of recorded agent runs.
 ### On a Meta Quest (hands only)
 
 1. Open the link above in the Quest browser and select **Enter XR**. The
-   room opens in mixed reality (passthrough), with the panels in front of
-   you at arm's length. Stay seated; nothing needs you to stand or move.
+   room opens in mixed reality (passthrough), placed around your head at
+   arm's length, sitting or standing. Nothing needs you to stand or move.
 2. Put the controllers down. Hand tracking takes over; every action is a
    **poke** (touch a button with a fingertip) or a **pinch** (point and
    pinch thumb and index finger).
@@ -28,17 +28,21 @@ no backend: the page runs a self-contained demo of recorded agent runs.
    Poke **Send back**: the agents rework it and ask again. Then **Approve**.
 6. **CSV export** shows a low-risk task that QA closes on its own after one
    rework; **Pin the CI runner** is another high-risk change for you to decide.
-7. The **Room** panel (right) pauses, resumes and restarts the demo. Taking
-   the headset off or opening the system menu pauses it too.
+7. The **Room** panel (right) pauses, resumes and restarts the demo, and
+   **Recenter** brings the panels back in front of you. Taking the headset
+   off or opening the system menu pauses it too.
 
 The whole demo takes under five minutes.
 
 ### In a desktop browser
 
-The published page carries IWSDK's Quest 3 emulator. The room shows in the
-browser and every button works with the mouse; **Enter XR** at the top
-starts an emulated session, with the emulator's controls to move the
-emulated hands and head.
+The published page carries IWSDK's Quest 3 emulator, so the whole demo runs
+without a headset. The room shows in the browser and every button works
+with the mouse. **Enter XR** at the top starts an emulated Quest 3 session:
+the emulator's toolbar switches between controllers and hands, and its
+panels move the emulated head and hands and pinch. This is also how to
+record the demo video without a headset (the rules accept a video filmed in
+the XR Simulator).
 
 ## Live mode (optional)
 
