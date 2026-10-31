@@ -38,6 +38,12 @@ no backend: the page runs a self-contained demo of recorded agent runs.
 7. The **Room** panel (right) pauses, resumes and restarts the demo, and
    **Recenter** brings the panels back in front of you. Taking the headset
    off or opening the system menu pauses it too.
+8. Also on the **Room** panel: **Contrast** switches to black panels with
+   white borders and white text (remembered on the device), and **Voice**,
+   where the browser has speech recognition, takes spoken commands in
+   English or Spanish: "approve", "send it back", "pause", "resume",
+   "recenter", "launch the CSV export". The panel shows what it heard and
+   what it did.
 
 The whole demo takes under five minutes.
 
@@ -108,6 +114,11 @@ The Room panel says where it went.
 - Looking is enough to ask: the head's direction (not eye tracking, so any
   headset) picks the agent panel within 9 degrees, and half a second of
   dwell opens it (`src/gaze.ts`); a glance opens nothing.
+- Every action has a second way in: a fingertip or a pinch on a button,
+  the delivery carried by hand or the buttons, and voice for the decisions
+  and the room's controls (`src/voice.ts`; a send back always wins over an
+  approval in the same sentence). High contrast keeps the layout and
+  changes only the palette (`setContrast` in `src/ui/kit.ts`).
 - No locomotion, no moving the panels by hand, nothing behind you.
 - The room's clock moves only while it is not paused, so pause and resume
   are exact; restart returns to the initial state.

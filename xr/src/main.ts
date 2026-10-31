@@ -23,6 +23,8 @@ import { connectLive, liveConfig } from './live';
 import { awaitingDecision, ROLES, tokenAt } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
 import { guide } from './ui/guide';
+import { highContrast, setContrast } from './ui/kit';
+import { listen, parseCommand, speechSupported, type Command } from './voice';
 import { dropZone, presence, token } from './ui/presence';
 
 /** Seated eye height above the floor. */
@@ -169,24 +171,103 @@ place(
   resultPanel((id, approved) => decide(id, approved), live ? 'Live mode watches: approve or send back in the web app.' : undefined),
   handPanels,
 );
+function setPaused(paused: boolean): void {
+  if (paused) player.pause();
+  else player.resume();
+  autoPaused = false;
+  touch();
+}
+function restart(): void {
+  player.restart();
+  // Live mode clears the view; the sprint itself goes on.
+  if (live) player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
+  touch();
+}
+
+// High contrast is remembered on this device; storage may be unavailable.
+const CONTRAST_KEY = 'la-fabrique-xr.contrast';
+try {
+  if (localStorage.getItem(CONTRAST_KEY) === 'high') setContrast(true);
+} catch {
+  /* no storage: standard colors */
+}
+
+/** What voice is doing, shown on the Room panel; '' while it is off. */
+let voiceLine = '';
+let stopVoice: (() => void) | undefined;
+const VOICE_HINT = 'Listening: say approve, send back, pause, resume, recenter or launch CSV.';
+
+function obey(c: Command): string {
+  const waiting = awaitingDecision(player.state);
+  switch (c.kind) {
+    case 'approve':
+    case 'reject':
+      if (live) return 'Live mode: decide in the web app.';
+      if (!waiting) return 'Nothing is waiting for you.';
+      decide(waiting.id, c.kind === 'approve');
+      return c.kind === 'approve' ? 'Approved.' : 'Sent back.';
+    case 'pause':
+      setPaused(true);
+      return 'Paused.';
+    case 'resume':
+      setPaused(false);
+      return 'Resumed.';
+    case 'restart':
+      restart();
+      return 'Restarted.';
+    case 'recenter':
+      recenter = true;
+      return 'Recentering.';
+    case 'launch':
+      if (player.launch(c.taskId)) touch();
+      return `Launched ${player.state.tasks[c.taskId]?.title ?? c.taskId}.`;
+  }
+}
+
+function toggleVoice(): void {
+  if (stopVoice) {
+    stopVoice();
+    stopVoice = undefined;
+    voiceLine = '';
+  } else {
+    voiceLine = VOICE_HINT;
+    stopVoice = listen(
+      (said) => {
+        const c = parseCommand(said, tasks);
+        voiceLine = c ? `"${said.trim()}": ${obey(c)}` : `"${said.trim()}": not a command. ${VOICE_HINT}`;
+        touch();
+      },
+      (why) => {
+        stopVoice = undefined;
+        voiceLine = '';
+        player.ingest({ type: 'status', role: 'System', agent: 'Voice', message: why, taskId: tasks[0].id });
+        touch();
+      },
+    );
+  }
+  touch();
+}
+
 place(
   controlPanel({
-    onPause: () => {
-      if (player.paused) player.resume();
-      else player.pause();
-      autoPaused = false;
-      touch();
-    },
+    onPause: () => setPaused(!player.paused),
     onRecenter: () => {
       recenter = true;
     },
-    onRestart: () => {
-      player.restart();
-      // Live mode clears the view; the sprint itself goes on.
-      if (live) player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
+    onRestart: restart,
+    where: () => PLACEMENT_TEXT[placement],
+    onContrast: () => {
+      setContrast(!highContrast);
+      try {
+        localStorage.setItem(CONTRAST_KEY, highContrast ? 'high' : 'standard');
+      } catch {
+        /* not remembered */
+      }
       touch();
     },
-    where: () => PLACEMENT_TEXT[placement],
+    contrast: () => highContrast,
+    onVoice: speechSupported() ? toggleVoice : undefined,
+    voice: () => voiceLine,
   }),
   handPanels,
 );

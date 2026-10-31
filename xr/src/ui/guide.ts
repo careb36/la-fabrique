@@ -23,7 +23,7 @@ export function guide(): Guide {
   const arrow = new Mesh(new ConeGeometry(0.012, 0.03, 16), glow(0.95));
   arrow.rotation.x = Math.PI;
   const ring = new Mesh(new TorusGeometry(0.035, 0.0025, 8, 40), glow(0.8));
-  const card = panel(0.2, undefined, 'bottom');
+  const card = panel(0.2, undefined, 'bottom', false);
   card.setProperties({ padding: 1, backgroundColor: COLORS.accent, borderColor: COLORS.accent });
   const caption = text('', 1.5, COLORS.panel, true);
   card.add(caption);
