@@ -41,3 +41,6 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   event to its agent's panel. It only watches; decisions stay in the web app.
 - **README for the judges** (`xr/README.md`): the hands-only path on a Quest,
   the desktop path, and how to try a local build on a headset.
+- **Poke and pinch on every panel**: panels carry IWSDK's `PokeInteractable`
+  (a fingertip crossing a button presses it) beside `RayInteractable`
+  (pointing and pinching), so either way a hand works.

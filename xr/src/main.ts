@@ -1,4 +1,12 @@
-import { createSystem, Interactable, SessionMode, UIKitDocument, VisibilityState, World } from '@iwsdk/core';
+import {
+  createSystem,
+  PokeInteractable,
+  RayInteractable,
+  SessionMode,
+  UIKitDocument,
+  VisibilityState,
+  World,
+} from '@iwsdk/core';
 
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
@@ -42,7 +50,9 @@ const touch = () => {
 };
 
 function place(p: Panel, at: Placement): void {
-  const entity = world.createTransformEntity().addComponent(Interactable);
+  // Both ways a hand presses a button: a fingertip crossing it (poke) and a
+  // pinch while pointing at it (ray). Either works with controllers too.
+  const entity = world.createTransformEntity().addComponent(RayInteractable).addComponent(PokeInteractable);
   entity.object3D!.add(new UIKitDocument(p.root));
   entity.object3D!.position.set(at.x, HEAD_Y + at.y, at.z);
   entity.object3D!.rotation.y = at.yaw;
