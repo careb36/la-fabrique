@@ -122,7 +122,10 @@ Copy `.env.example` to `.env` and fill in:
   `VOICE_COMPANY_ID` (empty: the oldest); a signed-in user reaches the
   companies they belong to, as a Viewer to read and a Manager to change
   anything or build. Approvals by key are recorded as `voice-key`, never under
-  a name the assistant sends. Unset, those routes answer 503 while
+  a name the assistant sends. For a browser the key buys only a single-use
+  code (`POST /v1/auth/desktop/handoff`, 60 s), put in the address as
+  `#codigo=…` and traded by the UI at `POST /v1/auth/desktop/redeem`
+  (`frontend/src/lib/handoff.ts`); a session token never travels in a URL. Unset, those routes answer 503 while
   `AUTH_REQUIRED` is on and the desktop exchange refuses; they never open
   anonymously.
 - `FABRICA_BUILDS_DIR` — where `POST /v1/voice/build` (`routers/build.py`,
@@ -134,7 +137,11 @@ Copy `.env.example` to `.env` and fill in:
   is set. `AGENT_MODEL` is the model of every role `NEMOTRON_ROLES` does not
   name. `NEO4J_DISABLED=true` skips Neo4j on an install without it.
 - `AUTH_RATE_LIMIT` — optional, default `10/minute`: per client address, on
-  login, registration and `POST /v1/auth/desktop`.
+  login, registration and `POST /v1/auth/desktop` (with its `handoff` and
+  `redeem`).
+- `BIND_ADDRESS` — optional, default `127.0.0.1`: the host address every
+  port `docker-compose.yml` publishes listens on (API, UI, Postgres, Neo4j,
+  the LLM proxy, tracing). `0.0.0.0` only behind a firewall you control.
 - `DAEMON_UID` / `DAEMON_GID` — only for the optional daemon container: the
   owner of the mounted projects folder (default 1000). Every container runs as
   a non-root user.

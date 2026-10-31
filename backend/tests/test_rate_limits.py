@@ -22,6 +22,8 @@ def limits_on(monkeypatch):
     [
         ("/v1/auth/login", {"email": "x@example.com", "password": "wrong-password-1"}),
         ("/v1/auth/desktop", None),
+        ("/v1/auth/desktop/handoff", None),
+        ("/v1/auth/desktop/redeem", {"code": "guess"}),
     ],
 )
 def test_guessing_is_cut_off_after_the_limit(test_client, limits_on, path, body):

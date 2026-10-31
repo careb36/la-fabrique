@@ -5,8 +5,8 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4318:4318"     # OTLP/HTTP receiver
+      - "${BIND_ADDRESS:-127.0.0.1}:16686:16686"   # Jaeger UI
+      - "${BIND_ADDRESS:-127.0.0.1}:4318:4318"     # OTLP/HTTP receiver
     networks:
       - factory-network
     healthcheck:
@@ -43,7 +43,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-factory}
     ports:
-      - "5432:5432"
+      - "${BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./db/init-db:/docker-entrypoint-initdb.d
@@ -66,8 +66,8 @@ services:
       NEO4J_dbms_memory_heap_initial__size: 512M
       NEO4J_dbms_memory_heap_max__size: 2G
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "${BIND_ADDRESS:-127.0.0.1}:7474:7474"
+      - "${BIND_ADDRESS:-127.0.0.1}:7687:7687"
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -102,7 +102,7 @@ services:
       PROXY_PORT: 5100
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
-      - "5100:5100"
+      - "${BIND_ADDRESS:-127.0.0.1}:5100:5100"
     volumes:
       - ./llm-proxy/app.py:/app/app.py
       - ./llm-proxy/usage.py:/app/usage.py
@@ -159,7 +159,7 @@ services:
       FABRICA_BUILDS_DIR: ${FABRICA_BUILDS_DIR:-/workspace/builds}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
-      - "8000:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
     volumes:
       - ./backend/app:/app/app
       - ./backend/agents:/app/agents
@@ -243,7 +243,7 @@ services:
     environment:
       VITE_PROXY_TARGET: http://backend:8000
     ports:
-      - "5173:5173"
+      - "${BIND_ADDRESS:-127.0.0.1}:5173:5173"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public

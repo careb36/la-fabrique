@@ -6,13 +6,16 @@ Endpoints:
 - ``POST /v1/auth/login``     — authenticate and issue an access token.
 - ``GET /v1/auth/me``         — return the authenticated user's profile.
 - ``POST /v1/auth/desktop``   — trade the desktop's voice key for an owner session.
+- ``POST /v1/auth/desktop/handoff`` / ``redeem`` — a single-use code that opens the browser signed in.
 - ``POST /v1/company/invite`` — invite an existing user to collaborate on a company.
 
 Passwords are hashed with bcrypt directly (``app.passwords``) before storage.
 Sensitive-route enforcement is gated by AUTH_REQUIRED.
 """
 
+import hashlib
 import secrets
+import time
 from datetime import timedelta
 
 import auth_tokens
@@ -23,6 +26,7 @@ from database import get_session
 from fastapi import APIRouter, Depends, HTTPException, Request
 from models import CompanyMember, User
 from passwords import hash_password, needs_rehash, rehash_password, verify_password
+from pydantic import BaseModel, Field
 from schemas import InviteMemberRequest, LoginRequest, UserCreateRequest
 from security import limiter
 from sqlmodel import Session, select
@@ -147,6 +151,37 @@ def _desktop_owner(session: Session) -> User:
     return user
 
 
+def _require_voice_key(request: Request) -> None:
+    configured = (settings.VOICE_API_KEY or "").strip()
+    provided = (request.headers.get("X-Voice-Key") or "").strip()
+    if not configured or not secrets.compare_digest(
+        provided.encode(), configured.encode()
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing X-Voice-Key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not auth_tokens.is_auth_configured():
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+
+
+def _operator_session(session: Session) -> dict:
+    user = _desktop_owner(session)
+    expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = auth_tokens.create_access_token(
+        user_id=user.id,
+        email=user.email,
+        expires_delta=expires_delta,
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "email": user.email,
+    }
+
+
 @router.post("/auth/desktop")
 @limiter.limit(settings.AUTH_RATE_LIMIT)
 async def desktop_session(
@@ -161,32 +196,53 @@ async def desktop_session(
     operator's web session is therefore not an escalation. Without a configured
     key this refuses rather than opening the UI to anything on the machine.
     """
-    configured = (settings.VOICE_API_KEY or "").strip()
-    provided = (request.headers.get("X-Voice-Key") or "").strip()
-    if not configured or not secrets.compare_digest(
-        provided.encode(), configured.encode()
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing X-Voice-Key",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    _require_voice_key(request)
+    return _operator_session(session)
+
+
+# One-time codes for opening the browser signed in. A session token in a URL
+# lands on the browser's command line and in its history; a code that works
+# once, within a minute, is worthless by the time anyone could read it there.
+HANDOFF_SECONDS = 60
+_handoffs: dict[str, float] = {}
+
+
+def _code_digest(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+@router.post("/auth/desktop/handoff")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def desktop_handoff(request: Request):
+    """A single-use code the launcher puts in the browser's URL (``#codigo=``)."""
+    _require_voice_key(request)
+    now = time.monotonic()
+    for digest, expires in list(_handoffs.items()):
+        if expires < now:
+            _handoffs.pop(digest, None)
+    code = secrets.token_urlsafe(32)
+    _handoffs[_code_digest(code)] = now + HANDOFF_SECONDS
+    return {"code": code, "expires_in": HANDOFF_SECONDS}
+
+
+class HandoffRedeem(BaseModel):
+    code: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/auth/desktop/redeem")
+@limiter.limit(settings.AUTH_RATE_LIMIT)
+async def desktop_redeem(
+    request: Request,
+    req: HandoffRedeem,
+    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
+):
+    """Trade a handoff code for the operator's session, once."""
+    expires = _handoffs.pop(_code_digest(req.code), None)
+    if expires is None or expires < time.monotonic():
+        raise HTTPException(status_code=401, detail="Invalid or expired code")
     if not auth_tokens.is_auth_configured():
         raise HTTPException(status_code=503, detail="Authentication is not configured")
-
-    user = _desktop_owner(session)
-    expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    token = auth_tokens.create_access_token(
-        user_id=user.id,
-        email=user.email,
-        expires_delta=expires_delta,
-    )
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "email": user.email,
-    }
+    return _operator_session(session)
 
 
 @router.get("/auth/me")
