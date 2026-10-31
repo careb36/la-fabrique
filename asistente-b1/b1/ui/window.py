@@ -146,19 +146,26 @@ class VoiceWorker(QThread):
     level = pyqtSignal(float)
 
     def __init__(
-        self, transcriber, device: str = "", language: str = "es", parent=None
+        self,
+        transcriber,
+        device: str = "",
+        language: str = "es",
+        parent=None,
+        vad: str = "silero",
     ) -> None:
         super().__init__(parent)
         self.transcriber = transcriber
         self.device = device
+        self.vad = vad
         self.language = normalize(language)
         self._stop = threading.Event()
 
     def run(self) -> None:  # noqa: D102 - QThread entry point
         from ..audio import Endpointer, Microphone
+        from ..vad import load_detector
 
         try:
-            endpointer = Endpointer()
+            endpointer = Endpointer(detector=load_detector(self.vad))
             with Microphone(device=self.device, language=self.language) as mic:
                 pcm = mic.listen(
                     endpointer, on_level=self.level.emit, should_stop=self._stop.is_set
@@ -613,7 +620,13 @@ class MainWindow(QMainWindow):
             self.voice_worker.stop()
             self.state_label.setText(t(self.language, "ui.state_thinking"))
             return
-        worker = VoiceWorker(self.transcriber, self.settings.mic_device, self.language, self)
+        worker = VoiceWorker(
+            self.transcriber,
+            self.settings.mic_device,
+            self.language,
+            self,
+            vad=getattr(self.settings, "vad", "silero"),
+        )
         worker.heard.connect(self._on_heard)
         worker.failed.connect(self._on_error)
         worker.level.connect(self.orb.set_level)
