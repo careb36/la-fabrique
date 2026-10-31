@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-* **Asistente B1, the coding-agent demo and the requirements checker left `main`.** `main` is the web product; the voice assistant lives on the `fusion` and `meta-vr` branches. `asistente-b1/`, `demo/`, `tests/` (the demo's), `tools/hackathon_check.py` and the `assistant-tests` workflow are gone from here; the backend keeps the `/v1/voice/*` routes the assistant calls.
+* **Asistente B1, the coding-agent demo and the requirements checker left `main`.** `main` is the web product; the voice assistant lives on the `fusion` and `meta-vr` branches. `asistente-b1/`, `demo/`, `tests/` (the demo's), `tools/hackathon_check.py` and the `assistant-tests` workflow are gone from here, and so are the backend's `/v1/voice/*` and `/v1/voice/build` routes, the `/v1/auth/desktop` key exchange and handoff (with the web UI's `#codigo=` redeem), `VOICE_API_KEY`, `VOICE_COMPANY_ID`, `FABRICA_BUILDS_DIR` and `FRAME_ANCESTORS`.
 
 ### Added
 

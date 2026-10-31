@@ -22,7 +22,6 @@ from routers import (
     agent_runs_router,
     agents_router,
     auth_router,
-    build_router,
     enterprise_router,
     github_router,
     inbox_router,
@@ -30,7 +29,6 @@ from routers import (
     procedures_router,
     sprint_router,
     support_router,
-    voice_router,
     workspace_router,
 )
 from security import add_security_headers, get_cors_origins, setup_security
@@ -65,7 +63,6 @@ app = FastAPI(
         {"name": "Support", "description": "System health, logs, and bug reporting"},
         {"name": "Agents", "description": "LangGraph orchestration and Glassroom SSE"},
         {"name": "Auth", "description": "User registration and company membership"},
-        {"name": "Build", "description": "Projects written from one sentence"},
         {
             "name": "Workspace",
             "description": "The developer's machine via the workspace daemon",
@@ -100,8 +97,6 @@ app.include_router(inbox_router)
 app.include_router(messages_router)
 app.include_router(procedures_router)
 app.include_router(workspace_router)
-app.include_router(voice_router)
-app.include_router(build_router)
 
 # Register exception handlers
 register_exception_handlers(app)

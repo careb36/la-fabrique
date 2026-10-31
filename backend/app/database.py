@@ -26,8 +26,8 @@ from sqlmodel import Session, SQLModel, create_engine
 def _build_database_url() -> str:
     """Return the DSN: ``DATABASE_URL`` when set, Postgres otherwise.
 
-    ``DATABASE_URL`` exists so the merged desktop install can run the factory
-    with no infrastructure (``sqlite:///./factory.db``). Production keeps the
+    ``DATABASE_URL`` lets an install point at any SQLAlchemy DSN (a local
+    ``sqlite:///./factory.db`` included). Production keeps the
     Postgres default, and the additive schema fixes below stay Postgres-only.
     """
     override = os.getenv("DATABASE_URL")
@@ -201,8 +201,8 @@ def get_neo4j_driver() -> neo4j.Driver:
     closing the driver when they are done.
 
     ``NEO4J_DISABLED=true`` fails fast instead of making every caller wait for
-    the driver's connect timeout; the desktop install sets it because memory
-    search is optional there.
+    the driver's connect timeout, for an install that runs without Neo4j
+    (memory search is optional).
     """
     if neo4j_disabled():
         raise RuntimeError("Neo4j is disabled (NEO4J_DISABLED=true)")
