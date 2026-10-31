@@ -57,10 +57,6 @@ plataforma aporta RBAC y alcance por `company_id`, presupuestos de tokens por
 empresa en un único punto de control, un log de auditoría de solo agregado, y
 nodos Engram de Neo4j para el linaje de cada decisión.
 
-> **Por qué esa postura.** El razonamiento, la historia que la motiva y las
-> reglas de diseño que restringen el trabajo nuevo están en
-> [`docs/POSITIONING.md`](docs/POSITIONING.md).
-
 > **¿No eres desarrollador o usuario técnico?** Lee la [**Guía de Negocio para Managers**](USER_GUIDE.es.md) para entender cómo usar La Fabrique para automatizar la ingeniería de tu empresa.
 
 ## Capturas de pantalla
@@ -464,29 +460,9 @@ persona. Ver [SECURITY.md](SECURITY.md).
 
 ---
 
-## Hoja de ruta
-
-| Ítem | Estado |
-| --- | --- |
-| Verificación determinista (afirmaciones vs. observaciones) | Hecho |
-| Cadena de auditoría firmada y de solo anexado | Hecho |
-| Presupuestos de tokens por empresa en un único proxy de LLM | Hecho |
-| Enrutado a Nebius Token Factory / NVIDIA Nemotron | Hecho |
-| Orquestación de sprints con reintento y escalado del ScrumMaster | Hecho |
-| Página de evidencia con resumen por veredicto | Hecho |
-| Agente revisor que sugiere (nunca decide) sobre ejecuciones de otros productores | Hecho |
-| Cualificación de relaciones entre entidades en el grafo engram | Planificado |
-| Indicadores de calidad de datos por fuente | Planificado |
-| Procedimientos deterministas medidos contra su propia adopción | Planificado |
-
-[⬆ Volver al inicio](#la-fabrique)
-
----
-
 ## Documentación
 
-[Arquitectura](ARCHITECTURE.md) · [Posicionamiento](docs/POSITIONING.md) ·
-[Referencia de la API](docs/API.md) · [Modelo de amenazas](docs/threat_model.md) ·
+[Arquitectura](ARCHITECTURE.md) · [Referencia de la API](docs/API.md) ·
 [Guía de usuario](USER_GUIDE.es.md) · [Contribuir](CONTRIBUTING.md) ·
 [Seguridad](SECURITY.md) · [Código de conducta](CODE_OF_CONDUCT.md) ·
 [Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)

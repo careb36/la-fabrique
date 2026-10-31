@@ -4,7 +4,7 @@ The Support agent: an operational role that triages new help-desk tickets.
 For each open ticket nobody has triaged, it asks the LLM for a suggested
 severity and category and a first reply to the reporter, in a fixed format
 that ``parse_triage`` checks. Its suggestions are stored beside what the
-reporter chose (claims stay apart, POSITIONING rule 1); a support admin
+reporter chose (claims stay apart); a support admin
 decides. The ticket text comes from a public form, so the prompt treats it as
 data and the agent has no tools: it can only write those three fields.
 

@@ -7,7 +7,7 @@ kickoff, which the review loop decides) that nobody approved or rejected and
 that it has not looked at, it asks the LLM for a decision, a rejection
 category and a reason, in a fixed format ``parse_review`` checks. The
 suggestion is stored on the run beside, never as, the approval (claims stay
-apart, POSITIONING rule 1): only a Manager's approval decides, through
+apart): only a Manager's approval decides, through
 ``POST /v1/agent_runs/{id}/approve``. The run's claims and artifact come from
 the producer, so the prompt treats them as data and the agent has no tools.
 

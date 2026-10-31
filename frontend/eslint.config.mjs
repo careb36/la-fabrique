@@ -1,5 +1,5 @@
 // Lint gate for user-facing text: every string shown in JSX goes through
-// i18next (CLAUDE.md, "Frontend i18n"), so the Spanish UI never shows English
+// i18next, so the Spanish UI never shows English
 // literals. Type checking stays with `tsc --noEmit`.
 import tseslint from 'typescript-eslint'
 import i18next from 'eslint-plugin-i18next'

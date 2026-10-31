@@ -1,7 +1,7 @@
 # Coding standards
 
 > **Audience:** everyone writing code in this repository, whatever the role
-> **Related:** [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`AGENTS.md`](AGENTS.md)
+> **Related:** [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md)
 > **Last updated:** 2026-10-30
 
 ## 1. Purpose

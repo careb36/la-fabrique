@@ -140,8 +140,7 @@ in the [CHANGELOG](../CHANGELOG.md)):
 - **Public-repository hygiene**: CI on GitHub-hosted runners, no personal data
   in the tree, an error handler that only claims a report it sent.
 - **Documentation**: this page, the README's model-provider and Nebius
-  sections, the evidence-page screenshots, the roadmap and responsible-use
-  notes.
+  sections, the evidence-page screenshots and the responsible-use notes.
 
 ## What the judges should look at
 

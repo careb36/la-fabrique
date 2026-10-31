@@ -56,10 +56,6 @@ RBAC and `company_id` scoping, per-company token budgets at a single proxy
 chokepoint, an append-only audit log, and Neo4j Engram nodes for per-decision
 lineage.
 
-> **Why the position above.** The reasoning, the history that motivates it, and
-> the design rules that constrain new work are in
-> [`docs/POSITIONING.md`](docs/POSITIONING.md).
-
 > **Not a developer or technical user?** Please read the [**Manager's Business Guide**](USER_GUIDE.md) to understand how to use La Fabrique to automate your company's engineering.
 
 ## Screenshots
@@ -105,7 +101,6 @@ open `/evidence`.
 - [Contributing](#contributing)
 - [Security](#security)
 - [Responsible use](#responsible-use)
-- [Roadmap](#roadmap)
 - [Documentation](#documentation)
 - [License](#license)
 
@@ -678,29 +673,9 @@ a task is always a person's. See [SECURITY.md](SECURITY.md).
 
 ---
 
-## Roadmap
-
-| Item | Status |
-| --- | --- |
-| Deterministic verification (claims vs. observations) | Done |
-| Append-only, signed audit chain | Done |
-| Per-company token budgets at a single LLM proxy | Done |
-| Nebius Token Factory / NVIDIA Nemotron routing | Done |
-| Sprint orchestration with carry-over and ScrumMaster escalation | Done |
-| Evidence page with per-verdict summary | Done |
-| Reviewer agent that suggests (never decides) on other producers' runs | Done |
-| Qualification of relationships between entities in the engram graph | Planned |
-| Per-source data-quality indicators | Planned |
-| Deterministic procedures measured against their own adoption | Planned |
-
-[⬆ Back to Top](#la-fabrique)
-
----
-
 ## Documentation
 
-[Architecture](ARCHITECTURE.md) · [Positioning](docs/POSITIONING.md) ·
-[API reference](docs/API.md) · [Threat model](docs/threat_model.md) ·
+[Architecture](ARCHITECTURE.md) · [API reference](docs/API.md) ·
 [User guide](USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) ·
 [Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)
