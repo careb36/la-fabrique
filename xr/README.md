@@ -38,7 +38,14 @@ no backend: the page runs a self-contained demo of recorded agent runs.
 7. The **Room** panel (right) pauses, resumes and restarts the demo, and
    **Recenter** brings the panels back in front of you. Taking the headset
    off or opening the system menu pauses it too.
-8. Also on the **Room** panel: **Contrast** switches to black panels with
+8. When every task is done the sprint closes. The ScrumMaster records its
+   rework and turns each rework request (QA's, and your send back) into a
+   procedure; **Next sprint** runs with them. The **company learns** panel,
+   with the team, draws rework per task sprint by sprint (0.67, then 0.00)
+   and lists the procedures in force and who taught each one. It is kept on
+   the device, so the curve continues next time; **New company** starts
+   over.
+9. Also on the **Room** panel: **Contrast** switches to black panels with
    white borders and white text (remembered on the device), and **Voice**,
    where the browser has speech recognition, takes spoken commands in
    English or Spanish: "approve", "send it back", "pause", "resume",

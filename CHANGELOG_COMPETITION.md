@@ -110,3 +110,14 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   did. Without speech recognition the button is not shown. Checked in the
   emulator with a stand-in recognizer: the spoken launch started the task.
   59 tests.
+- **The company learns, across sessions** (`src/learning.ts`). Each run of
+  the demo is a sprint. When every task is done it closes: its rework is
+  counted from its own events (QA's NEEDS WORK, a person's send back), and
+  each task that needed rework adopts a procedure; the next sprint plays
+  with the procedure in force, and the Developer's first delivery already
+  covers what was asked. A panel with the team draws rework per task by
+  sprint and lists the procedures and who taught each one; the ScrumMaster
+  announces the close. Kept on the device, so the curve continues the next
+  time the page opens; New company starts over. Checked in the emulator:
+  sprint 1 with a send back closes at 0.67 rework per task with two
+  procedures, sprint 2 at 0.00. 63 tests.

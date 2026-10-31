@@ -24,7 +24,7 @@ export class Player {
   /** Launched tasks, so a second pinch before the first frame does nothing. */
   private launched = new Set<string>();
 
-  constructor(private readonly tasks: DemoTask[]) {
+  constructor(private tasks: DemoTask[]) {
     this._state = initialState(tasks);
   }
 
@@ -84,7 +84,9 @@ export class Player {
     this._paused = false;
   }
 
-  restart(): void {
+  /** Start over; with `tasks`, the next run plays those scripts instead. */
+  restart(tasks?: DemoTask[]): void {
+    if (tasks) this.tasks = tasks;
     this.clock = 0;
     this.queue = [];
     this.emitted = [];

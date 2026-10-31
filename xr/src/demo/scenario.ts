@@ -23,6 +23,11 @@ export interface DemoTask {
   script: Cue[];
   /** What happens when a person sends the delivery back. */
   rework?: Cue[];
+  /**
+   * What the company learns from this task's rework: the procedure the
+   * ScrumMaster adopts, and how the task plays out once it is in force.
+   */
+  learns?: { procedure: string; script: Cue[] };
 }
 
 const say = (
@@ -186,6 +191,26 @@ export const DEMO_TASKS: DemoTask[] = [
       deliver(15500, 'reset', RESET_V2),
       state(16000, 'reset', 'waiting_for_person'),
     ],
+    learns: {
+      procedure: 'Test that a used auth token fails.',
+      script: [
+        state(0, 'reset', 'in_progress'),
+        start(500, 'reset', 'Architect', 'Ada', 'Reading the auth router before the Developer starts'),
+        finish(4500, 'reset', 'Architect', 'Ada', 'Brief: same answer for unknown emails; tokens expire in 15 min'),
+        start(5500, 'reset', 'Developer', 'Dev', 'Procedure in force: testing that a used token fails'),
+        say(11000, 'reset', 'Developer', 'Dev', 'Declared 2 files'),
+        finish(13000, 'reset', 'Developer', 'Dev', 'Delivered run-42'),
+        start(14000, 'reset', 'Verifier', 'Verifier', 'Hashing what the daemon wrote'),
+        say(17000, 'reset', 'Verifier', 'Verifier', 'files_written: verified, 2 of 2'),
+        finish(19500, 'reset', 'Verifier', 'Verifier', 'tests_run: pytest exit 0 (15 passed)'),
+        state(20000, 'reset', 'in_review'),
+        start(20500, 'reset', 'QA', 'Quinn', 'Reviewing against the acceptance criteria'),
+        finish(26000, 'reset', 'QA', 'Quinn', 'APPROVED: the reused-token case is covered'),
+        say(27000, 'reset', 'System', 'Risk tier', 'High risk (authentication): held for a person'),
+        deliver(27000, 'reset', RESET_V2),
+        state(27500, 'reset', 'waiting_for_person'),
+      ],
+    },
   },
   {
     id: 'csv',
@@ -207,6 +232,21 @@ export const DEMO_TASKS: DemoTask[] = [
       finish(28000, 'csv', 'QA', 'Quinn', 'APPROVED: low risk, closed without a person'),
       state(28500, 'csv', 'done'),
     ],
+    learns: {
+      procedure: 'Cover the empty case in every export.',
+      script: [
+        state(0, 'csv', 'in_progress'),
+        start(500, 'csv', 'Developer', 'Dev', 'Procedure in force: covering the empty sprint'),
+        finish(6000, 'csv', 'Developer', 'Dev', 'Delivered run-43'),
+        start(6500, 'csv', 'Verifier', 'Verifier', 'Hashing what the daemon wrote'),
+        finish(9500, 'csv', 'Verifier', 'Verifier', 'tests_run: pytest exit 0 (10 passed)'),
+        state(10000, 'csv', 'in_review'),
+        deliver(10000, 'csv', CSV),
+        start(10500, 'csv', 'QA', 'Quinn', 'Reviewing against the acceptance criteria'),
+        finish(15000, 'csv', 'QA', 'Quinn', 'APPROVED: low risk, closed without a person'),
+        state(15500, 'csv', 'done'),
+      ],
+    },
   },
   {
     id: 'ci',
