@@ -93,7 +93,7 @@ open `/evidence`.
 - [Getting Started](#getting-started)
 - [Agent Orchestration](#agent-orchestration)
 - [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
-- [Voice assistant and coding-agent demo](#voice-assistant-and-coding-agent-demo)
+- [Voice assistant](#voice-assistant)
 - [GlassRoom](#glassroom)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
@@ -461,33 +461,12 @@ What Token Factory did for the project, concretely:
 
 ---
 
-## Voice assistant and coding-agent demo
+## Voice assistant
 
-Hackathon category: **Coding & Agents Engineering**. Two pieces sit beside the
-factory and run without it:
-
-- **`demo/coding_agent.py`** — the write, run, test loop in one file: the model
-  proposes files as JSON, the agent writes them to an empty directory, runs
-  `unittest`, and hands a failing output back to the model until the tests
-  pass. With `NEBIUS_API_KEY` it runs on Nemotron through Token Factory
-  (`nvidia/nemotron-3-ultra-550b-a55b` by default); `--offline` replays two
-  recorded answers, one failing and one fixing, so it runs without a key.
-
-  ```bash
-  python demo/coding_agent.py --offline
-  NEBIUS_API_KEY=... python demo/coding_agent.py --task "slugify with unittest tests"
-  ```
-
-- **`asistente-b1/`** — a desktop assistant (Apache-2.0, standard library at
-  its core; PyQt6 window, faster-whisper and Piper are optional) that drives
-  the factory by voice through `/v1/voice/*`: the status, plan, create, dispatch,
-  pause, resume and decide actions, and `/v1/voice/build` for a project asked
-  for in one sentence. Set `VOICE_API_KEY` on the backend and the same key in
-  the assistant. See [`asistente-b1/README.md`](asistente-b1/README.md).
-
-`python tools/hackathon_check.py` checks the submission requirements it can
-check offline (licence, README, Token Factory and Nemotron defaults, the demo
-ending green, no committed keys) and, with a key, the live provider.
+The desktop voice assistant (Asistente B1, bilingual Spanish/English) and the
+coding-agent demo are not part of the web product: they live on the `fusion`
+and `meta-vr` branches. The backend still serves the `/v1/voice/*` routes they
+call, behind `VOICE_API_KEY`.
 
 ## GlassRoom
 
