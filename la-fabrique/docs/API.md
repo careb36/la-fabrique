@@ -374,11 +374,12 @@ when `AUDIT_SIGNING_KEY` is set.
 
 ## Rate limiting
 
-Registration, login and the three desktop routes are limited per client address
-to `AUTH_RATE_LIMIT` (`10/minute` by default), counted in memory by default
-(`RATE_LIMIT_STORAGE_URI`), so the counter is per process. Exceeding it returns
-**429**. Other routes carry no per-route limit: `RATE_LIMIT_DEFAULT` is defined
-but no middleware applies it.
+Every route gets 300 requests per minute per client address
+(`RATE_LIMIT_DEFAULT`), counted in memory by default (`RATE_LIMIT_STORAGE_URI`),
+so the counter is per process. Registration, login and the three desktop routes
+have their own, tighter limit (`AUTH_RATE_LIMIT`, `10/minute` by default).
+`/health`, `/health/deep`, `/metrics` and the Glassroom stream are never
+limited. Exceeding a limit returns **429**.
 
 No `X-RateLimit-*` headers are sent: `slowapi` is configured without
 `headers_enabled`, so a client cannot read the remaining budget from the

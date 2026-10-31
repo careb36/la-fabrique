@@ -55,8 +55,13 @@ Reference frameworks:
   signed with `JWT_SECRET_KEY` and valid for `ACCESS_TOKEN_EXPIRE_MINUTES`
   (60 by default). Until `JWT_SECRET_KEY` is set, login answers 503. There is
   no external identity provider and no refresh token.
-- Registration, login and the desktop key exchange are rate-limited per client
-  address (`AUTH_RATE_LIMIT`, `10/minute` by default).
+- Every route is rate-limited per client address (`RATE_LIMIT_DEFAULT`,
+  `300/minute` by default; health, metrics and the Glassroom stream are exempt),
+  and registration, login and the desktop key exchange more tightly
+  (`AUTH_RATE_LIMIT`, `10/minute` by default).
+- Security headers are set on every response, the 500 handler's included;
+  `SECURITY_HEADERS_ENABLED=false` turns them off for a reverse proxy that sets
+  them itself.
 - The desktop launcher never puts a session token in a URL. With the voice key
   it asks `POST /v1/auth/desktop/handoff` for a single-use code that expires in
   60 seconds; the React app trades it once at `POST /v1/auth/desktop/redeem`.

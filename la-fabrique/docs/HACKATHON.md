@@ -38,8 +38,8 @@ claim holds.
 
 Every model call goes through `llm-proxy/`, and the proxy routes NVIDIA open
 models to **Nebius Token Factory** over its OpenAI-compatible endpoint. The
-model catalogue is fetched live when the proxy starts and once more an hour
-later, so new Nemotron releases appear without a code change:
+model catalogue is fetched live when the proxy starts and every hour after,
+so new Nemotron releases appear without a code change:
 
 | Route | Setting | Example model |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ in the [CHANGELOG](../CHANGELOG.md)):
 
 - **Nebius Token Factory as a model provider** in the LLM proxy: prefix
   routing for `nvidia/` and the other vendor ids, the catalogue fetched live
-  at startup and again an hour later, `GET /v1/models` listing what it found, and each
+  at startup and every hour after, `GET /v1/models` listing what it found, and each
   answer saying whether its token count was reported by the provider or
   estimated.
 - **Per-role Nemotron opt-in** (`NEMOTRON_ROLES`, `NEMOTRON_MODEL`,

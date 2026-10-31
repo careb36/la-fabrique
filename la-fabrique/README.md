@@ -373,7 +373,7 @@ fetched catalogue. Five providers are wired:
 `console.nebius.com`, whose IAM keys do not authenticate here. Log in, open
 **Workspace → Explore → API keys**, create one and copy it (it is shown once).
 Set `NEBIUS_API_KEY` and the proxy fetches the live catalogue at startup (and
-again an hour later), lists what it found on `GET /v1/models`, and routes Nemotron ids to
+every hour after), lists what it found on `GET /v1/models`, and routes Nemotron ids to
 Token Factory over the OpenAI-compatible chat endpoint:
 
 ```bash
@@ -466,7 +466,7 @@ What Token Factory did for the project, concretely:
   a larger one than the rest. The tiering in `backend/llm/model_factory.py` is
   a configuration choice, not infrastructure.
 - **A live catalogue instead of a hardcoded list.** The proxy fetches what
-  Token Factory serves at startup (and again an hour later) and refuses any id that is not in
+  Token Factory serves at startup (and every hour after) and refuses any id that is not in
   it. A new Nemotron release becomes available by changing an environment
   variable, with no release of La Fabrique.
 - **The proxy's existing controls applied unchanged.** Per-company token
