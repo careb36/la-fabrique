@@ -67,6 +67,15 @@ export class Player {
     return true;
   }
 
+  /**
+   * Apply an event from outside the scripts (live mode). While paused it
+   * waits, and comes in on resume like everything else.
+   */
+  ingest(event: RoomEvent): void {
+    if (this._paused) this.queue.push({ at: this.clock, event });
+    else this.emit(event);
+  }
+
   pause(): void {
     this._paused = true;
   }

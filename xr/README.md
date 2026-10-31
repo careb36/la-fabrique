@@ -40,6 +40,24 @@ browser and every button works with the mouse; **Enter XR** at the top
 starts an emulated session, with the emulator's controls to move the
 emulated hands and head.
 
+## Live mode (optional)
+
+The demo needs nothing. To watch a real sprint instead, build with the
+backend's address and open the page with the sprint's id:
+
+```bash
+VITE_FABRIQUE_API=https://your-backend.example npm run build
+# then open  <page>/?sprint=12          (backend with AUTH_REQUIRED=false)
+#       or   <page>/?sprint=12&ticket=… (a stream ticket from
+#            POST /v1/sprints/12/stream_ticket, valid five minutes)
+```
+
+The room then follows the sprint's Glassroom stream (`GET /v1/glassroom/stream`):
+each agent's panel and the room's log update as the factory works. Live
+mode only watches: tasks start, and decisions are taken, in the web app,
+where a Manager signs in. The backend must list the page's origin in
+`CORS_ORIGINS`.
+
 ## What it shows
 
 | Panel | What it is |
@@ -85,6 +103,7 @@ prints from the Quest browser; accept the self-signed certificate.
 | `src/model.ts` | the room's state, built only from events |
 | `src/demo/scenario.ts` | the recorded tasks |
 | `src/engine/player.ts` | plays them on a pausable clock |
+| `src/live.ts` | live mode: the backend's Glassroom stream as room events |
 | `src/ui/` | the panels |
 | `src/layout.ts` | where panels go around a seated person |
 | `src/main.ts` | the IWSDK world |

@@ -3,6 +3,7 @@ import { createSystem, Interactable, SessionMode, UIKitDocument, VisibilityState
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
 import { arc, type Placement } from './layout';
+import { connectLive, liveConfig } from './live';
 import { ROLES } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
 
@@ -24,7 +25,13 @@ const world = await World.create(container, {
   features: { grabbing: false, locomotion: false, physics: false },
 });
 
-const player = new Player(DEMO_TASKS);
+// Live mode follows a real sprint when the build names a backend
+// (VITE_FABRIQUE_API) and the address a sprint (?sprint=); otherwise the demo.
+const live = liveConfig(import.meta.env.VITE_FABRIQUE_API, location.search);
+const tasks = live
+  ? [{ id: 'live', title: `Sprint ${live.sprintId}`, summary: 'Live from the factory', script: [] }]
+  : DEMO_TASKS;
+const player = new Player(tasks);
 /** Paused by the headset (system menu, headset off), not by the person. */
 let autoPaused = false;
 
@@ -46,15 +53,19 @@ function place(p: Panel, at: Placement): void {
 // level: tasks on the left, the result ahead, the room's controls on the right.
 const [left, center, right] = arc(3, 96, 0.45, 0.04);
 place(
-  taskPanel(DEMO_TASKS, (id) => {
-    if (player.launch(id)) touch();
-  }),
+  taskPanel(
+    tasks,
+    (id) => {
+      if (player.launch(id)) touch();
+    },
+    live ? 'Watching the factory: tasks start from the web app.' : undefined,
+  ),
   left,
 );
 place(
   resultPanel((id, approved) => {
     if (player.decide(id, approved, approved ? '' : 'add a test for a reused token')) touch();
-  }),
+  }, live ? 'Live mode watches: approve or send back in the web app.' : undefined),
   center,
 );
 place(
@@ -67,6 +78,8 @@ place(
     },
     onRestart: () => {
       player.restart();
+      // Live mode clears the view; the sprint itself goes on.
+      if (live) player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
       touch();
     },
   }),
@@ -111,3 +124,19 @@ class RoomSystem extends createSystem() {
   }
 }
 world.registerSystem(RoomSystem);
+
+if (live) {
+  player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
+  connectLive(
+    live,
+    'live',
+    (event) => {
+      player.ingest(event);
+      touch();
+    },
+    (status) => {
+      player.ingest({ type: 'status', role: 'System', agent: 'Room', message: status, taskId: 'live' });
+      touch();
+    },
+  );
+}

@@ -35,3 +35,9 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   on an arc at 45 cm; the agents, which only show, stand on one at 55 cm.
   Buttons are at least 4.5 cm tall for a fingertip. Taking the headset off
   or opening the system menu pauses the room, and coming back resumes it.
+- **Live mode** (`src/live.ts`), optional: a build with `VITE_FABRIQUE_API`
+  opened with `?sprint=<id>` (and a stream ticket when the backend requires
+  authentication) follows a real sprint's Glassroom stream, mapping each
+  event to its agent's panel. It only watches; decisions stay in the web app.
+- **README for the judges** (`xr/README.md`): the hands-only path on a Quest,
+  the desktop path, and how to try a local build on a headset.

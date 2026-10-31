@@ -93,4 +93,17 @@ describe('Player', () => {
     expect(ms).toBeLessThan(600_000);
     expect(p.state.tasks.csv.state).toBe('done');
   });
+
+  it('applies live events at once, and holds them while paused', () => {
+    const p = new Player([{ id: 'live', title: 'Sprint 7', summary: '', script: [] }]);
+    const event = { type: 'agent_start', role: 'Developer', agent: 'Dev', message: 'Writing', taskId: 'live' } as const;
+    p.ingest(event);
+    expect(p.state.agents.Developer.state).toBe('working');
+    p.pause();
+    p.ingest({ ...event, type: 'agent_complete', message: 'Delivered' });
+    expect(p.state.agents.Developer.state).toBe('working');
+    p.resume();
+    p.tick(16);
+    expect(p.state.agents.Developer.state).toBe('done');
+  });
 });

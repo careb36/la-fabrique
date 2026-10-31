@@ -57,10 +57,14 @@ export function agentPanel(view: AgentView): Panel {
 }
 
 /** The tasks a person can launch with a pinch. */
-export function taskPanel(tasks: DemoTask[], onLaunch: (id: string) => void): Panel {
+export function taskPanel(
+  tasks: DemoTask[],
+  onLaunch: (id: string) => void,
+  hint = 'Pinch or poke one to hand it to the agents.',
+): Panel {
   const root = panel(0.3);
   root.add(text('Tasks', 2.4, COLORS.text, true));
-  root.add(text('Pinch or poke one to hand it to the agents.', 1.3, COLORS.muted));
+  root.add(text(hint, 1.3, COLORS.muted));
   const rows = tasks.map((task) => {
     const box = new UIKit.Container({
       flexDirection: 'row',
@@ -98,14 +102,17 @@ export function taskPanel(tasks: DemoTask[], onLaunch: (id: string) => void): Pa
 }
 
 /** The delivery in focus: its files as a diff, the Verifier's checks, and the decision. */
-export function resultPanel(onDecide: (taskId: string, approved: boolean) => void): Panel {
+export function resultPanel(
+  onDecide: (taskId: string, approved: boolean) => void,
+  idle = 'Launch a task to see what the agents deliver.',
+): Panel {
   const DIFF_LINES = 10;
   /** Characters per diff line; longer ones are cut, never wrapped. */
   const DIFF_WIDTH = 64;
   const root = panel(0.42);
   const title = text('Result', 2.4, COLORS.text, true);
   root.add(title);
-  const risk = text('Launch a task to see what the agents deliver.', 1.4, COLORS.muted);
+  const risk = text(idle, 1.4, COLORS.muted);
   root.add(risk);
   const diffBox = new UIKit.Container({ flexDirection: 'column', padding: 1, borderRadius: 1, backgroundColor: '#0b0d10', gap: 0.15, flexGrow: 1 });
   const diff = Array.from({ length: DIFF_LINES }, () => text('', 1.15, COLORS.muted));
