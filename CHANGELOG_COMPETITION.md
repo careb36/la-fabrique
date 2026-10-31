@@ -78,3 +78,11 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   panel, carrying the Verifier's confirmations as green seals that orbit
   it; a rework starts again with none. Unlit materials and a handful of
   meshes, for 60 fps on Quest. 41 tests.
+- **Deciding is a gesture** (`src/decide.ts`, `dropZone` in
+  `src/ui/presence.ts`). When a delivery waits for the person, a green
+  **Approve** ring and a red **Send back** ring appear beside it. The
+  person pinches the delivery, carries it onto one and lets go; the ring
+  under it lights up on the way. Released anywhere else it glides back, so
+  a slip never decides. The panel's buttons remain as the alternative.
+  Checked in the emulator with an emulated hand: pinch, carry, release on
+  each ring. 44 tests.

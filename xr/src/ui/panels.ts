@@ -158,7 +158,7 @@ export function resultPanel(
       });
       verdict.setProperties({
         text: waiting
-          ? 'Waiting for you: approve or send it back.'
+          ? 'Waiting for you: pinch the delivery and drop it on Approve or Send back, or press a button.'
           : task.decision
             ? task.decision.approved
               ? 'You approved it.'
