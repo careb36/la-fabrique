@@ -323,3 +323,22 @@ def test_streaming_can_be_turned_off():
     asyncio.run(assistant.handle("hola"))
     assert [s for _, s in speaker.said] == ["Respuesta entera, de una sola vez."]
     assert model.turns, "stream() was called although it was turned off"
+
+
+def test_english_sentences_and_abbreviations_are_cut_the_same_way():
+    text = "Mr. Smith asked for a landing page, e.g. a simple one. Is it ready? Yes!"
+    sentences, rest = feed_all(list(text))
+    assert sentences == ["Mr. Smith asked for a landing page, e.g. a simple one."]
+    assert rest == ["Is it ready? Yes!"]
+
+
+def test_an_english_turn_is_spoken_in_english_as_it_streams():
+    text = "The factory has three open tasks. One is waiting for your approval."
+    model = StreamingModel(([text[i : i + 5] for i in range(0, len(text), 5)], Reply(text=text)), pause=0)
+    assistant, speaker = make(model)
+    asyncio.run(assistant.handle("what is the status of the factory please"))
+    assert assistant.language == "en"
+    assert [s for _, s in speaker.said] == [
+        "The factory has three open tasks.",
+        "One is waiting for your approval.",
+    ]
