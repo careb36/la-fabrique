@@ -159,12 +159,16 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------------
     # Security — rate limiting and CORS
     # ---------------------------------------------------------------------------
-    RATE_LIMIT_DEFAULT: str = "100/minute"
+    # Every route, per client address, unless exempt (health, metrics, the
+    # Glassroom stream). Through the Vite dev proxy a person's tabs share one
+    # address, and the UI's own polling takes about forty a minute.
+    RATE_LIMIT_DEFAULT: str = "300/minute"
     RATE_LIMIT_STORAGE_URI: str = "memory://"
     # Login, registration and the desktop key exchange, per client address:
     # enough for a person, too few to guess a password or a voice key.
     AUTH_RATE_LIMIT: str = "10/minute"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # Off only behind a proxy that sets these headers itself.
     SECURITY_HEADERS_ENABLED: bool = True
 
     class Config:
