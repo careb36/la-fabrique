@@ -109,6 +109,7 @@ which win over the file):
 | `B1_VOICE_KEY` | the `X-Voice-Key` the factory expects |
 | `B1_LANGUAGE` | `es` / `en`: the language the conversation starts in |
 | `B1_STT_LANGUAGE` | `auto` (follows the conversation), or `es` / `en` to fix what it listens for |
+| `B1_VAD` | `silero` (default) ends a phrase when the voice stops, whatever the noise; `energy` uses loudness alone |
 | `B1_TTS_VOICE` | Piper voice for Spanish: path to an `.onnx` file or a name (`es_ES-sharvard-medium`) |
 | `B1_TTS_VOICE_EN` | Piper voice for English (`en_US-amy-medium`) |
 | `B1_MIC_DEVICE` | microphone name; empty means whatever the system picks |
@@ -154,6 +155,13 @@ interface, it is the same program speaking one language or the other.
   language mid-sentence — the transcription is repeated without the hint and the
   model's detection wins. With `B1_STT_LANGUAGE=es` or `=en` the language is
   fixed and never guessed.
+* **Knowing when the phrase is over.** Silero VAD, a small voice detector,
+  decides which 32 ms of audio are a voice; the phrase ends after 0.7 s
+  without one. A fan, a keyboard or a door does not start or stretch a phrase,
+  and a soft voice in a noisy room still does. Silero ships inside
+  `faster-whisper`, so it needs no extra install or download; without it, or
+  with `B1_VAD=energy`, loudness against the room's noise floor decides, as
+  before. `b1 --check` says which one is in use.
 * **Speaking.** Piper first, if its binary and model are there; otherwise the
   system voice (SAPI on Windows, `say` on macOS, `espeak-ng`/`spd-say` on Linux)
   chosen by the sentence's language; and if there is none, the text on the
@@ -205,6 +213,7 @@ b1/
   fabrica.py      /v1/voice/* client, the guide and the three tools
   prompts.py      system prompt assembled at runtime
   audio.py        microphone, RMS, end-of-speech detector
+  vad.py          Silero voice detector (from faster-whisper), energy fallback
   devices.py      which microphone and which speaker, chosen by name
   speech.py       faster-whisper and piper behind two methods
   i18n.py         all interface and voice text, in Spanish and English
