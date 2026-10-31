@@ -64,6 +64,17 @@ panels move the emulated head and hands and pinch. This is also how to
 record the demo video without a headset (the rules accept a video filmed in
 the XR Simulator).
 
+**Director mode** plays the demo video's script by itself: open the page
+with `?director`, select **Enter XR**, and start recording. It moves the
+emulated head and right hand like a person would and lets the room's real
+interactions do the rest (the pinch presses Launch, the grab carries the
+delivery onto a ring, the head's dwell opens the Verifier), starting from a
+new company: a cold open on a decision, the room, a full task with a send
+back, the rest of the sprint, the next sprint with no rework, and high
+contrast. A caption reads "Recorded in the Quest 3 emulator" throughout and
+a badge marks the stretches played faster. It needs the emulator, so on a
+headset the parameter does nothing (`src/director.ts`).
+
 ## Live mode (optional)
 
 The demo needs nothing. To watch a real sprint instead, build with the

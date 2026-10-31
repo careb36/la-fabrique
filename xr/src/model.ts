@@ -112,8 +112,24 @@ function push(lines: string[], line: string, keep: number): string[] {
   return [...lines, line].slice(-keep);
 }
 
+/**
+ * Keep the result panel on a delivery that waits for the person: another
+ * task's delivery never takes it away, and once it is decided the panel
+ * moves to the next one waiting, if any.
+ */
+function refocus(state: RoomState): RoomState {
+  const waits = (id?: string) => !!id && state.tasks[id]?.state === 'waiting_for_person' && !!state.tasks[id].delivery;
+  if (waits(state.focus)) return state;
+  const next = Object.values(state.tasks).find((t) => waits(t.id));
+  return next ? { ...state, focus: next.id } : state;
+}
+
 /** Apply one event. Pure: returns a new state and leaves `state` untouched. */
 export function reduce(state: RoomState, event: RoomEvent): RoomState {
+  return refocus(apply(state, event));
+}
+
+function apply(state: RoomState, event: RoomEvent): RoomState {
   const task = state.tasks[event.taskId];
   if (!task) return state;
   switch (event.type) {
@@ -150,13 +166,16 @@ export function reduce(state: RoomState, event: RoomEvent): RoomState {
         },
       };
     }
-    case 'delivery':
+    case 'delivery': {
+      // A delivery waiting for the person keeps the panel; others take it.
+      const holds = state.focus !== undefined && state.focus !== task.id && state.tasks[state.focus]?.state === 'waiting_for_person';
       return {
         ...state,
-        focus: event.taskId,
+        focus: holds ? state.focus : event.taskId,
         seals: Math.min(MAX_SEALS, event.delivery.checks.filter((c) => c.ok).length),
         tasks: { ...state.tasks, [task.id]: { ...task, delivery: event.delivery, decision: undefined } },
       };
+    }
     case 'task_state':
       return { ...state, tasks: { ...state.tasks, [task.id]: { ...task, state: event.state } } };
     case 'decision':
