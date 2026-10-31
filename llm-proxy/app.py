@@ -4,7 +4,7 @@ LLM Proxy - Enterprise Multi-Model Gateway v2.0 (Phase 4)
 Governance-ready proxy that routes requests to Gemini, DeepSeek or Qwen with:
 - **Distributed Tracing**: OpenTelemetry instrumentation.
 - **Explicit Model Routing**: a model id picks its provider by prefix and must
-  be in that provider's catalogue (refreshed hourly); anything else is a 400
+  be in that provider's catalogue (refreshed at startup and every hour); anything else is a 400
   ``unknown_model``.  Responses carry ``served_model``.
 - **Quota Enforcement**: Persistent token tracking per Business Unit via PostgreSQL.
 """
@@ -142,8 +142,7 @@ def _refresh_gemini_models():
 def _refresh_deepseek_models():
     global _available_deepseek_models, _deepseek_last_refresh
     _available_deepseek_models, _deepseek_last_refresh = _refresh(
-        "deepseek", DEEPSEEK_API_KEY, DEEPSEEK_PROXY_URL,
-        _available_deepseek_models, _deepseek_last_refresh)
+        "deepseek", DEEPSEEK_API_KEY, DEEPSEEK_PROXY_URL, _available_deepseek_models, _deepseek_last_refresh)
 
 
 def _refresh_qwen_models():
@@ -155,15 +154,13 @@ def _refresh_qwen_models():
 def _refresh_nebius_models():
     global _available_nebius_models, _nebius_last_refresh
     _available_nebius_models, _nebius_last_refresh = _refresh(
-        "nebius", NEBIUS_API_KEY, NEBIUS_PROXY_URL,
-        _available_nebius_models, _nebius_last_refresh)
+        "nebius", NEBIUS_API_KEY, NEBIUS_PROXY_URL, _available_nebius_models, _nebius_last_refresh)
 
 
 def _refresh_nvidia_models():
     global _available_nvidia_models, _nvidia_last_refresh
     _available_nvidia_models, _nvidia_last_refresh = _refresh(
-        "nvidia", NVIDIA_API_KEY, NVIDIA_PROXY_URL,
-        _available_nvidia_models, _nvidia_last_refresh)
+        "nvidia", NVIDIA_API_KEY, NVIDIA_PROXY_URL, _available_nvidia_models, _nvidia_last_refresh)
 
 
 def _refresh(provider, key, base_url, current, last_refresh):
@@ -289,17 +286,20 @@ def _fallback_targets(failed_provider: str) -> list[tuple[str, str]]:
     return targets
 
 
-# Refresh models once at startup; background thread refreshes every hour.
-_refresh_gemini_models()
-_refresh_deepseek_models()
-_refresh_qwen_models()
-_refresh_nebius_models()
-_refresh_nvidia_models()
-threading.Thread(target=lambda: (time.sleep(3600), _refresh_gemini_models()), daemon=True).start()
-threading.Thread(target=lambda: (time.sleep(3600), _refresh_deepseek_models()), daemon=True).start()
-threading.Thread(target=lambda: (time.sleep(3600), _refresh_qwen_models()), daemon=True).start()
-threading.Thread(target=lambda: (time.sleep(3600), _refresh_nebius_models()), daemon=True).start()
-threading.Thread(target=lambda: (time.sleep(3600), _refresh_nvidia_models()), daemon=True).start()
+def _refresh_forever(refresh, interval=3600, sleep=time.sleep, rounds=None):
+    """Refresh a catalogue every hour, for good (it used to be once); a failure skips a round."""
+    for _ in range(rounds) if rounds is not None else iter(int, 1):
+        sleep(interval)
+        try:
+            refresh()
+        except Exception:  # noqa: BLE001 - one provider outage must not end the loop
+            logger.exception("Catalogue refresh failed: %s", refresh.__name__)
+
+
+for _refresher in (_refresh_gemini_models, _refresh_deepseek_models, _refresh_qwen_models,
+                   _refresh_nebius_models, _refresh_nvidia_models):
+    _refresher()
+    threading.Thread(target=_refresh_forever, args=(_refresher,), daemon=True).start()
 
 # --- Governance Middleware ---
 @app.before_request

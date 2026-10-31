@@ -396,3 +396,26 @@ def test_a_stream_nested_in_extra_body_is_refused_too(nvidia, client, upstream):
     })
     assert response.status_code == 400
     assert response.get_json()["error"] == "stream_unsupported"
+
+
+def test_catalogues_are_refreshed_every_interval_not_once():
+    import app as proxy
+
+    calls, sleeps = [], []
+    proxy._refresh_forever(lambda: calls.append(1), interval=7, sleep=sleeps.append, rounds=3)
+    assert calls == [1, 1, 1]
+    assert sleeps == [7, 7, 7]
+
+
+def test_a_failed_refresh_does_not_end_the_loop():
+    import app as proxy
+
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("provider down")
+
+    proxy._refresh_forever(flaky, interval=0, sleep=lambda _s: None, rounds=3)
+    assert len(calls) == 3
