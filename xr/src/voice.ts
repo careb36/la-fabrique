@@ -14,6 +14,8 @@ export type Command =
   | { kind: 'resume' }
   | { kind: 'restart' }
   | { kind: 'recenter' }
+  | { kind: 'mute' }
+  | { kind: 'unmute' }
   | { kind: 'launch'; taskId: string };
 
 interface TaskWords {
@@ -53,6 +55,8 @@ export function parseCommand(transcript: string, tasks: TaskWords[]): Command | 
   if (has(said, 'resume', 'continue', 'go on', 'seguir', 'continuar', 'reanudar')) return { kind: 'resume' };
   if (has(said, 'pause', 'stop', 'wait', 'pausa', 'pausar', 'espera')) return { kind: 'pause' };
   if (has(said, 'restart', 'start over', 'reiniciar', 'de nuevo')) return { kind: 'restart' };
+  if (has(said, 'unmute', 'sound on', 'con sonido')) return { kind: 'unmute' };
+  if (has(said, 'mute', 'silence', 'quiet', 'silencio', 'sin sonido')) return { kind: 'mute' };
   if (has(said, 'recenter', 'center', 'come here', 'centrar', 'recentrar')) return { kind: 'recenter' };
   if (has(said, 'launch', 'start', 'run', 'lanzar', 'lanza', 'empezar', 'iniciar')) {
     const ordinal = ['first', 'second', 'third', 'primera', 'segunda', 'tercera'];

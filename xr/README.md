@@ -126,9 +126,33 @@ The Room panel says where it went.
   and the room's controls (`src/voice.ts`; a send back always wins over an
   approval in the same sentence). High contrast keeps the layout and
   changes only the palette (`setContrast` in `src/ui/kit.ts`).
+- Sound tells you what happens without looking: each agent has its own
+  note and its sounds come from its light on the wall (spatial audio, all
+  synthesized, no files); a delivery that waits for you chimes from the
+  result panel. **Mute** on the Room panel, or say "mute".
 - No locomotion, no moving the panels by hand, nothing behind you.
 - The room's clock moves only while it is not paused, so pause and resume
   are exact; restart returns to the initial state.
+
+## How it was tested, and what was not
+
+La Fabrique XR was built and checked without a headset:
+
+- Every interaction (pinch, carrying the delivery to a ring, looking at an
+  agent, the guide, voice with a stand-in recognizer, high contrast, two
+  sprints in a row) was driven in IWSDK's Quest 3 emulator, seated in its
+  synthetic office, with emulated hands, by scripted browser runs.
+- The logic is covered by unit tests (`npm run test:run`).
+- **Render cost, measured**: at the demo's busiest moment each frame asks
+  for 118 draw calls and about 48,000 triangles, against a budget of 200
+  and 150,000 (`npm run budget`, `scripts/render-budget.cjs`). Every
+  material is unlit, there are no textures or shadows, panels repaint only
+  when something changes, and foveated rendering is on.
+- **Frame rate on a headset was not measured**: there was no Quest to
+  measure it on, and a software-rendered browser's frame rate says nothing
+  about one. Open the page with `?perf` and the Room panel shows the frame
+  rate, the 95th percentile frame time and the draw calls, measured live
+  on whatever runs it.
 
 ## Develop
 
@@ -138,6 +162,7 @@ npm install
 npm run dev        # https://localhost:5173 with the Quest 3 emulator
 npm run test:run   # unit tests
 npm run build      # static site in dist/
+npm run budget     # render budget in the emulator (after build + preview)
 ```
 
 Requires Node.js 20.19 or later. To try a local build on a Quest, serve it

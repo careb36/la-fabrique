@@ -77,7 +77,7 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   to whichever agent has it in hand and then down to the person's result
   panel, carrying the Verifier's confirmations as green seals that orbit
   it; a rework starts again with none. Unlit materials and a handful of
-  meshes, for 60 fps on Quest. 41 tests.
+  meshes, to keep each frame cheap. 41 tests.
 - **Deciding is a gesture** (`src/decide.ts`, `dropZone` in
   `src/ui/presence.ts`). When a delivery waits for the person, a green
   **Approve** ring and a red **Send back** ring appear beside it. The
@@ -121,3 +121,24 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   time the page opens; New company starts over. Checked in the emulator:
   sprint 1 with a send back closes at 0.67 rework per task with two
   procedures, sprint 2 at 0.00. 63 tests.
+
+## 2026-11-02
+
+- **Sound from where it happens** (`src/sound.ts`). Short synthesized
+  chimes, no audio files: each agent has its own note, its start and finish
+  sound from its light on the wall (spatial, HRTF), the Verifier's seals
+  ring, a delivery waiting for the person chimes from the result panel,
+  approve and send back answer, a closed sprint plays a short arpeggio.
+  At most one sound a second on average. Mute on the Room panel or by
+  voice ("mute", "silencio"), remembered on the device.
+- **Each agent wears its color**: a strip on its panel in the same color as
+  its light.
+- **Render cost measured, and kept low**: foveated rendering on; a render
+  budget script (`npm run budget`) enters XR in the emulator, runs the demo
+  to its busiest moment and reads 118 draw calls and about 48,000
+  triangles per frame, against a budget of 200 and 150,000.
+- **A frame meter in the room** (`src/perf.ts`): with `?perf`, the Room
+  panel shows frames per second, the 95th percentile frame time, the share
+  of slow frames and the draw calls, measured live on the device that runs
+  it. Built without a headset, the frame rate on a Quest was not measured;
+  the README says so. 74 tests.
