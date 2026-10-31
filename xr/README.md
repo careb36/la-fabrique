@@ -25,7 +25,10 @@ no backend: the page runs a self-contained demo of recorded agent runs.
    and runs the tests, QA reviews. About thirty seconds.
 5. The **Result** panel (ahead) shows the diff, the Verifier's checks and the
    risk tier: authentication is high risk, so the delivery waits for you.
-   Poke **Send back**: the agents rework it and ask again. Then **Approve**.
+   The delivery itself, a glowing block above the panel, is yours to take:
+   pinch it, carry it onto the red **Send back** ring and let go. The agents
+   rework it and ask again. Then drop it on the green **Approve** ring. The
+   buttons on the panel do the same, for anyone who prefers to poke.
 6. **CSV export** shows a low-risk task that QA closes on its own after one
    rework; **Pin the CI runner** is another high-risk change for you to decide.
 7. The **Room** panel (right) pauses, resumes and restarts the demo, and
@@ -94,7 +97,11 @@ The Room panel says where it went.
   eye level (`src/layout.ts`; a test keeps every panel within 60 cm).
   The agents' panels only show, and stand on an arc at 55 cm.
 - Buttons are at least 4.5 cm tall, sized for a fingertip.
-- No locomotion, no grabbing to move panels, nothing behind you.
+- Deciding is a gesture: the delivery is taken in hand with a pinch (near
+  or from across the desk) and dropped on a ring 17 cm to either side of it
+  (`src/decide.ts`). Released anywhere else it glides back, so a slip never
+  decides. The panel's buttons stay as the alternative.
+- No locomotion, no moving the panels by hand, nothing behind you.
 - The room's clock moves only while it is not paused, so pause and resume
   are exact; restart returns to the initial state.
 

@@ -10,6 +10,7 @@
  * Unlit materials and a handful of meshes: cheap enough for 60 fps on Quest.
  */
 
+import { UIKit, UIKitDocument } from '@iwsdk/core';
 import {
   AdditiveBlending,
   BoxGeometry,
@@ -22,6 +23,7 @@ import {
 } from 'three';
 
 import { MAX_SEALS, type AgentState, type Role } from '../model';
+import { COLORS, panel, text } from './kit';
 
 export const ROLE_COLOR: Record<Role, number> = {
   Architect: 0x7dd3fc,
@@ -79,8 +81,11 @@ export function presence(role: Role): Presence {
 
 export interface Token {
   group: Group;
-  /** Glide toward `target` (world space) and show `seals` confirmations. */
-  update(target: Vector3 | undefined, seals: number, dt: number, time: number): void;
+  /**
+   * Glide toward `target` (world space) and show `seals` confirmations.
+   * While a hand `held` it, it stays where the hand put it.
+   */
+  update(target: Vector3 | undefined, seals: number, dt: number, time: number, held?: boolean): void;
 }
 
 /** The task in the room: a small glowing block, with the Verifier's seals. */
@@ -95,11 +100,15 @@ export function token(): Token {
     group.add(seal);
     return seal;
   });
-  group.add(block, halo);
+  // A hand aims at something larger than the block itself: an invisible
+  // sphere, so a pinch from across the desk still catches it.
+  const hit = new Mesh(sphere, new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+  hit.scale.setScalar(0.05);
+  group.add(block, halo, hit);
   group.visible = false;
   return {
     group,
-    update(target, sealCount, dt, time) {
+    update(target, sealCount, dt, time, held = false) {
       if (!target) {
         group.visible = false;
         return;
@@ -109,14 +118,51 @@ export function token(): Token {
         group.position.copy(target);
         group.visible = true;
       }
-      // Ease toward the agent that holds it: fast, then settling.
-      group.position.lerp(target, 1 - Math.exp(-dt * 3.5));
+      // Ease toward the agent that holds it: fast, then settling. Released
+      // anywhere but a drop zone, it glides back the same way.
+      if (!held) group.position.lerp(target, 1 - Math.exp(-dt * 3.5));
+      (halo.material as MeshBasicMaterial).opacity = held ? 0.6 : 0.35;
       block.rotation.set(time * 0.7, time, 0);
       seals.forEach((seal, i) => {
         seal.visible = i < sealCount;
         const a = time * 1.6 + (i * Math.PI * 2) / MAX_SEALS;
         seal.position.set(Math.cos(a) * 0.034, Math.sin(a * 0.5) * 0.008, Math.sin(a) * 0.034);
       });
+    },
+  };
+}
+
+export interface DropZone {
+  group: Group;
+  /** Show or hide it; `near` lights it up while the delivery is over it. */
+  update(shown: boolean, near: boolean, time: number): void;
+}
+
+/**
+ * Where the delivery is dropped to decide: a ring in the decision's color,
+ * facing the person, with its name under it.
+ */
+export function dropZone(label: string, color: number): DropZone {
+  const group = new Group();
+  const ring = new Mesh(new TorusGeometry(0.045, 0.004, 8, 48), glow(color, 0.85));
+  const disc = new Mesh(sphere, glow(color, 0.12));
+  disc.scale.set(0.042, 0.042, 0.004);
+  const tag = panel(0.11, undefined, 'bottom');
+  tag.setProperties({ padding: 0.8, alignItems: 'center', backgroundColor: COLORS.panel });
+  tag.add(text(label, 1.6, COLORS.text, true));
+  const doc = new UIKitDocument(tag as UIKit.Container);
+  // Above the ring, clear of the result panel's title below it.
+  doc.position.set(0, 0.075, 0);
+  group.add(ring, disc, doc);
+  group.visible = false;
+  return {
+    group,
+    update(shown, near, time) {
+      group.visible = shown;
+      if (!shown) return;
+      const pulse = near ? 1.25 : 1 + 0.05 * Math.sin(time * 3);
+      ring.scale.setScalar(pulse);
+      (disc.material as MeshBasicMaterial).opacity = near ? 0.35 : 0.12;
     },
   };
 }

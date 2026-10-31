@@ -1,5 +1,8 @@
 import {
   createSystem,
+  DistanceGrabbable,
+  Grabbed,
+  MovementMode,
   PokeInteractable,
   RayInteractable,
   SessionMode,
@@ -9,14 +12,15 @@ import {
 } from '@iwsdk/core';
 import { Object3D, Vector3 } from 'three';
 
+import { dropOn } from './decide';
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
 import { layoutRoom, type Placed, type RoomLayout, type Surface } from './room';
 import { SurfaceSystem } from './surfaces';
 import { connectLive, liveConfig } from './live';
-import { ROLES, tokenAt } from './model';
+import { awaitingDecision, ROLES, tokenAt } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
-import { presence, token } from './ui/presence';
+import { dropZone, presence, token } from './ui/presence';
 
 /** Seated eye height above the floor. */
 const HEAD_Y = 1.2;
@@ -67,7 +71,8 @@ const world = await World.create(container, {
   // The desktop view only: a step back from the seat so every panel fits on
   // a screen. In a headset, tracking puts the camera at the person's eyes.
   render: { fov: 75, camera: { position: [0, HEAD_Y + 0.05, 0.42], lookAt: [0, HEAD_Y - 0.08, -0.45] } },
-  features: { grabbing: false, locomotion: false, physics: false, sceneUnderstanding: true },
+  // Grabbing: the person takes the delivery in hand to decide on it.
+  features: { grabbing: true, locomotion: false, physics: false, sceneUnderstanding: true },
 }).catch((error: unknown) =>
   fail('The room did not start.', `${error instanceof Error ? error.message : String(error)}. Try reloading the page.`),
 );
@@ -157,9 +162,7 @@ place(
   handPanels,
 );
 place(
-  resultPanel((id, approved) => {
-    if (player.decide(id, approved, approved ? '' : 'add a test for a reused token')) touch();
-  }, live ? 'Live mode watches: approve or send back in the web app.' : undefined),
+  resultPanel((id, approved) => decide(id, approved), live ? 'Live mode watches: approve or send back in the web app.' : undefined),
   handPanels,
 );
 place(
@@ -195,8 +198,28 @@ const presences = ROLES.map((role, i) => {
   return { role, p, state: player.state.agents[role].state, changedAt: 0 };
 });
 const task = token();
-world.scene.add(task.group);
+// The delivery can be taken in hand: a pinch while pointing at it, near or
+// across the desk, moves it with the hand. Dropped on Approve or Send back
+// it decides; anywhere else it glides back.
+const taskEntity = world.createTransformEntity(task.group).addComponent(DistanceGrabbable, {
+  movementMode: MovementMode.MoveAtSource,
+  rotate: false,
+  scale: false,
+});
 const target = new Vector3();
+const DECISION = { decline: 'add a test for a reused token' };
+
+/** Approve on the right, Send back on the left, beside the delivery. */
+const zones = {
+  approve: dropZone('Approve', 0xa3e635),
+  reject: dropZone('Send back', 0xf87171),
+};
+handPanels[1].object.add(zones.approve.group, zones.reject.group);
+let held = false;
+
+function decide(id: string, approved: boolean): void {
+  if (player.decide(id, approved, approved ? '' : DECISION.decline)) touch();
+}
 
 /** Where the task should be now, in world space, or undefined when idle. */
 function taskTarget(): Vector3 | undefined {
@@ -248,6 +271,30 @@ const surfaces = world.registerSystem(SurfaceSystem).getSystem(SurfaceSystem)!;
 class RoomSystem extends createSystem() {
   private waited = 0;
 
+  /** The drop zones and the delivery in hand: release over a zone decides. */
+  hands(time: number): void {
+    // Only a delivery that waits for a person can be decided, and in live
+    // mode the web app decides.
+    const waiting = live ? undefined : awaitingDecision(player.state);
+    const { anchor } = handPanels[1];
+    // Level with where the delivery rests above the result panel.
+    const y = anchor === 'bottom' ? 0.42 : 0.05;
+    zones.approve.group.position.set(0.17, y, 0.03);
+    zones.reject.group.position.set(-0.17, y, 0.03);
+    const at = task.group.getWorldPosition(new Vector3());
+    const approveAt = zones.approve.group.getWorldPosition(new Vector3());
+    const rejectAt = zones.reject.group.getWorldPosition(new Vector3());
+    const over = held ? dropOn(at, approveAt, rejectAt) : undefined;
+    zones.approve.update(!!waiting, over === 'approve', time);
+    zones.reject.update(!!waiting, over === 'reject', time);
+    const now = taskEntity.hasComponent(Grabbed);
+    if (held && !now && waiting) {
+      const landed = dropOn(at, approveAt, rejectAt);
+      if (landed) decide(waiting.id, landed === 'approve');
+    }
+    held = now;
+  }
+
   update(delta: number, time: number): void {
     if (recenter && world.visibilityState.value !== VisibilityState.NonImmersive) {
       // Give the headset a moment to report its pose and the room's
@@ -272,7 +319,8 @@ class RoomSystem extends createSystem() {
       }
       x.p.update(now, time, x.changedAt);
     }
-    task.update(taskTarget(), player.state.seals, delta, time);
+    this.hands(time);
+    task.update(taskTarget(), player.state.seals, delta, time, held);
     if (!dirty) return;
     dirty = false;
     notice.style.display = 'none';
@@ -300,5 +348,16 @@ if (live) {
 // Browser tests drive the emulator's hands against the real scene; `?e2e`
 // lets them find the room. Nothing else reads it.
 if (new URLSearchParams(location.search).has('e2e')) {
-  (window as unknown as { __room: unknown }).__room = { world, player, placement: () => placement, surfaces: () => surfaces.room() };
+  (window as unknown as { __room: unknown }).__room = {
+    world,
+    player,
+    placement: () => placement,
+    surfaces: () => surfaces.room(),
+    token: () => task.group.getWorldPosition(new Vector3()),
+    zones: () => ({
+      approve: zones.approve.group.getWorldPosition(new Vector3()),
+      reject: zones.reject.group.getWorldPosition(new Vector3()),
+    }),
+    held: () => held,
+  };
 }
