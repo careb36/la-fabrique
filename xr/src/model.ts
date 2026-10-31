@@ -76,10 +76,16 @@ export interface RoomState {
   /** The task whose delivery the result panel shows. */
   focus?: string;
   log: string[];
+  /** The agent that started work most recently: the task is in its hands. */
+  active?: Role;
+  /** The Verifier's confirmations on the work in hand, at most three. */
+  seals: number;
 }
 
 /** How many lines an agent panel keeps. */
 export const AGENT_LINES = 4;
+/** The Verifier's checks a delivery carries as seals. */
+export const MAX_SEALS = 3;
 /** How many lines the room's log keeps. */
 export const LOG_LINES = 6;
 
@@ -98,6 +104,7 @@ export function initialState(tasks: { id: string; title: string }[]): RoomState 
     agents,
     tasks: Object.fromEntries(tasks.map((t) => [t.id, { ...t, state: 'queued' as TaskState }])),
     log: [],
+    seals: 0,
   };
 }
 
@@ -128,6 +135,15 @@ export function reduce(state: RoomState, event: RoomEvent): RoomState {
               : agent.state;
       return {
         ...next,
+        // A new delivery starts with no seals; each confirmation by the
+        // Verifier adds one.
+        active: event.type === 'agent_start' ? event.role : state.active,
+        seals:
+          event.type === 'agent_start' && event.role === 'Developer'
+            ? 0
+            : event.role === 'Verifier' && event.type !== 'agent_start' && event.type !== 'error'
+              ? Math.min(MAX_SEALS, state.seals + 1)
+              : state.seals,
         agents: {
           ...state.agents,
           [event.role]: { ...agent, state: agentState, lines: push(agent.lines, event.message, AGENT_LINES) },
@@ -138,6 +154,7 @@ export function reduce(state: RoomState, event: RoomEvent): RoomState {
       return {
         ...state,
         focus: event.taskId,
+        seals: Math.min(MAX_SEALS, event.delivery.checks.filter((c) => c.ok).length),
         tasks: { ...state.tasks, [task.id]: { ...task, delivery: event.delivery, decision: undefined } },
       };
     case 'task_state':
@@ -160,6 +177,16 @@ export function reduce(state: RoomState, event: RoomEvent): RoomState {
         },
       };
   }
+}
+
+/** Where the task is in the room: with an agent, at the result, or nowhere. */
+export function tokenAt(state: RoomState): Role | 'result' | 'none' {
+  const active = state.active;
+  if (active && state.agents[active].state === 'working') return active;
+  const focused = state.focus ? state.tasks[state.focus] : undefined;
+  if (focused?.delivery && (focused.state === 'waiting_for_person' || focused.state === 'done')) return 'result';
+  const busy = Object.values(state.tasks).some((t) => ['in_progress', 'in_review', 'sent_back'].includes(t.state));
+  return busy && active ? active : 'none';
 }
 
 /** A delivery waits for a person only when its task does. */
