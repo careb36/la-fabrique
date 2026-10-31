@@ -1,17 +1,18 @@
 name: La Fabrique XR to GitHub Pages
 
 # Tests and builds xr/ and publishes it as the repository's GitHub Pages site:
-# the link the Meta VR Start Developer Competition judges open. It runs on a
-# push to meta-vr-competition or main that touches xr/, and on demand.
+# the link the Meta VR Start Developer Competition judges open. The entry
+# lives on the meta-vr branch (main is the web product only); it runs on a
+# push to meta-vr that touches xr/, and on demand.
 #
 # Two settings, once, by the repository owner:
 #   Settings → Pages → Source: "GitHub Actions".
-#   Settings → Environments → github-pages → Deployment branches: allow
-#   meta-vr-competition (main is allowed by default).
+#   Settings → Environments → github-pages → Deployment branches and tags:
+#   add meta-vr (only the default branch is allowed out of the box).
 
 on:
   push:
-    branches: [meta-vr-competition, main]
+    branches: [meta-vr]
     paths:
       - "xr/**"
       - ".github/workflows/xr-pages.yml"
