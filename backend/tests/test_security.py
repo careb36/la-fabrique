@@ -84,3 +84,19 @@ def test_frame_ancestors_ignores_a_blank_list(test_client, monkeypatch):
 
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers["Content-Security-Policy"] == "default-src 'self'"
+
+
+def test_security_headers_can_be_turned_off(monkeypatch):
+    # The setting existed and changed nothing; off now means no headers.
+    from config import settings
+    from security import apply_security_headers
+    from starlette.responses import Response
+
+    monkeypatch.setattr(settings, "SECURITY_HEADERS_ENABLED", False)
+    response = apply_security_headers("/", Response("x"))
+    assert "Content-Security-Policy" not in response.headers
+    assert "X-Content-Type-Options" not in response.headers
+
+    monkeypatch.setattr(settings, "SECURITY_HEADERS_ENABLED", True)
+    response = apply_security_headers("/", Response("x"))
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
