@@ -117,3 +117,65 @@ def test_the_operator_owns_the_company_the_launcher_created(
     company_id = created.json()["company_id"]
 
     assert {"company_id": company_id, "human_role": "Owner"} in me["memberships"]
+
+
+# --- the handoff code the launcher puts in the browser's address -------------
+
+
+def _handoff(test_client, voice_key):
+    response = test_client.post(
+        "/v1/auth/desktop/handoff", headers={"X-Voice-Key": voice_key}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "access_token" not in body  # the address never carries a session
+    return body["code"]
+
+
+def test_a_handoff_code_is_traded_for_the_operators_session(
+    test_client, signing_key, voice_key
+):
+    code = _handoff(test_client, voice_key)
+
+    response = test_client.post("/v1/auth/desktop/redeem", json={"code": code})
+
+    assert response.status_code == 200, response.text
+    claims = auth_tokens.decode_access_token(response.json()["access_token"])
+    assert claims["email"] == "escritorio@fabrica.local"
+
+
+def test_a_handoff_code_works_once(test_client, signing_key, voice_key):
+    code = _handoff(test_client, voice_key)
+    test_client.post("/v1/auth/desktop/redeem", json={"code": code})
+
+    again = test_client.post("/v1/auth/desktop/redeem", json={"code": code})
+
+    assert again.status_code == 401
+
+
+def test_an_expired_handoff_code_is_refused(
+    test_client, signing_key, voice_key, monkeypatch
+):
+    from routers import auth as auth_router
+
+    code = _handoff(test_client, voice_key)
+    later = auth_router.time.monotonic() + auth_router.HANDOFF_SECONDS + 1
+    monkeypatch.setattr(auth_router.time, "monotonic", lambda: later)
+
+    response = test_client.post("/v1/auth/desktop/redeem", json={"code": code})
+
+    assert response.status_code == 401
+
+
+def test_a_made_up_code_is_refused(test_client, signing_key, voice_key):
+    response = test_client.post("/v1/auth/desktop/redeem", json={"code": "guess"})
+
+    assert response.status_code == 401
+
+
+def test_a_handoff_needs_the_voice_key(test_client, signing_key, voice_key):
+    response = test_client.post(
+        "/v1/auth/desktop/handoff", headers={"X-Voice-Key": "not-the-key"}
+    )
+
+    assert response.status_code == 401
