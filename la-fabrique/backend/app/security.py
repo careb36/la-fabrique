@@ -45,7 +45,10 @@ def apply_security_headers(path: str, response):
 
     The middleware calls it on every response; the 500 handler calls it too,
     because Starlette sends an unhandled error from outside every middleware.
+    With ``SECURITY_HEADERS_ENABLED`` off the response is left as it is.
     """
+    if not settings.SECURITY_HEADERS_ENABLED:
+        return response
 
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -103,16 +106,36 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def setup_security(app):
-    """Configure security middleware and rate limiting on the app."""
+    """Configure security middleware and rate limiting on the app.
+
+    The middleware is what applies ``RATE_LIMIT_DEFAULT`` to every route; the
+    routes that carry their own limit (sign-in, the desktop exchange) keep it,
+    and the ones listed in ``RATE_LIMIT_EXEMPT`` are never limited.
+    """
     from slowapi import _rate_limit_exceeded_handler
+    from slowapi.middleware import SlowAPIMiddleware
 
     # Add rate limiter to app state
     app.state.limiter = limiter
 
     # Add rate limit exceeded handler
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     logger.info("Security middleware configured (rate limiting)")
+
+
+# Probes and the Glassroom stream: a monitor polls the first, and an
+# EventSource reconnects on its own, so neither should ever be refused.
+RATE_LIMIT_EXEMPT = {"/health", "/health/deep", "/metrics", "/v1/glassroom/stream"}
+
+
+def exempt_from_rate_limit(app, paths=RATE_LIMIT_EXEMPT):
+    """Exempt the routes at *paths*; call it once every route is registered."""
+    for route in app.routes:
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is not None and getattr(route, "path", None) in paths:
+            limiter.exempt(endpoint)
 
 
 def add_security_headers(app):
@@ -122,6 +145,11 @@ def add_security_headers(app):
     factory's own shell — the one page a browser puts in an iframe — came back
     with no CSP and no X-Frame-Options at all.
     """
+    if not settings.SECURITY_HEADERS_ENABLED:
+        logger.warning(
+            "SECURITY_HEADERS_ENABLED is off: responses carry no security headers"
+        )
+        return
     app.add_middleware(SecurityHeadersMiddleware)
     logger.info("Security headers middleware attached (outermost)")
 
@@ -131,9 +159,3 @@ def get_cors_origins():
     if settings.CORS_ORIGINS == "*":
         return ["*"]
     return [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
-
-
-def check_rate_limit(request: Request):
-    """Check if request is within rate limit. Returns True if allowed."""
-    # This is a placeholder for custom rate limit logic if needed
-    return True
