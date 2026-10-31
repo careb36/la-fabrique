@@ -57,15 +57,18 @@ def test_probes_are_never_limited(test_client, limits_on):
     assert statuses == {200}
 
 
-def test_the_glassroom_stream_and_metrics_are_exempt():
-    from main import app
-    from security import RATE_LIMIT_EXEMPT, limiter
+def test_only_the_api_counts_and_the_stream_never_does():
+    from security import is_rate_limited
 
-    exempt = {
-        route.path
-        for route in app.routes
-        if getattr(route, "endpoint", None) is not None
-        and f"{route.endpoint.__module__}.{route.endpoint.__name__}"
-        in limiter._exempt_routes
-    }
-    assert RATE_LIMIT_EXEMPT <= exempt
+    assert is_rate_limited("/v1/capabilities")
+    assert is_rate_limited("/v1/auth/login")
+    assert not is_rate_limited("/v1/glassroom/stream")
+    for path in (
+        "/health",
+        "/health/deep",
+        "/metrics",
+        "/docs",
+        "/",
+        "/assets/index.js",
+    ):
+        assert not is_rate_limited(path)
