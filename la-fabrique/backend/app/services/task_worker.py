@@ -1852,7 +1852,7 @@ def _record_task_run(
         producer=TASK_WORKER_PRODUCER,
         # Only the model the proxy reported as having answered: an observation.
         # When it reported none the field stays empty rather than defaulting
-        # to the model that was requested (POSITIONING rule 7).
+        # to the model that was requested.
         model=agent.get("served_model") or None,
         agent_role=agent.get("role"),
         subject={

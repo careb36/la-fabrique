@@ -13,3 +13,7 @@ logs/
 
 # Proyectos generados por la fábrica desde el chat
 builds/
+
+# AI assistant instructions: kept local, never published
+AGENTS.md
+CLAUDE.md

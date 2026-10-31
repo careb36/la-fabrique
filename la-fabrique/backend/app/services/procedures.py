@@ -2,8 +2,8 @@
 Procedures: proposing, adopting, measuring, and putting them in prompts.
 
 The company learns by changing its procedures, and the board decides whether
-a change helped (POSITIONING rule 5: deterministic checks decide, a model may
-only propose). After adoption, the next ``MEASURE_AFTER_SPRINTS`` completed
+a change helped (deterministic checks decide, a model may only propose).
+After adoption, the next ``MEASURE_AFTER_SPRINTS`` completed
 sprints are compared with the ones before it. A procedure under which rework
 per task or the share of blocked tasks got clearly worse is reverted, and the
 version it replaced comes back; otherwise it is kept.

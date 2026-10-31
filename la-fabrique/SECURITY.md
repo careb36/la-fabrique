@@ -128,55 +128,20 @@ Reference frameworks:
 - Build from pinned, minimal base images. Do not pull `latest` base images.
 - Restrict CI/CD pipeline permissions. Approval required for changes to `.github/workflows` or deploy files.
 
-### 5.4 Open advisories and their triage
+### 5.4 Advisories
 
-Dependabot reports 64 open alerts on `main`. That number mixes what reaches a
-browser with what only runs on a build machine, so it is worth separating:
+`npm audit --omit=dev`, the surface a browser actually receives, reports no
+known vulnerabilities. React Router 7, Vite 8, Vitest 5 and Electron 45 are
+the versions in use.
 
-| Surface | Advisories | Manifest |
-|---|---|---|
-| Shipped to the browser | 1 (`react-router`, moderate) | `frontend/package-lock.json` |
-| Build and test only | 62 — 2 critical, 15 high, 35 medium, 10 low | `frontend/package-lock.json` |
-| Test tooling | 1 (`pytest`, medium) | `backend/poetry.lock` |
+Build and lint tooling carries one moderate advisory, GHSA-g3hv-75wg-m249
+(`minimatch`, denial of service through crafted glob patterns), reached only
+through `eslint`, `typescript-eslint` and `electron-builder`. Those run on a
+developer's or CI machine against the repository's own patterns; none of them
+is in the `dist/` bundle the frontend ships.
 
-`npm audit --omit=dev`, which is the surface a user actually receives, returns
-two entries for a single advisory.
-
-**Build-only.** `vitest` and its worker pool `tinypool` (the two criticals),
-`vite`, `esbuild`, `electron` and `extract-zip` do not appear in the `dist/`
-bundle: the frontend is a Vite SPA built to static assets. The `frontend`
-service in `docker-compose.yml` runs the Vite dev server with bind mounts — it
-is a development container, not a deployment artifact, and it is the only place
-where these packages execute. They matter for a compromised build agent, not for
-a visitor.
-
-**`react-router` — GHSA-wrjc-x8rr-h8h6 (open redirect via a backslash in
-`<Link>` / `useNavigate`) and GHSA-337j-9hxr-rhxg (constructor injection in
-`deserializeErrors()`).** Neither is fixed inside v6; both are patched in
-`react-router-dom` 7.18.5, a major migration.
-
-- The `deserializeErrors()` advisory requires **SSR hydration**. This frontend
-  mounts with `createRoot`; there is no `hydrateRoot` and no `renderToString`,
-  so the vulnerable path does not exist here.
-- The open-redirect advisory needs a user-controlled destination reaching
-  `<Link>` or `useNavigate`. Every such call site — `Login`, `Register`,
-  `CompanySelect` — passes through `safeReturnPath()` in
-  `frontend/src/lib/returnPath.ts`, which accepts only a path starting with a
-  single `/` and rejects `//`, `/\`, any backslash, control characters, their
-  percent-encoded forms, and the auth-loop paths. Ten unit tests cover it, and
-  the advisory's own vector, a backslash, is one of the rejected cases.
-
-That is a compensating control, not a fix: the v7 migration stays on the
-roadmap.
-
-**`pytest` — GHSA-6w46-j5rx-g56g (temporary directory handling).** Patched in
-9.0.3, and the pin is `^8.1.1`. This one is worth taking: it is test tooling
-only.
-
-**Why the majors are not taken blind.** `vite` 5→8, `vitest` 3→5, `electron`
-→45 and `react-router` 6→7 each change APIs the build depends on. Each `ignore`
-in `.github/dependabot.yml` carries its reason next to it, so an upgrade is a
-planned piece of work with its own tests instead of a red PR every Monday.
+`pip-audit` over `backend/poetry.lock` and the LLM proxy's lock reports nothing.
+Each `ignore` in `.github/dependabot.yml` carries its reason next to it.
 
 ---
 
@@ -266,49 +231,27 @@ Core rules:
 - For tools that modify state, require idempotency keys and maintain an audit trail.
 - Never expose raw database connection or Kubernetes API as a tool.
 
-### 8.3 Workspace Command Execution — a Known Limitation
+### 8.3 Workspace Command Execution
 
-`vscode-daemon/daemon.py` runs workspace commands through the host shell
-(`subprocess.run(_build_shell_command(command), shell=...)`, `daemon.py:270`).
-There is **no sandbox** and **no command blocklist** under it.
-
-The missing blocklist is deliberate. A blocklist screens a string; it cannot
-fence a process. `rm -rf` and `rm  -rf` (two spaces), `rm -r -f` (split flags)
-and `rm --recursive --force` are the same intent with different spellings, so
-any list that catches the first three misses the fourth, while blocking the
-benign `touch rm-rf-notes.txt`. DeepCode reached the same conclusion and wrote
-it down in `core/harness/command_guard.py`:
-
-> A blocklist can never be a security boundary; the sandbox is. But if we keep a
-> blocklist at all, it should honestly catch what it *claims* to, rather than
-> offering a false sense of coverage.
-
-That project ships a sandbox (seatbelt on macOS, bwrap on Linux) as the actual
-boundary and keeps its screened blocklist as a shallow first pass in front of
-it. **We have neither.** Adding the blocklist without the sandbox would buy the
-false sense of coverage and nothing else, so the gap stays visible here instead.
-
-What this means today, and what it does not:
+`vscode-daemon/daemon.py` runs workspace commands through the host shell, with
+the privileges of the person who started it. It is not a sandbox, and it keeps
+no command blocklist: a blocklist screens a string and cannot fence a process
+(`rm -rf`, `rm -r -f` and `rm --recursive --force` are one intent spelled three
+ways).
 
 - The daemon is **host-side, by design** (`./scripts/start-daemon.sh`, not in
-  Docker), so a workspace command runs with the privileges of the developer who
-  started it. An agent that emits `curl … | sh` gets a shell on that machine.
+  Docker), so a workspace command runs as the developer who started it.
 - The commands the pipeline runs on its own are **not** model output:
-  `_detect_test_command` in `backend/app/services/task_worker.py:1901` derives
-  the test command from repository markers (`package.json`, `pytest.ini`,
+  `_detect_test_command` in `backend/app/services/task_worker.py` derives the
+  test command from repository markers (`package.json`, `pytest.ini`,
   `pyproject.toml`, a `tests/` folder) or from `DELIVERY_TEST_COMMAND`. No LLM
   picks it, so prompt injection cannot reach that string.
-- The exposure is a **human or agent** invoking `workspace.execute` with an
-  arbitrary command, and the mitigations are the ones already in place: the
-  daemon listens on NATS with a scoped namespace, and the subjects it accepts
-  are a fixed list.
+- The daemon listens on NATS with a scoped namespace, the subjects it accepts
+  are a fixed list, and NATS binds to `127.0.0.1` by default (`NATS_BIND`).
 
-Tracked as a limitation, not a fixed issue. Closing it means running the
-workspace inside a container or a kernel sandbox with the project bind-mounted
-and egress restricted — a change to how the daemon is deployed, not a check
-added to it. Until then, treat `workspace.execute` as privileged: connect the
-daemon to brokers you trust, and do not point it at a workspace whose commands
-you would not run yourself.
+Treat `workspace.execute` as privileged: connect the daemon only to brokers you
+trust, and do not point it at a workspace whose commands you would not run
+yourself.
 
 ### 8.4 LangGraph-Specific
 

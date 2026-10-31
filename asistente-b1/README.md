@@ -1,235 +1,239 @@
-# Asistente B1
+# Assistant B1
 
-Asistente de escritorio que escucha, piensa y ejecuta. Su trabajo concreto es
-manejar **La Fabrique** —una fábrica de software con agentes— hablando: pedirle
-el estado, planear un sprint, despacharlo, pausarlo, aprobarlo, o mandarle a
-construir un proyecto al instante.
+*English · [Español](README.es.md)*
 
-Es una implementación propia, escrita desde cero, bajo **Apache-2.0**. No
-contiene código, textos, íconos ni prompts de otro asistente.
+A desktop assistant that listens, thinks and acts. Its concrete job is to run
+**La Fabrique** — a software factory staffed by agents — by voice: ask for its
+status, plan a sprint, dispatch it, pause it, approve it, or have it build a
+project on the spot.
+
+It is its own implementation, written from scratch, under **Apache-2.0**. It
+contains no code, text, icons or prompts from any other assistant.
 
 ```
-  micrófono ──▶ fin de frase ──▶ faster-whisper ──▶ modelo (tools) ──▶ voz de salida ──▶ parlante
-                                  (local, MIT)      OpenAI-compat      piper o la del sistema
-                                                         │
-                                                         ├─▶ La Fabrique  /v1/voice/status
-                                                         ├─▶ La Fabrique  /v1/voice/command
-                                                         └─▶ La Fabrique  /v1/voice/build
+  microphone ──▶ end of speech ──▶ faster-whisper ──▶ model (tools) ──▶ output voice ──▶ speaker
+                                   (local, MIT)       OpenAI-compat     piper or the system's
+                                                          │
+                                                          ├─▶ La Fabrique  /v1/voice/status
+                                                          ├─▶ La Fabrique  /v1/voice/command
+                                                          └─▶ La Fabrique  /v1/voice/build
 ```
 
-## Por qué esto es original
+## Why this is original
 
-Tres cosas, y las tres se pueden comprobar en este repositorio:
+Three things, and all three can be checked in this repository:
 
-1. **El código se escribió para este proyecto.** No hay ni un archivo copiado de
-   otro asistente. El núcleo no depende de nada fuera de la biblioteca estándar:
-   el cliente HTTP del modelo, el registro de herramientas, la detección de fin
-   de frase y el bucle de conversación son código propio.
-2. **El texto también.** Cada prompt, cada frase de la guía y cada mensaje de
-   error está redactado acá. Es lo que normalmente delata una copia aunque el
-   código se haya reescrito.
-3. **Hay una prueba que lo mide.**
+1. **The code was written for this project.** Not a single file is copied from
+   another assistant. The core depends on nothing outside the standard library:
+   the model's HTTP client, the tool registry, end-of-speech detection and the
+   conversation loop are all our own code.
+2. **So is the text.** Every prompt, every line of the guide and every error
+   message was written here. Text is what usually gives a copy away even when
+   the code has been rewritten.
+3. **A test measures it.**
 
 ```bash
 python tools/similarity_check.py ../profesor3
-# 15 archivos propios / 126 del otro árbol · prosa: 0 coincidencias de 8 palabras
-#   · código: 0 bloques de 14 tokens
-# Original: no hay prosa ni bloques de código en común.
+# 15 own files / 126 in the other tree · prose: 0 matches of 8 words
+#   · code: 0 blocks of 14 tokens
+# Original: no prose or code blocks in common.
 ```
 
-El chequeo compara dos cosas distintas: **prosa** (comentarios, docstrings y
-literales de más de dos palabras, en secuencias de 8) y **código** (todos los
-tokens, en secuencias de 14). La segunda medida es la que distingue "dos
-programas que usan QTimer igual" de "un bloque copiado". La prueba corre en
-`tests/test_originality.py`.
+The check compares two different things: **prose** (comments, docstrings and
+literals longer than two words, in runs of 8) and **code** (every token, in runs
+of 14). The second measure is what tells "two programs that use QTimer the same
+way" apart from "a copied block". The test runs in `tests/test_originality.py`.
 
-Nada de esto es asesoramiento legal: la originalidad se demuestra con el código
-y con estas medidas, y si vas a venderlo, un abogado revisa el paquete.
+None of this is legal advice: originality is shown by the code and by these
+measurements, and if you are going to sell it, have a lawyer review the package.
 
-## Qué sabe hacer con la fábrica
+## What it can do with the factory
 
-| Le decís | Pasa |
+| You say | What happens |
 |---|---|
-| «¿cómo va la fábrica?» | lee el estado real: sprint, tareas por etapa, qué espera aprobación |
-| «¿quiénes están en el equipo?» | lista los agentes (PO, arquitecto, scrum, devs, QA) |
-| «planeá un sprint para una landing de café» | redacta el plan con el modelo de la fábrica |
-| «creá un sprint con eso» | lo crea **en pausa**, a propósito |
-| «despachá» / «pausá» / «reanudá» | mueve el sprint |
-| «aprobá la entrega» | aprueba el run pendiente |
-| «armá una página con precios» | construye en segundos y la abre en el navegador |
+| "how is the factory doing?" | reads the real status: sprint, tasks per stage, what is waiting for approval |
+| "who is on the team?" | lists the agents (PO, architect, scrum master, devs, QA) |
+| "plan a sprint for a coffee landing page" | drafts the plan with the factory's model |
+| "create a sprint from that" | creates it **paused**, on purpose |
+| "dispatch" / "pause" / "resume" | moves the sprint |
+| "approve the delivery" | approves the pending run |
+| "build a page with pricing" | builds it in seconds and opens it in the browser |
 
-La regla que hace esto usable en voz alta: **la fábrica devuelve una frase ya
-redactada** (`speech`) y el asistente la dice casi textual. El modelo elige la
-herramienta, no inventa el resultado. Si el backend no responde, se dice el
-error en una frase; nunca se simula que salió bien.
+The rule that makes this usable out loud: **the factory returns a sentence
+already written** (`speech`) and the assistant says it almost word for word. The
+model picks the tool; it does not make up the result. If the backend does not
+answer, the error is said in one sentence; it never pretends that it worked.
 
-## Seguridad
+## Security
 
-- **Las acciones que deciden o arrancan trabajo esperan tu confirmación.**
-  `aprobar`, `rechazar`, `despachar`, `reanudar` y `asignar` no se ejecutan
-  cuando el modelo las pide: el asistente te pregunta y solo las manda si tu
-  siguiente frase es «sí, confirmo». Esa comprobación está en el código, no en
-  el prompt, así que un texto que el modelo lea (el título de una tarea, una
-  nota de rechazo) no puede confirmarlas por vos.
-- **Solo abre las vistas previas de la fábrica** (`<fábrica>/v1/voice/build/...`),
-  nunca otro enlace que aparezca en una respuesta.
-- **Las claves no siguen redirecciones a otro host**, ni viajan por `http://`
-  sin cifrar a otra máquina: con la fábrica o el modelo en otro equipo usá
-  `https://` (o `B1_ALLOW_INSECURE_HTTP=1`, solo en una red de confianza).
-- **`config.json` se crea con permisos 0600** (la carpeta, 0700): guarda la
-  clave del modelo y la de voz.
-- **La voz del sistema nunca ejecuta el texto que lee**: en Windows viaja como
-  datos codificados, no como código de PowerShell.
+- **Actions that decide or start work wait for your confirmation.** `aprobar`
+  (approve), `rechazar` (reject), `despachar` (dispatch), `reanudar` (resume)
+  and `asignar` (assign) do not run when the model asks for them: the assistant
+  asks you, and sends them only if your next sentence is "yes, confirm" (or
+  «sí, confirmo»). That check lives in the code, not in the prompt, so text the
+  model reads (a task title, a rejection note) cannot confirm them for you.
+- **It only opens the factory's previews** (`<factory>/v1/voice/build/...`),
+  never any other link that shows up in an answer.
+- **Keys do not follow redirects to another host**, and they never travel over
+  unencrypted `http://` to another machine: with the factory or the model on
+  another computer, use `https://` (or `B1_ALLOW_INSECURE_HTTP=1`, only on a
+  trusted network).
+- **`config.json` is created with 0600 permissions** (its folder, 0700): it
+  holds the model key and the voice key.
+- **The system voice never runs the text it reads**: on Windows it travels as
+  encoded data, not as PowerShell code.
 
-## Instalación
+## Installation
 
 ```bash
-python -m pip install -e ".[ui,voice]"   # o: pip install -r requirements.txt
-b1 --init                                # escribe ~/.asistente-b1/config.json
-b1 --check                               # qué está instalado y si los servicios responden
-b1                                       # abre la ventana
+python -m pip install -e ".[ui,voice]"   # or: pip install -r requirements.txt
+b1 --init                                # writes ~/.asistente-b1/config.json
+b1 --check                               # what is installed and whether the services answer
+b1                                       # opens the window
 ```
 
-Configuración (archivo `~/.asistente-b1/config.json`, o variables de entorno que
-ganan sobre el archivo):
+Settings (the file `~/.asistente-b1/config.json`, or environment variables,
+which win over the file):
 
-| Variable | Para qué |
+| Variable | Purpose |
 |---|---|
-| `B1_MODEL_BASE_URL` | endpoint compatible con `/chat/completions` (NVIDIA `integrate.api.nvidia.com`, Token Factory, OpenAI, vLLM, Ollama) |
-| `B1_MODEL_API_KEY` | clave del proveedor (`nvapi-…` para el gateway de NVIDIA) |
-| `B1_MODEL` | id del modelo (por defecto `nvidia/nemotron-3-ultra-550b-a55b`) |
-| `B1_MODEL_THINKING` | `true` pide el razonamiento del Nemotron (`chat_template_kwargs`) |
-| `B1_MODEL_MAX_TOKENS` | techo de la respuesta; el razonamiento se paga de aquí |
-| `B1_MODEL_TOP_P`, `B1_MODEL_TEMPERATURE`, `B1_MODEL_TIMEOUT` | muestreo y espera por turno |
-| `B1_FACTORY_URL` | dónde está la fábrica (por defecto `http://127.0.0.1:8000`) |
-| `B1_VOICE_KEY` | `X-Voice-Key` que espera la fábrica |
-| `B1_LANGUAGE` | `es` / `en`: el idioma en que arranca la charla |
-| `B1_STT_LANGUAGE` | `auto` (sigue la conversación), o `es` / `en` para fijar lo que escucha |
-| `B1_STT_MODEL` | tamaño del modelo de faster-whisper (`tiny`, `base`, `small`…) |
-| `B1_TTS_VOICE` | voz de Piper para español: ruta a un `.onnx` o nombre (`es_ES-sharvard-medium`) |
-| `B1_TTS_VOICE_EN` | voz de Piper para inglés (`en_US-amy-medium`) |
-| `B1_MIC_DEVICE` | nombre del micrófono; vacío es el que elija el sistema |
-| `B1_SPEAKER_DEVICE` | nombre de la salida de audio; vacío es la del sistema |
+| `B1_MODEL_BASE_URL` | an endpoint compatible with `/chat/completions` (NVIDIA `integrate.api.nvidia.com`, Token Factory, OpenAI, vLLM, Ollama) |
+| `B1_MODEL_API_KEY` | the provider's key (`nvapi-…` for NVIDIA's gateway) |
+| `B1_MODEL` | model id (default `nvidia/nemotron-3-ultra-550b-a55b`) |
+| `B1_MODEL_THINKING` | `true` asks Nemotron for its reasoning (`chat_template_kwargs`) |
+| `B1_MODEL_MAX_TOKENS` | cap on the answer; the reasoning is paid out of it |
+| `B1_MODEL_TOP_P`, `B1_MODEL_TEMPERATURE`, `B1_MODEL_TIMEOUT` | sampling and per-turn wait |
+| `B1_FACTORY_URL` | where the factory is (default `http://127.0.0.1:8000`) |
+| `B1_VOICE_KEY` | the `X-Voice-Key` the factory expects |
+| `B1_LANGUAGE` | `es` / `en`: the language the conversation starts in |
+| `B1_STT_LANGUAGE` | `auto` (follows the conversation), or `es` / `en` to fix what it listens for |
+| `B1_STT_MODEL` | faster-whisper model size (`tiny`, `base`, `small`…) |
+| `B1_TTS_VOICE` | Piper voice for Spanish: path to an `.onnx` file or a name (`es_ES-sharvard-medium`) |
+| `B1_TTS_VOICE_EN` | Piper voice for English (`en_US-amy-medium`) |
+| `B1_MIC_DEVICE` | microphone name; empty means whatever the system picks |
+| `B1_SPEAKER_DEVICE` | audio output name; empty means the system's |
 
-La clave de voz y la del modelo se pueden cargar desde **Ajustes**, que además
-tiene botones de prueba: modelo, fábrica, micrófono y parlante.
+The voice key and the model key can be entered in **Settings**, which also has
+test buttons: model, factory, microphone and speaker.
 
-## Micrófono y audio de salida
+## Microphone and audio output
 
-En una notebook con micrófono integrado, el de la cámara y unos auriculares, el
-«predeterminado del sistema» cambia solo cada vez que enchufás algo — y ahí
-empieza el «no me escucha». **Ajustes** deja elegir el micrófono y la salida, y
-probarlos en el momento:
+On a laptop with a built-in microphone, the webcam's microphone and a headset,
+the "system default" changes by itself every time you plug something in — and
+that is where "it doesn't hear me" starts. **Settings** lets you choose the
+microphone and the output, and test them right away:
 
-![Ajustes de audio](docs/ajustes-audio.png)
+![Audio settings](docs/ajustes-audio.png)
 
-* La lista muestra cada dispositivo **una sola vez**, sin los alias del tipo
-  «Sound Mapper» o `default`, que no son hardware sino «lo que el sistema
-  quiera». Eso es, justamente, la opción *Sistema (por defecto)*.
-* Se guarda el **nombre** y no el número: PortAudio renumera cuando enchufás un
-  aparato, así que un índice guardado termina apuntando a otra cosa. Si el
-  dispositivo elegido ya no está, se usa el predeterminado y `b1 --check` lo dice
-  en vez de fallar.
-* «Probar micrófono» graba tres segundos y mueve una barra con lo que va
-  entrando, para que se vea que está escuchando antes de terminar.
-* «Probar parlante» hace sonar un pitido por la salida elegida: eso solo lo puede
-  confirmar la persona, el programa no adivina si salió por el aire.
+* The list shows each device **only once**, without aliases such as
+  "Sound Mapper" or `default`, which are not hardware but "whatever the system
+  wants". That is exactly what the *System (default)* option is.
+* The **name** is saved, not the number: PortAudio renumbers devices when you
+  plug one in, so a saved index ends up pointing at something else. If the
+  chosen device is gone, the default is used and `b1 --check` says so instead of
+  failing.
+* "Test microphone" records three seconds and moves a bar with what comes in,
+  so you can see it is listening before it finishes.
+* "Test speaker" plays a beep through the chosen output: only the person can
+  confirm that one; the program cannot guess whether it came out of the speaker.
 
-## Voz: qué habla y en qué idioma
+## Voice: what it speaks and in which language
 
-El español y el inglés están al mismo nivel: no es una traducción de la
-interfaz, es el mismo programa hablando en uno u otro idioma.
+Spanish and English are on equal footing: it is not a translation of the
+interface, it is the same program speaking one language or the other.
 
-* **Escucha.** Whisper se lanza con el idioma de la conversación como pista. Si
-  con esa pista no devuelve nada —pasa cuando alguien cambia de idioma a mitad
-  de una frase—, se repite la transcripción sin pista y gana la detección del
-  modelo. Con `B1_STT_LANGUAGE=es` o `=en` se fija y no se adivina nunca.
-* **Habla.** Primero Piper, si hay binario y modelo; si no, la voz del sistema
-  (SAPI en Windows, `say` en macOS, `espeak-ng`/`spd-say` en Linux) elegida por
-  el idioma de la frase; y si no hay ninguna, el texto por consola. Nunca se
-  queda callado sin decir por qué: si el motor existe pero no puede sonar, la
-  frase sale escrita y, una sola vez, el motivo.
-* **Piper no trae voces.** `b1 --voices` baja una vez las dos voces
-  configuradas a `~/.asistente-b1/voces`; después se puede hablar sin
-  internet. Sin ese paso, la voz del sistema cubre el idioma igual.
-* **La fábrica también contesta en el idioma.** Cada llamada a `/v1/voice/*`
-  viaja con `language`, así la frase que la fábrica ya redactó llega en el
-  idioma de la charla; si alguna vez llegara en otro, el prompt pide decirla en
-  el de la conversación con las mismas cifras.
-* **El cambio es en el mismo turno.** La persona habla en inglés, el asistente
-  contesta en inglés, y la ventana —título de estado, botones, guía— cambia con
-  la respuesta. En los ajustes se puede dejar fijado `es` o `en`.
+* **Listening.** Whisper is started with the conversation's language as a hint.
+  If it returns nothing with that hint — which happens when someone switches
+  language mid-sentence — the transcription is repeated without the hint and the
+  model's detection wins. With `B1_STT_LANGUAGE=es` or `=en` the language is
+  fixed and never guessed.
+* **Speaking.** Piper first, if its binary and model are there; otherwise the
+  system voice (SAPI on Windows, `say` on macOS, `espeak-ng`/`spd-say` on Linux)
+  chosen by the sentence's language; and if there is none, the text on the
+  console. It never goes silent without saying why: if the engine exists but
+  cannot play, the sentence is printed and, once, the reason.
+* **Piper ships without voices.** `b1 --voices` downloads the two configured
+  voices once to `~/.asistente-b1/voces`; after that it can speak offline.
+  Without that step, the system voice still covers the language.
+* **The factory answers in the language too.** Every call to `/v1/voice/*`
+  carries `language`, so the sentence the factory has already written arrives in
+  the conversation's language; if one ever arrived in another, the prompt asks
+  for it to be said in the conversation's language with the same figures.
+* **The switch happens in the same turn.** The person speaks English, the
+  assistant answers in English, and the window — status title, buttons, guide —
+  changes with the answer. Settings can pin `es` or `en`.
 
-## Modos
+## Modes
 
 ```bash
-b1            # ventana completa: orbe, transcripción y panel de la guía
-b1 --orb      # sólo el orbe, sin bordes y siempre arriba
-b1 --text     # consola, sin micrófono ni Qt
-b1 --guide    # imprime la guía de la fábrica
-b1 --voices   # descarga una vez las voces de Piper configuradas
-b1 --speak "Hola"          # dice esa frase y sale (prueba de voz)
-b1 --language en           # arranca en inglés
-b1 --check    # diagnóstico
+b1            # full window: orb, transcript and guide panel
+b1 --orb      # just the orb, borderless and always on top
+b1 --text     # console, no microphone or Qt
+b1 --guide    # prints the factory guide
+b1 --voices   # downloads the configured Piper voices once
+b1 --speak "Hello"         # says that sentence and exits (voice test)
+b1 --language en           # starts in English
+b1 --check    # diagnostics
 ```
 
-Sin micrófono ni Qt instalados, el asistente arranca en modo texto en lugar de
-romperse: cada pieza opcional se detecta y se informa.
+Without a microphone or Qt installed, the assistant starts in text mode instead
+of breaking: each optional piece is detected and reported.
 
-## Cómo está armado
+## How it is built
 
 ```
 b1/
-  app.py          CLI: ventana, orbe, consola, diagnóstico
-  assistant.py    bucle de turno: historial, herramientas, voz
-  llm.py          cliente /chat/completions con tool calling (sólo stdlib)
-  tools.py        declaración + validación + despacho de herramientas
-  fabrica.py      cliente /v1/voice/*, guía y las tres herramientas
-  prompts.py      prompt de sistema armado en runtime
-  audio.py        micrófono, RMS, detector de fin de frase
-  devices.py      qué micrófono y qué parlante, elegidos por nombre
-  speech.py       faster-whisper y piper detrás de dos métodos
-  i18n.py         todo el texto de la interfaz y de la voz, en español y en inglés
-  config.py       ajustes en JSON con override por entorno
-  originality.py  comparación de prosa y código contra otro árbol
-  ui/             ventana Qt y orbe dibujado con QPainter
+  app.py          CLI: window, orb, console, diagnostics
+  assistant.py    turn loop: history, tools, voice
+  llm.py          /chat/completions client with tool calling (stdlib only)
+  tools.py        tool declaration + validation + dispatch
+  fabrica.py      /v1/voice/* client, the guide and the three tools
+  prompts.py      system prompt assembled at runtime
+  audio.py        microphone, RMS, end-of-speech detector
+  devices.py      which microphone and which speaker, chosen by name
+  speech.py       faster-whisper and piper behind two methods
+  i18n.py         all interface and voice text, in Spanish and English
+  config.py       JSON settings with environment overrides
+  originality.py  prose and code comparison against another tree
+  ui/             Qt window and an orb drawn with QPainter
 ```
 
-Decisiones que vale la pena conocer:
+Decisions worth knowing:
 
-- **Fin de frase por energía, no por reloj.** El umbral se adapta al ruido de
-  fondo sólo mientras nadie habla, así un ventilador que arranca a mitad de la
-  frase no se come el final. Se prueba con frames sintéticos, sin micrófono.
-- **El timeout de una herramienta no congela la charla.** Tanto las sincrónicas
-  como las asíncronas se cortan a tiempo y el modelo recibe una frase.
-- **Nada de SDK.** Un `urllib` con `timeout` explícito evita fijar versiones de
-  cliente y permite apuntar el mismo código a un servidor de prueba local.
-- **La guía se muestra y se dice con el mismo texto**, así la voz no promete
-  nada que la pantalla no diga.
-- **Los aparatos de audio se guardan por nombre, no por número.** Los índices de
-  PortAudio cambian cuando se enchufa algo, así que se resuelven al abrir el
-  stream; si el elegido desapareció se vuelve al predeterminado, sin error.
+- **End of speech by energy, not by the clock.** The threshold adapts to the
+  background noise only while nobody is speaking, so a fan that starts
+  mid-sentence does not swallow the end. It is tested with synthetic frames, no
+  microphone needed.
+- **A tool timeout does not freeze the conversation.** Both synchronous and
+  asynchronous tools are cut off in time and the model gets a sentence.
+- **No SDK.** A `urllib` call with an explicit `timeout` avoids pinning client
+  versions and lets the same code point at a local test server.
+- **The guide is shown and spoken with the same text**, so the voice promises
+  nothing the screen does not say.
+- **Audio devices are saved by name, not by number.** PortAudio's indices change
+  when something is plugged in, so they are resolved when the stream opens; if
+  the chosen one disappeared it falls back to the default, without an error.
 
-## Pruebas
+## Tests
 
 ```bash
-pytest -q          # 150 pruebas
+pytest -q          # 187 tests
 ```
 
-Cubren el detector de fin de frase con señales sintéticas, el registro de
-herramientas (tipos, argumentos inventados, excepciones, timeouts), el cliente
-de la fábrica **contra un servidor HTTP real**, un turno completo de punta a
-punta con servidor de modelo y servidor de fábrica (elegir herramienta, volver
-con el resultado, responder), la elección de micrófono y parlante (con una tabla
-de dispositivos falsa que imita a PortAudio), la voz de salida en los dos
-idiomas (el comando que se ejecutaría en cada sistema, el respaldo cuando el
-motor no suena) y la comparación de originalidad.
+They cover the end-of-speech detector with synthetic signals, the tool registry
+(types, made-up arguments, exceptions, timeouts), the factory client **against a
+real HTTP server**, a full end-to-end turn with a model server and a factory
+server (pick a tool, come back with the result, answer), the choice of
+microphone and speaker (with a fake device table that mimics PortAudio), the
+output voice in both languages (the command that would run on each system, the
+fallback when the engine does not play), the security rules above and the
+originality comparison.
 
-## Licencias de terceros
+## Third-party licenses
 
-`PyQt6` (GPL-3.0 o licencia comercial de Qt), `sounddevice` (MIT), `numpy`
-(BSD-3), `faster-whisper` (MIT), `piper` (MIT). El detalle está en `NOTICE`.
-Si vas a distribuir el binario con PyQt6, revisá esa licencia: es la única del
-conjunto que no es permisiva.
+`PyQt6` (GPL-3.0 or Qt's commercial license), `sounddevice` (MIT), `numpy`
+(BSD-3), `faster-whisper` (MIT), `piper` (MIT). The details are in `NOTICE`.
+If you are going to distribute the binary with PyQt6, check that license: it is
+the only one in the set that is not permissive.
 
-Este paquete: Apache-2.0. Ver `LICENSE`.
+This package: Apache-2.0. See `LICENSE`.

@@ -474,7 +474,7 @@ def check_governance() -> None:
         print(warn("  check_write_path / is_protected_path not found — skipping"))
         return
 
-    # Protected paths from CLAUDE.md: SELF_IMPROVEMENT_PROTECTED_PATHS
+    # Protected paths: SELF_IMPROVEMENT_PROTECTED_PATHS
     protected_examples = [
         "backend/app/services/governance.py",
         "db/init-db/init.sql",
