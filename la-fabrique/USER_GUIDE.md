@@ -32,10 +32,14 @@ it. You are asked to read a verdict.
    - **Verified**: every claim is backed by evidence.
    - **Refuted**: the evidence contradicts a claim.
    - **Unverifiable**: there is nothing to check the claim against.
-5. **Review.** A reviewer agent reads the delivery against the task. If it finds
-   a problem, the task goes back with the specific finding.
-6. **Decide.** Depending on your setting, a person approves. Whatever is
-   decided is stored with a signature in the audit log.
+5. **Review.** A refuted or unconfirmed delivery goes back for rework without
+   asking a model. Otherwise the QA agent reads the delivery against the task;
+   if it finds a problem, the task goes back with the specific finding, and only
+   an explicit approval closes it.
+6. **Decide.** A person decides what the loop does not: tasks blocked after
+   repeated rework, approved deliveries that touch high-risk areas, and runs
+   sent by other producers. A decision on a run is recorded in the audit log,
+   signed when the installation has an audit signing key.
 
 `Unverifiable` is not a soft pass. An agent that delivers work nobody witnessed
 has not shown its work, and the system says so rather than guessing.
@@ -60,12 +64,14 @@ has not shown its work, and the system says so rather than guessing.
 
 Three settings shape how much the team does on its own.
 
-- **Autonomy level** (1 to 3). Level 3 lets the team start a self-improvement
-  sprint by itself when a sprint closes with findings. Below 3, that only happens
-  when a person asks for it.
+- **Autonomy level** (1 to 3, 2 for a new company). At level 3, when a sprint
+  closes the team opens a self-improvement sprint by itself (carrying the closed
+  sprint's blocked tasks into it, once each) and adopts the procedures the
+  ScrumMaster proposes at once. Below 3, a person starts sprints and adopts or
+  rejects each proposal.
 - **Approvals.** A person with the Manager role decides on the runs that matter.
-  The decision carries your name, a category and, if you reject, a text the agent
-  reads as a correction.
+  The decision carries your name and, if you reject, a category and a text
+  explaining why.
 - **Quotas.** A token budget per business unit. The gateway enforces it before
   each model call, so the ceiling holds during the sprint, not after the invoice.
 
@@ -93,8 +99,10 @@ Being clear about this is part of the product.
   tests counts only with independent evidence, such as the result of a CI run.
 - **It does not grade work with a model.** The checks are deterministic
   comparisons. A model writes the work; it never decides whether the work holds.
-- **It is not free-running by default.** Autonomy 3 still writes an audit row per
-  action, and the evidence page still shows every verdict.
+- **It is not free-running by default.** A new company starts at autonomy
+  level 2. Even at level 3, an approved delivery that touches authentication,
+  secrets, payments or the CI pipeline waits for a person, and the evidence page
+  still shows every verdict.
 
 ## Reading a verdict
 
@@ -116,6 +124,7 @@ usually a wire that is not connected, not a bug in the agent.
 
 ## Getting help
 
-Open a ticket from the help desk screen. The support agent attaches a first
-reading; a support admin sees every ticket and can download the logs. Include
+Open a ticket from the help desk screen. When the installation enables it, the
+support agent attaches a first reading; a support admin sees every ticket and
+can download the logs. Include
 what you were doing and what you expected.

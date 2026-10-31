@@ -11,8 +11,8 @@ on:
     types: [created]
 
 
-# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
-# en vez de encolarse.
+# When a new push arrives, the runs for the commit it replaces are cancelled
+# instead of queueing.
 concurrency:
   group: slsa3-${{ github.ref }}
   cancel-in-progress: true

@@ -2,7 +2,7 @@
 
 > **Audience:** everyone writing code in this repository, whatever the role
 > **Related:** [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md)
-> **Last updated:** 2026-10-30
+> **Last updated:** 2026-10-31
 
 ## 1. Purpose
 
@@ -21,7 +21,7 @@ says which is which.
 5. **Observability for anything slow or asynchronous.** Structured events, not
    `print`.
 6. **One canonical toolchain.** Do not introduce a second formatter, linter or
-   package manager without an ADR.
+   package manager without discussing it in an issue first.
 
 ## 3. Repository layout
 
@@ -34,7 +34,7 @@ backend/agents/       optional LangGraph producer
 backend/llm/          role to model map (ModelFactory.ROLE_MODEL_MAP)
 backend/memory/       pgvector RAG, Neo4j Engram nodes
 backend/eval/         the verifier benchmark
-backend/tests/        pytest, 57 modules
+backend/tests/        pytest, 64 test modules
 backend/janitor/      daily cleanup container
 llm-proxy/            Flask gateway, its own Poetry project
 frontend/src/         React 18 + Vite + TypeScript
@@ -47,8 +47,9 @@ deployment/k8s/       manifests
 
 ## 4. Python
 
-**Version.** `^3.11` in `backend/pyproject.toml`. CI runs 3.12; the backend image
-is `python:3.11-slim`. Do not use a feature that needs 3.12.
+**Version.** `^3.11` in `backend/pyproject.toml`. CI runs 3.12 and the backend
+image is `python:3.12-slim`, but the declared range admits 3.11, so do not use a
+feature that needs 3.12.
 
 **Imports are top-level.** Tests run with `PYTHONPATH=.:app`, so modules import
 `from config import settings` and `from models.sprint import BacklogItem`, not
@@ -63,9 +64,10 @@ touched is yours to fix.
 is already too long cannot grow. Split the module rather than raising the
 threshold.
 
-**Routers never touch the database.** They take `get_session` and
-`auth_deps.get_current_user` injected and call `services/`. See
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+**Routers check the caller first.** They take `get_session` and
+`auth_policy.current_user_if_required` injected and call `require_company_role`
+before reading company data; logic that more than one caller needs lives in
+`services/`. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ### Lint and format
 
@@ -120,8 +122,8 @@ Every user-facing string goes through `useTranslation` and lands in both
 `frontend/src/i18n/en.json` and `es.json`.
 
 - `npm run lint` runs `eslint-plugin-i18next`'s `no-literal-string` over JSX
-  text and over the `title`, `alt`, `placeholder`, `aria-*` and `label`
-  attributes. A hardcoded English literal fails the build.
+  text and over the `title`, `alt`, `placeholder`, `aria-label`,
+  `aria-description` and `label` attributes. A hardcoded English literal fails the build.
 - `src/i18n/coverage.test.ts` fails when a key passed to `t('…')` is missing
   from either locale.
 - `src/i18n/locales.test.ts` requires `en.json` and `es.json` to have identical
@@ -145,17 +147,20 @@ Viewer.
 
 ## 7. Security rules that bind code
 
-- A provider API key is read only by `llm-proxy/`. A backend module that imports
-  a provider SDK is a bug.
+- A provider API key is read only by `llm-proxy/`. A backend module that calls a
+  provider directly is a bug: `LLMProxyClient` and `ModelFactory`'s `ChatOpenAI`
+  clients point at the proxy.
 - A hash or signature is never taken from the party being recorded.
 - A claim (what an agent says) and an observation (what the daemon reports) never
   share a field.
 - Public routes are a short, deliberate list: `/health`, `/health/deep`,
   `/metrics`, `/openapi.json`, `/docs`, `/redoc`, register and login, the signed
   GitHub webhook, the public support form and chat, `/v1/models`,
-  `/v1/capabilities`, and the ticketed Glassroom stream. Adding one is a security
+  `/v1/capabilities`, the retired `/v1/approve_task` (410), the generated project
+  previews under `/v1/voice/build/`, and the ticketed Glassroom stream. Adding one is a security
   change, not a routing change.
-- Never commit a key. CI does not scan for one (see [`SECURITY.md`](SECURITY.md)).
+- Never commit a key. No workflow scans a pull request for one; `gitleaks` runs
+  over the history weekly (see [`SECURITY.md`](SECURITY.md)).
 
 ## 8. Dependencies
 
@@ -165,9 +170,10 @@ Add the dependency to the relevant `pyproject.toml` **and** commit the refreshed
 
 ## 9. Commits and reviews
 
-Commit subjects are written in Spanish and usually carry a Conventional Commits
-prefix (`fix:`, `feat:`, `docs:`, `ci:`, `test:`). Branch names are typed
-(`fix/…`, `docs/…`, `ci/…`, `chore/…`), cut from `main`, one pull request each.
+Commit subjects are written in English and usually start with the area they
+touch (`Docs:`, `Security:`, `README:`, `La Fabrique XR:`); older history is in
+Spanish. A branch is cut from the line it changes (`main`, `fusion` or
+`meta-vr`), one pull request each.
 Fill in `.github/PULL_REQUEST_TEMPLATE.md` and reference an issue.
 
 The template asks for observations, not claims: each command with its exit

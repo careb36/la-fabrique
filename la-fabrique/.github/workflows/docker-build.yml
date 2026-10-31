@@ -1,11 +1,11 @@
 name: Docker Build
 
-# Construir cada imagen desde cero detecta lo que ningún test unitario ve: un
-# `COPY` que se olvidó un módulo (el proxy arrancaba a `ModuleNotFoundError:
-# No module named 'upstream'`), una dependencia que solo existe en el venv de
-# desarrollo, un `setuptools` que instaló bien y rompe al importar. Los tests
-# corren sobre el árbol de trabajo; esto corre sobre lo que realmente se
-# despliega.
+# Building each image from scratch catches what no unit test sees: a `COPY`
+# that left out a module (the proxy started straight into
+# `ModuleNotFoundError: No module named 'upstream'`), a dependency that only
+# exists in the development venv, a `setuptools` that installed fine and breaks
+# on import. The tests run on the working tree; this runs on what is actually
+# deployed.
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
     permissions:
       contents: read
     strategy:
-      # Una imagen rota no debe esconder el estado de las otras cuatro.
+      # One broken image must not hide the state of the other four.
       fail-fast: false
       matrix:
         include:
@@ -40,8 +40,8 @@ jobs:
             context: ./backend
             dockerfile: ./backend/Dockerfile
           - name: janitor
-            # El Dockerfile copia `backend/janitor/main.py`, así que el
-            # contexto es la raíz (igual que en docker-compose.yml).
+            # The Dockerfile copies `backend/janitor/main.py`, so the
+            # context is the root (same as in docker-compose.yml).
             context: .
             dockerfile: ./backend/janitor/Dockerfile
           - name: frontend
@@ -63,14 +63,14 @@ jobs:
             --tag "fabrique-${{ matrix.name }}:ci" \
             "${{ matrix.context }}"
 
-      # Construir no prueba que el proceso arranque: el proxy compilaba bien y
-      # moría en el primer import. Estos pasos ejecutan la imagen.
+      # Building does not prove the process starts: the proxy built fine and
+      # died on the first import. These steps run the image.
       - name: Smoke test llm-proxy (serves /health)
         if: matrix.name == 'llm-proxy'
         env:
-          # El runner es compartido y dos corridas de refs distintas no se
-          # serializan por el bloque `concurrency`: nombre y puerto fijos se
-          # pisarían entre ellas.
+          # The runner is shared and two runs from different refs are not
+          # serialized by the `concurrency` block: a fixed name and port would
+          # clash between them.
           CONTAINER: fabrique-llm-proxy-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           docker run -d --name "$CONTAINER" \
@@ -87,16 +87,16 @@ jobs:
           docker logs "$CONTAINER"
           exit 1
 
-      # El backend necesita Postgres para arrancar, así que aquí solo se
-      # comprueba lo que el `COPY` incompleto rompía: que todo import resuelva.
+      # The backend needs Postgres to start, so this only checks what the
+      # incomplete `COPY` broke: that every import resolves.
       - name: Smoke test backend (imports resolve)
         if: matrix.name == 'backend'
         run: |
           docker run --rm --entrypoint python "fabrique-${{ matrix.name }}:ci" \
             -c "import app.main; print('imports OK')"
 
-      # Este Dockerfile copiaba un solo archivo, así que un módulo nuevo al lado
-      # de daemon.py se quedaba fuera de la imagen. Importarlo lo detecta.
+      # This Dockerfile copied a single file, so a new module next to
+      # daemon.py was left out of the image. Importing it catches that.
       - name: Smoke test vscode-daemon (imports resolve)
         if: matrix.name == 'vscode-daemon'
         run: |

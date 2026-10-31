@@ -9,8 +9,8 @@ on:
     - cron: '0 6 * * 1'
 
 
-# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
-# en vez de encolarse.
+# When a new push arrives, the runs for the commit it replaces are cancelled
+# instead of queueing.
 concurrency:
   group: security-scan-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

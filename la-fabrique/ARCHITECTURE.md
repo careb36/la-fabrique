@@ -14,13 +14,13 @@ C4Context
     Person(dev, "Engineer", "Reviews artifacts, runs agent tasks")
     System(fab, "La Fabrique", "AI sprint lifecycle: plan, execute, verify, remember")
     System_Ext(llm, "Model providers", "LLM inference through the proxy")
-    System_Ext(scm, "Source control", "GitHub — issues, pull requests, checks")
+    System_Ext(scm, "Source control", "GitHub — pull requests, commits, diffs")
     System_Ext(obs, "OTLP endpoint", "Jaeger locally, any collector in production")
 
     Rel(po, fab, "Plans sprints, approves", "HTTPS")
     Rel(dev, fab, "Reviews artifacts", "HTTPS")
     Rel(fab, llm, "Infers, embeds", "HTTPS, through llm-proxy")
-    Rel(fab, scm, "Reads issues, opens pull requests", "GitHub App")
+    Rel(fab, scm, "Records pull requests as runs", "Signed webhook, REST API")
     Rel(fab, obs, "Traces", "OTLP/HTTP")
 ```
 
@@ -70,9 +70,10 @@ these invariants constrain most changes.
    digest of the bytes it reads back.
 4. **All model access goes through the proxy.** `backend/app/llm_proxy_client.py`
    to `llm-proxy/app.py`. The backend never calls a provider.
-5. **Routers do not touch the database.** They call `services/`, with
-   `get_session` and `auth_deps.get_current_user` injected. Company data is
-   scoped by `company_id`.
+5. **Company routes check the caller's role.** Routers get the session
+   (`get_session`) and the caller (`auth_policy.current_user_if_required`)
+   injected and call `require_company_role` before reading company data, which
+   is scoped by `company_id`.
 
 ## The synchronous path
 
@@ -85,18 +86,18 @@ sequenceDiagram
     participant F as Frontend
     participant B as Backend
     participant X as LLM proxy
-    participant D as Workspace daemon
 
+    P->>F: Plan a sprint from a goal
+    F->>B: POST /v1/plan_sprint
+    B->>X: chat request with the planning prompt
+    X-->>B: Proposed backlog
+    B-->>F: Backlog to review
     P->>F: Start sprint
     F->>B: POST /v1/start_sprint
-    B->>X: chat request with the role prompt
-    X-->>B: Task plan
-    B-->>F: Sprint and backlog
-    B-->>F: SSE /v1/glassroom/stream
-    B->>D: workspace.generate
-    D-->>B: per-file sha256 read from disk
-    B->>B: verify_agent_run
-    B-->>F: Verdict (verified / refuted / unverifiable)
+    B-->>F: Sprint and backlog (tasks queued, see below)
+    B-->>F: SSE /v1/glassroom/stream (agent events)
+    F->>B: GET /v1/sprints/{id}/board
+    B-->>F: Tasks with their verdicts (verified / refuted / unverifiable)
 ```
 
 ## The asynchronous path
@@ -111,7 +112,7 @@ flowchart LR
     C --> D[task_worker.py<br/>LLM call via proxy]
     D --> E[Daemon<br/>workspace.generate / execute]
     E --> F[Verification<br/>verification.py]
-    F --> G[Review loop<br/>reviewer_agent.py]
+    F --> G[Review loop<br/>task_worker.py, QA]
     G --> H[AgentRun + Verification<br/>+ signed AuditLog]
 ```
 
@@ -129,7 +130,7 @@ enabled with `AGENT_GRAPH_ENABLED`. It is not on the request path.
 | Postgres (SQLModel) | companies, agents, sprints, backlog, `AgentRun`, `Verification`, `AuditLog`, vector memory | schema created additively at startup |
 | pgvector | embeddings for `/v1/memory/*` | same database as the tables |
 | Neo4j | Engram nodes: why a decision was taken | `backend/memory/engram_processor.py` |
-| NATS JetStream | `task.assign`, `workspace.*` | stream data on the `nats-data` volume |
+| NATS JetStream | `task.assign`, `workspace.deliver`, `workspace.delivered` | stream data on the `nats-data` volume |
 
 ### Schema evolution
 
@@ -152,8 +153,9 @@ The claim the project makes is verified in code, not asserted in a slide.
 |---|---|
 | Deterministic checks | `backend/app/services/verification.py` |
 | Risk classification | `backend/app/services/risk.py` |
-| Review loop | `backend/app/services/reviewer_agent.py` |
-| Board state machine | `backend/app/services/board.py` |
+| Review loop | `backend/app/services/task_worker.py` |
+| Reviewer agent (suggestions on other producers' runs) | `backend/app/services/reviewer_agent.py` |
+| Readers of a task's comment thread | `backend/app/services/board.py` |
 | Benchmark of the verifier itself | `backend/eval/verificador/` |
 
 ## Related documents

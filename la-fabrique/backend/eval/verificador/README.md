@@ -62,8 +62,8 @@ not had its claim confirmed.
 
 Add a `Case` to `CASES` with the claim, the evidence, and the verdicts you
 accept. Give it its own `artifact_text` when it claims a path: a claimed path
-missing from the artifact is refuted by `claimed_files_present` before any later
-check runs, so a case that reuses the wrong artifact measures the wrong thing.
+missing from the artifact is refuted by `claimed_files_present` whatever the
+later checks find, so a case that reuses the wrong artifact measures the wrong thing.
 
 `tests/test_verificador_benchmark.py` runs this in the suite, so the reported
 numbers are a gate rather than a screenshot.
