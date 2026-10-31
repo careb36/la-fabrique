@@ -156,9 +156,10 @@ export function button(
     justifyContent: 'center',
     alignItems: 'center',
     flexGrow: opts.grow ? 1 : 0,
-    // Grown buttons in a row split it evenly, whatever their labels.
+    // Grown buttons in a row split it evenly, whatever their labels, and
+    // may shrink with it; the others keep their size.
+    flexShrink: opts.grow ? 1 : 0,
     ...(opts.grow ? { flexBasis: 0, minWidth: 0 } : {}),
-    flexShrink: 0,
     cursor: 'pointer',
     onClick,
   });
