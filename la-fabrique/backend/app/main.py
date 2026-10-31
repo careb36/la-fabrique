@@ -73,6 +73,11 @@ app = FastAPI(
     ],
 )
 
+# Setup security (rate limiting) before CORS: a middleware added later wraps
+# the ones before it, so CORS stays outside the limiter. Its 429 then carries
+# the CORS headers a browser needs to read it, and preflights never count.
+setup_security(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
@@ -82,9 +87,6 @@ app.add_middleware(
     # The support logs download names its file in this header.
     expose_headers=["Content-Disposition"],
 )
-
-# Setup security (rate limiting + security headers)
-setup_security(app)
 
 # Setup Prometheus metrics
 setup_metrics(app)
