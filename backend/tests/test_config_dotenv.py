@@ -3,14 +3,12 @@
 from config import Settings
 
 
-def test_unknown_and_retired_dotenv_keys_are_ignored(tmp_path):
-    # The .env is shared with docker compose, and an install upgraded from a
-    # version with the voice routes still carries their keys.
+def test_unknown_dotenv_keys_are_ignored(tmp_path):
+    # The .env is shared with docker compose: FABRICA_BUILDS_DIR is read with
+    # os.getenv, never a Settings field, and an upgraded install may carry
+    # keys a later version retired.
     env = tmp_path / ".env"
-    env.write_text(
-        "VOICE_API_KEY=old-key\nVOICE_COMPANY_ID=\nFABRICA_BUILDS_DIR=/x\n"
-        "AUTH_RATE_LIMIT=5/minute\n"
-    )
+    env.write_text("FABRICA_BUILDS_DIR=/x\nA_RETIRED_KEY=1\nAUTH_RATE_LIMIT=5/minute\n")
     loaded = Settings(_env_file=env)
     assert loaded.AUTH_RATE_LIMIT == "5/minute"
-    assert not hasattr(loaded, "VOICE_API_KEY")
+    assert not hasattr(loaded, "A_RETIRED_KEY")
