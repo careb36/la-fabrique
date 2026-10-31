@@ -1,8 +1,6 @@
 # Architecture
 
-What runs, what talks to what, and where the boundaries are. For the direction
-the product is going, read [`docs/POSITIONING.md`](docs/POSITIONING.md); this
-page describes the system as it is on `main`.
+What runs, what talks to what, and where the boundaries are.
 
 ## System context
 
@@ -160,8 +158,6 @@ The claim the project makes is verified in code, not asserted in a slide.
 
 ## Related documents
 
-- [`docs/POSITIONING.md`](docs/POSITIONING.md) — what the product is for, and the design rules it implies
 - [`docs/API.md`](docs/API.md) — the endpoints a client needs
 - [`SECURITY.md`](SECURITY.md) — trust boundaries and threat model
-- [`docs/threat_model.md`](docs/threat_model.md) — STRIDE inventory
-- [`AGENTS.md`](AGENTS.md) — how to work in this repository
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to work in this repository

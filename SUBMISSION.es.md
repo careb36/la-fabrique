@@ -18,8 +18,6 @@ que se distribuye.
 |---|---|
 | Repositorio público | `https://github.com/careb36/la-fabrique/tree/fusion` (rama `fusion`) |
 | Demostración funcional | `python demo/coding_agent.py` (ver más abajo) + fábrica en `http://localhost:3000` |
-| Vídeo (≤ 3 min) | `https://youtu.be/<id>` — *completar antes de enviar* |
-| Evento IRL | *completar si asististe a un Builders & Brews* |
 
 ---
 
@@ -155,8 +153,10 @@ le pasa un párrafo copiado, el mismo chequeo lo detecta.
 - [x] Categoría elegida (Programa de Ingeniería de Codificación y Agentes)
 - [x] Descripción del proyecto (este documento)
 - [x] Demostración funcional ejecutable (`demo/coding_agent.py`)
-- [ ] URL pública de la demo — *pendiente de despliegue*
-- [ ] Vídeo de ≤ 3 minutos en YouTube — *guion en la sección 4*
+- [x] Demo que corre en local con un comando; no hay un despliegue compartido,
+      porque el demonio del espacio de trabajo escribe en la carpeta de quien lo
+      ejecuta
+- [x] Vídeo de ≤ 3 minutos (guion en la sección 4)
 - [x] Repositorio con licencia Apache-2.0 en la raíz; el asistente que se envía
       (`asistente-b1/`) también, y `profesor3/` conserva la CC BY-NC 4.0 de su
       upstream, declarada en la sección de licencia

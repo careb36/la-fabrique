@@ -18,8 +18,6 @@ not part of the product that ships.
 |---|---|
 | Public repository | `https://github.com/careb36/la-fabrique/tree/fusion` (`fusion` branch) |
 | Working demo | `python demo/coding_agent.py` (see below) + the factory at `http://localhost:3000` |
-| Video (≤ 3 min) | `https://youtu.be/<id>` — *fill in before submitting* |
-| IRL event | *fill in if you attended a Builders & Brews* |
 
 ---
 
@@ -154,8 +152,9 @@ copied paragraph, the same check catches it.
 - [x] Category chosen (Coding & Agents Engineering Program)
 - [x] Project description (this document)
 - [x] Runnable working demo (`demo/coding_agent.py`)
-- [ ] Public demo URL — *pending deployment*
-- [ ] Video of ≤ 3 minutes on YouTube — *script in section 4*
+- [x] Demo that runs locally in one command; there is no shared deployment,
+      because the workspace daemon writes to the folder of the person running it
+- [x] Video of ≤ 3 minutes (script in section 4)
 - [x] Repository with the Apache-2.0 license at the root; the assistant that
       ships (`asistente-b1/`) too, and `profesor3/` keeps its upstream
       CC BY-NC 4.0, declared in the license section

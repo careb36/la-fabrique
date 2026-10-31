@@ -7,7 +7,6 @@ quickstart; the files below go deeper, each with a single job.
 
 | Document | What it answers |
 | --- | --- |
-| [`POSITIONING.md`](POSITIONING.md) | Why the evidence layer is the product, and the design rules that follow from that position. |
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | How the pieces fit: FastAPI, NATS, the daemon, the proxy, the engram graph. |
 | [`API.md`](API.md) | Every HTTP route, generated and verified against the running app. |
 
@@ -22,7 +21,6 @@ quickstart; the files below go deeper, each with a single job.
 | Document | What it answers |
 | --- | --- |
 | [`../SECURITY.md`](../SECURITY.md) | The security policy and how to report a vulnerability. |
-| [`threat_model.md`](threat_model.md) | What can go wrong, what the system does about it, and what it assumes. |
 
 ## History and contribution
 
