@@ -605,6 +605,9 @@ Apache-2.0, with no code or prose from the reference assistant:
 - Voice chain: **Piper → system voice → console**. A missing model or engine
   falls through and reports the reason; it never leaves the assistant silent
   without saying why.
+- Answers are streamed: B1 speaks each sentence as soon as the model has
+  written it, instead of waiting for the whole answer (`B1_MODEL_STREAM=false`
+  turns it off).
 - Two languages, one program: `b1/i18n.py` holds every user-facing string, the
   conversation switches language with the phrase, and the factory returns its
   `speech` in the same language.

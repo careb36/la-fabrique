@@ -40,7 +40,7 @@ def _coerce(field_name: str, value: str):
         if text in {"auto", "es", "en"}:
             return text
         return "auto"
-    if field_name == "model_thinking":
+    if field_name in {"model_thinking", "model_stream"}:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
@@ -73,6 +73,9 @@ class Settings:
     # Nemotron reasons before answering when the chat template is told to:
     # the thinking tokens are billed against max_tokens, so it needs room.
     model_thinking: bool = False
+    # Speak each sentence as soon as the model has written it, instead of
+    # waiting for the whole answer. Off for a server that streams badly.
+    model_stream: bool = True
     model_temperature: float = 0.6
     model_top_p: float = 0.95
     model_max_tokens: int = 4096
@@ -104,6 +107,7 @@ class Settings:
             "model": "MODEL",
             "model_api_key": "MODEL_API_KEY",
             "model_thinking": "MODEL_THINKING",
+            "model_stream": "MODEL_STREAM",
             "model_temperature": "MODEL_TEMPERATURE",
             "model_top_p": "MODEL_TOP_P",
             "model_max_tokens": "MODEL_MAX_TOKENS",

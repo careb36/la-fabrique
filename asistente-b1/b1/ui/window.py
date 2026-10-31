@@ -64,6 +64,9 @@ class Bridge(QObject):
 
     guide = pyqtSignal(str, str)
     reply = pyqtSignal(str)
+    # A streamed answer: each sentence as it is spoken, then its end.
+    reply_part = pyqtSignal(str)
+    reply_done = pyqtSignal(str)
     state = pyqtSignal(str)
     tool = pyqtSignal(str, str)
     error = pyqtSignal(str)
@@ -74,8 +77,12 @@ class Bridge(QObject):
         kind = event.get("type")
         if kind == "guide":
             self.guide.emit(str(event.get("title")), str(event.get("text")))
+        elif kind == "reply" and event.get("streamed"):
+            self.reply_done.emit(str(event.get("text")))
         elif kind == "reply":
             self.reply.emit(str(event.get("text")))
+        elif kind == "reply_part":
+            self.reply_part.emit(str(event.get("text")))
         elif kind == "state":
             self.state.emit(str(event.get("value")))
         elif kind == "tool":
@@ -459,6 +466,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.compact = compact
+        self._live_reply: str | None = None
         self.language = normalize(settings.language)
         self.setWindowTitle(f"{APP_NAME} {__version__}")
         self.resize(340, 420) if compact else self.resize(980, 660)
@@ -562,6 +570,8 @@ class MainWindow(QMainWindow):
 
         self.bridge.guide.connect(self._on_guide)
         self.bridge.reply.connect(self._on_reply)
+        self.bridge.reply_part.connect(self._on_reply_part)
+        self.bridge.reply_done.connect(lambda _text: self._close_live_reply())
         self.bridge.state.connect(self._on_state)
         self.bridge.tool.connect(self._on_tool)
         self.bridge.error.connect(self._on_error)
@@ -668,6 +678,23 @@ class MainWindow(QMainWindow):
     def _on_reply(self, text: str) -> None:
         self._append(self.settings.assistant_name or "B1", text)
 
+    def _on_reply_part(self, text: str) -> None:
+        """Grow the answer on screen as each sentence is spoken."""
+        who = self.settings.assistant_name or "B1"
+        first = self._live_reply is None
+        self._live_reply = text if first else f"{self._live_reply} {text}"
+        if self.compact:
+            self.statusBar().showMessage(f"{who}: {self._live_reply}"[:200])
+            return
+        self._insert(f"\n{who}: {text}" if first else f" {text}")
+
+    def _close_live_reply(self) -> None:
+        if self._live_reply is None:
+            return
+        self._live_reply = None
+        if not self.compact:
+            self._insert("\n")
+
     def _on_state(self, value: str) -> None:
         self.orb.set_state(value)
         self.state_label.setText(
@@ -719,13 +746,17 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def _append(self, who: str, text: str) -> None:
+        self._close_live_reply()
         if self.compact:
             self.statusBar().showMessage(f"{who}: {text}"[:200])
             return
+        self._insert(f"\n{who}: {text}\n")
+
+    def _insert(self, text: str) -> None:
         cursor = self.log.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.log.setTextCursor(cursor)
-        self.log.insertPlainText(f"\n{who}: {text}\n")
+        self.log.insertPlainText(text)
         self.log.ensureCursorVisible()
 
     # -- teardown -----------------------------------------------------------
