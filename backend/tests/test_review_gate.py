@@ -2,7 +2,7 @@
 The review loop decides ``done`` from evidence and an explicit verdict.
 
 - A delivery whose ``files_written`` check is refuted or unverifiable goes back
-  for rework without asking the QA model (POSITIONING rule 5).
+  for rework without asking the QA model.
 - Only a reply starting ``APPROVED:`` closes a task; any other reply is a
   failed review that is retried, never an approval.
 """

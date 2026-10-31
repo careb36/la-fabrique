@@ -1,6 +1,6 @@
 """Every table carries the company it belongs to, or says why it does not.
 
-POSITIONING.md calls tenant scoping expensive to retrofit. This test keeps it
+Tenant scoping is expensive to retrofit. This test keeps it
 from wearing away: a new table without ``company_id`` fails here until it is
 scoped or listed below with its reason. (From block/buzz, whose migration
 tests require ``community_id`` on every table outside a reasoned list.)

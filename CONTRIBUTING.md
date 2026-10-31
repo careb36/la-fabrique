@@ -6,7 +6,7 @@ first-class observability.
 
 This document is the single source of truth for **proposing, reviewing, and
 merging changes** — for humans and for AI agents. If you are an agent, read
-§2 and `AGENTS.md` before you open a PR.
+§2 before you open a PR.
 
 - Normative: `CONTRIBUTING.md`, `SECURITY.md`, `CODEOWNERS`, accepted ADRs.
 - Precedence: `SECURITY.md` > accepted ADR > `CONTRIBUTING.md` > tooling default.
@@ -24,7 +24,7 @@ merging changes** — for humans and for AI agents. If you are an agent, read
 | Security | Threat model, secrets, dependency & data-handling review | Yes (security-sensitive) |
 | Developers | Implementation, tests, observability | Yes (own area, after review) |
 | QA | Verification against acceptance criteria | No |
-| AI agents | Draft specs, implement, review, verify, merge — per `AGENTS.md` | Yes (any PR, head green only) |
+| AI agents | Draft specs, implement, review, verify, merge | Yes (any PR, head green only) |
 | Human Owner | Ownership, escalation, final call | Yes |
 
 ---
@@ -59,7 +59,7 @@ Apache 2.0, and keep third-party notices intact.
 
 See [`README.md`](README.md) — Installation for the full stack and the
 workspace daemon. Per-project commands (backend tests, frontend gates, lint)
-are in [`CODING_STANDARDS.md`](CODING_STANDARDS.md) and [`AGENTS.md`](AGENTS.md).
+are in [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
 
 ---
 
