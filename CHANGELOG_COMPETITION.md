@@ -49,3 +49,7 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   (`around` in `src/layout.ts`, tested), and a **Recenter** button on the
   Room panel brings them back in front. Checked in IWSDK's Quest 3 emulator,
   where an emulated hand pointing at **Launch** and pinching starts the task.
+- **Never a silent black screen**: the page says it is loading until the
+  room draws its first frame; a browser without WebGL 2 (hardware
+  acceleration off, a blocked GPU) is told so and what to try, and a room
+  that fails to start says why.

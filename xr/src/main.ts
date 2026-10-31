@@ -20,6 +20,28 @@ import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './
 const HEAD_Y = 1.2;
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
+const notice = document.getElementById('notice') as HTMLDivElement;
+
+/** Replace the loading notice with what went wrong and what to try. */
+function fail(title: string, hint: string): never {
+  notice.className = 'error';
+  notice.replaceChildren();
+  const p = document.createElement('p');
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  p.append(strong, document.createElement('br'), hint);
+  notice.append(p);
+  throw new Error(title);
+}
+
+// The scene needs WebGL 2. Without it (hardware acceleration off, a blocked
+// GPU) the page would stay black, so say so instead.
+if (!document.createElement('canvas').getContext('webgl2')) {
+  fail(
+    'This browser cannot draw 3D (WebGL 2 is off).',
+    'Turn on hardware acceleration in the browser settings, or open the link in a recent Chrome or Edge, or on a Meta Quest.',
+  );
+}
 
 const world = await World.create(container, {
   xr: {
@@ -32,7 +54,9 @@ const world = await World.create(container, {
   // a screen. In a headset, tracking puts the camera at the person's eyes.
   render: { fov: 75, camera: { position: [0, HEAD_Y + 0.05, 0.42], lookAt: [0, HEAD_Y - 0.08, -0.45] } },
   features: { grabbing: false, locomotion: false, physics: false },
-});
+}).catch((error: unknown) =>
+  fail('The room did not start.', `${error instanceof Error ? error.message : String(error)}. Try reloading the page.`),
+);
 
 // Live mode follows a real sprint when the build names a backend
 // (VITE_FABRIQUE_API) and the address a sprint (?sprint=); otherwise the demo.
@@ -177,6 +201,7 @@ class RoomSystem extends createSystem() {
     if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
     if (!dirty) return;
     dirty = false;
+    notice.style.display = 'none';
     for (const p of panels) p.update(player.state, player.paused);
   }
 }
