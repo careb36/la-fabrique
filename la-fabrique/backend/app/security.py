@@ -16,6 +16,7 @@ from logging_config import logger
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 # Rate limiter configuration
@@ -112,6 +113,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # /v1/ and are never limited either.
 RATE_LIMIT_EXEMPT = {"/v1/glassroom/stream"}
 _DEFAULT_LIMIT = parse_limit(settings.RATE_LIMIT_DEFAULT)
+_LOCAL_STORAGE = settings.RATE_LIMIT_STORAGE_URI.startswith("memory://")
 
 
 def is_rate_limited(path: str) -> bool:
@@ -131,7 +133,15 @@ class DefaultRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if limiter.enabled and is_rate_limited(request.url.path):
             key = get_remote_address(request)
-            if not limiter._limiter.hit(_DEFAULT_LIMIT, "default", key):
+            if _LOCAL_STORAGE:
+                allowed = limiter._limiter.hit(_DEFAULT_LIMIT, "default", key)
+            else:
+                # A remote store (Redis, Memcached) answers over the network:
+                # wait for it off the event loop, not on it.
+                allowed = await run_in_threadpool(
+                    limiter._limiter.hit, _DEFAULT_LIMIT, "default", key
+                )
+            if not allowed:
                 return JSONResponse(
                     {"error": f"Rate limit exceeded: {settings.RATE_LIMIT_DEFAULT}"},
                     status_code=429,
