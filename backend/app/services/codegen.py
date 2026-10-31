@@ -9,8 +9,8 @@ file list, and the only thing trusted afterwards is that JSON:
 * everything is written inside one directory per project,
 * the directory is served read-only by ``/v1/voice/build/<slug>/…``.
 
-The protocol is the same one ``demo/coding_agent.py`` speaks, so a model that
-behaves for the demo behaves here.
+The protocol is the same one the coding-agent demo (``demo/coding_agent.py`` on
+the fusion branch) speaks, so a model that behaves for the demo behaves here.
 """
 
 from __future__ import annotations

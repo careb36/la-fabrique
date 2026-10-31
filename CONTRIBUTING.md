@@ -68,7 +68,8 @@ are in [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
 | Branch | What it is | Who merges into it |
 |--------|-----------|--------------------|
 | `main` | The web product, and the default branch | An agent or a person, with the head green (rule 5) |
-| `main_meta`, `develop_meta` | The Glassroom VR entry for the Meta VR Start Developer Competition (`vr/`) | As for `main` |
+| `fusion` | The NVIDIA × Nebius hackathon submission | As for `main` |
+| `meta-vr` | La Fabrique XR, the Meta VR Start Developer Competition entry (`xr/`); GitHub Pages publishes from it | As for `main` |
 | `archive/*` | Old lines of work kept for reference; nothing merges into them | Nobody |
 
 Work is trunk-based: one branch cut from `main`, one pull request into `main`,
