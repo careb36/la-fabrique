@@ -18,6 +18,7 @@ from .config import Settings
 from .i18n import normalize, t
 from .llm import ChatModel, ModelError, Reply
 from .prompts import system_prompt
+from .sentences import SentenceBuffer
 from .speech import Silence
 from .tools import ToolRegistry
 
@@ -138,9 +139,13 @@ class Assistant:
 
         self._emit("state", value="thinking")
         self._history.append({"role": "user", "content": phrase})
-        answer = await self._converse()
+        voice = _SpokenStream(self) if self._streams() else None
+        answer, spoken = await self._converse(voice)
         self._history.append({"role": "assistant", "content": answer})
-        await self.say(answer)
+        if voice is not None:
+            await voice.finish(answer if spoken else "")
+        if not spoken:
+            await self.say(answer)
         return answer
 
     async def _settle_pending(self, phrase: str) -> str | None:
@@ -189,21 +194,54 @@ class Assistant:
             pass
         self._emit("language", value=wanted)
 
-    async def _converse(self) -> str:
+    def _streams(self) -> bool:
+        """Speak while the model writes, when it can and the settings allow."""
+        return bool(getattr(self.settings, "model_stream", True)) and callable(
+            getattr(self.model, "stream", None)
+        )
+
+    async def _ask(self, messages, tools, voice: "_SpokenStream | None") -> Reply:
+        """One model turn; with a voice, each finished sentence is spoken at once."""
+        if voice is None:
+            return await asyncio.to_thread(self.model.complete, messages, tools)
+        buffer = SentenceBuffer()
+        loop = asyncio.get_running_loop()
+
+        def on_text(piece: str) -> None:
+            # Runs on the model's thread; the voice lives on the event loop.
+            for sentence in buffer.feed(piece):
+                loop.call_soon_threadsafe(voice.put, sentence)
+
+        voice.new_round()
+        try:
+            reply = await asyncio.to_thread(self.model.stream, messages, tools, on_text)
+        finally:
+            # Sentences queued from the thread run before this point; the rest
+            # of the text follows them.
+            await asyncio.sleep(0)
+            for sentence in buffer.flush():
+                voice.put(sentence)
+        return reply
+
+    async def _converse(self, voice: "_SpokenStream | None" = None) -> tuple[str, bool]:
+        """The answer to the turn, and whether the voice already said it."""
         if self.model is None:
-            return t(self.language, "assistant.no_key")
+            return t(self.language, "assistant.no_key"), False
 
         messages = self._messages()
         tools = self.registry.declarations()
         for round_index in range(MAX_TOOL_ROUNDS):
             try:
-                reply = await asyncio.to_thread(self.model.complete, messages, tools)
+                reply = await self._ask(messages, tools, voice)
             except ModelError as exc:
                 self._emit("error", message=str(exc))
-                return self._model_failure(str(exc))
+                return self._model_failure(str(exc)), False
 
             if not reply.wants_tools:
-                return self._clean(reply.text) or self._empty_reply()
+                answer = self._clean(reply.text)
+                if answer and voice is not None and voice.said_this_round():
+                    return answer, True
+                return answer or self._empty_reply(), False
 
             messages.append(_assistant_message(reply))
             for call in reply.tool_calls:
@@ -216,7 +254,7 @@ class Assistant:
             if round_index == MAX_TOOL_ROUNDS - 1:
                 break
 
-        return t(self.language, "assistant.loop_limit")
+        return t(self.language, "assistant.loop_limit"), False
 
     # -- helpers ------------------------------------------------------------
     def _messages(self) -> list[dict[str, Any]]:
@@ -267,6 +305,67 @@ class Assistant:
     def reset(self) -> None:
         self._history.clear()
         self._emit("state", value="idle")
+
+
+class _SpokenStream:
+    """Says the sentences of a streamed answer in order, as they come.
+
+    The speaker runs in its own task, so the model keeps writing while the
+    first sentence is being said. The interface sees every sentence once
+    (``reply_part``) and the whole answer at the end (``reply`` with
+    ``streamed``), so it can grow the answer instead of repeating it.
+    """
+
+    def __init__(self, assistant: Assistant) -> None:
+        self.assistant = assistant
+        self.queue: asyncio.Queue[str | None] = asyncio.Queue()
+        self.task: asyncio.Task | None = None
+        self.parts: list[str] = []
+        self._round_start = 0
+
+    def new_round(self) -> None:
+        self._round_start = len(self.parts)
+
+    def said_this_round(self) -> bool:
+        return len(self.parts) > self._round_start
+
+    def put(self, sentence: str) -> None:
+        clean = self.assistant._clean(sentence)
+        if not clean:
+            return
+        assistant = self.assistant
+        if self.task is None:
+            try:
+                assistant.speaker.language = assistant.language
+            except Exception:  # noqa: BLE001 - a custom speaker may be read-only
+                pass
+            assistant._emit("state", value="speaking")
+            self.task = asyncio.get_running_loop().create_task(self._speak())
+        self.parts.append(clean)
+        assistant._emit("reply_part", text=clean)
+        self.queue.put_nowait(clean)
+
+    async def _speak(self) -> None:
+        while True:
+            sentence = await self.queue.get()
+            if sentence is None:
+                return
+            try:
+                await asyncio.to_thread(self.assistant.speaker.say, sentence)
+            except Exception as exc:  # noqa: BLE001 - one bad sentence, not the turn
+                self.assistant._emit("error", message=str(exc))
+
+    async def finish(self, answer: str) -> None:
+        """Wait until everything queued has been said."""
+        if self.task is None:
+            return
+        self.queue.put_nowait(None)
+        try:
+            await self.task
+        finally:
+            if answer:
+                self.assistant._emit("reply", text=answer, streamed=True)
+            self.assistant._emit("state", value="idle")
 
 
 def _assistant_message(reply: Reply) -> dict[str, Any]:

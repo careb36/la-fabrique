@@ -101,6 +101,7 @@ ganan sobre el archivo):
 | `B1_MODEL_API_KEY` | clave del proveedor (`nvapi-…` para el gateway de NVIDIA) |
 | `B1_MODEL` | id del modelo (por defecto `nvidia/nemotron-3-ultra-550b-a55b`) |
 | `B1_MODEL_THINKING` | `true` pide el razonamiento del Nemotron (`chat_template_kwargs`) |
+| `B1_MODEL_STREAM` | `true` (por defecto) dice cada oración apenas el modelo la escribió; `false` espera la respuesta entera |
 | `B1_MODEL_MAX_TOKENS` | techo de la respuesta; el razonamiento se paga de aquí |
 | `B1_MODEL_TOP_P`, `B1_MODEL_TEMPERATURE`, `B1_MODEL_TIMEOUT` | muestreo y espera por turno |
 | `B1_FACTORY_URL` | dónde está la fábrica (por defecto `http://127.0.0.1:8000`) |
@@ -151,6 +152,13 @@ interfaz, es el mismo programa hablando en uno u otro idioma.
   el idioma de la frase; y si no hay ninguna, el texto por consola. Nunca se
   queda callado sin decir por qué: si el motor existe pero no puede sonar, la
   frase sale escrita y, una sola vez, el motivo.
+* **Empieza a hablar antes de que el modelo termine.** La respuesta se pide en
+  streaming (`stream: true`, server-sent events). Cada oración se dice apenas
+  está completa, mientras el modelo sigue escribiendo, y la ventana va sumando
+  la respuesta oración por oración. Lo que el modelo dice antes de llamar a una
+  herramienta ("dejame mirar la fábrica") se dice mientras la herramienta
+  corre. El razonamiento se junta y nunca se dice. Un servidor que ignora
+  `stream` y contesta de una vez sigue andando; `B1_MODEL_STREAM=false` lo apaga.
 * **Piper no trae voces.** `b1 --voices` baja una vez las dos voces
   configuradas a `~/.asistente-b1/voces`; después se puede hablar sin
   internet. Sin ese paso, la voz del sistema cubre el idioma igual.
@@ -184,7 +192,8 @@ romperse: cada pieza opcional se detecta y se informa.
 b1/
   app.py          CLI: ventana, orbe, consola, diagnóstico
   assistant.py    bucle de turno: historial, herramientas, voz
-  llm.py          cliente /chat/completions con tool calling (sólo stdlib)
+  llm.py          cliente /chat/completions con tool calling y streaming (sólo stdlib)
+  sentences.py    corta una respuesta en streaming en oraciones para la voz
   tools.py        declaración + validación + despacho de herramientas
   fabrica.py      cliente /v1/voice/*, guía y las tres herramientas
   prompts.py      prompt de sistema armado en runtime

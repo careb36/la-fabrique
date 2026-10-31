@@ -101,6 +101,7 @@ which win over the file):
 | `B1_MODEL_API_KEY` | the provider's key (`nvapi-…` for NVIDIA's gateway) |
 | `B1_MODEL` | model id (default `nvidia/nemotron-3-ultra-550b-a55b`) |
 | `B1_MODEL_THINKING` | `true` asks Nemotron for its reasoning (`chat_template_kwargs`) |
+| `B1_MODEL_STREAM` | `true` (default) speaks each sentence as soon as the model has written it; `false` waits for the whole answer |
 | `B1_MODEL_MAX_TOKENS` | cap on the answer; the reasoning is paid out of it |
 | `B1_MODEL_TOP_P`, `B1_MODEL_TEMPERATURE`, `B1_MODEL_TIMEOUT` | sampling and per-turn wait |
 | `B1_FACTORY_URL` | where the factory is (default `http://127.0.0.1:8000`) |
@@ -152,6 +153,13 @@ interface, it is the same program speaking one language or the other.
   chosen by the sentence's language; and if there is none, the text on the
   console. It never goes silent without saying why: if the engine exists but
   cannot play, the sentence is printed and, once, the reason.
+* **It starts speaking before the model has finished.** The answer is asked
+  for as a stream (`stream: true`, server-sent events). Each sentence is spoken
+  as soon as it is complete, while the model goes on writing, and the window
+  grows the answer sentence by sentence. Words the model says before calling a
+  tool ("let me check the factory") are spoken while the tool runs. The
+  reasoning is gathered and never spoken. A server that ignores `stream` and
+  answers in one piece still works; `B1_MODEL_STREAM=false` turns it off.
 * **Piper ships without voices.** `b1 --voices` downloads the two configured
   voices once to `~/.asistente-b1/voces`; after that it can speak offline.
   Without that step, the system voice still covers the language.
@@ -185,7 +193,8 @@ of breaking: each optional piece is detected and reported.
 b1/
   app.py          CLI: window, orb, console, diagnostics
   assistant.py    turn loop: history, tools, voice
-  llm.py          /chat/completions client with tool calling (stdlib only)
+  llm.py          /chat/completions client with tool calling and streaming (stdlib only)
+  sentences.py    cuts a streamed answer into sentences for the speaker
   tools.py        tool declaration + validation + dispatch
   fabrica.py      /v1/voice/* client, the guide and the three tools
   prompts.py      system prompt assembled at runtime

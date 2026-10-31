@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 from . import net
 from .i18n import normalize, t
@@ -91,6 +92,32 @@ class OpenAICompatModel:
         body = self._request(self._payload(messages, tools))
         return self._parse(body)
 
+    def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        on_text: Callable[[str], None],
+    ) -> Reply:
+        """Ask for the answer as server-sent events, handing each piece of
+        text to ``on_text`` as it arrives, and return the whole turn.
+
+        The words can be spoken while the model is still writing; the
+        reasoning and the tool calls are only gathered. A server that ignores
+        ``stream`` and answers in one JSON body still works.
+        """
+        payload = self._payload(messages, tools)
+        payload["stream"] = True
+        url, request = self._build(payload, accept="text/event-stream")
+        with self._errors(url):
+            with net.urlopen(request, timeout=self.timeout) as response:
+                kind = (response.headers.get("Content-Type") or "").lower()
+                if "text/event-stream" not in kind:
+                    reply = self._parse(self._decode(response.read()))
+                    if reply.text:
+                        on_text(reply.text)
+                    return reply
+                return self._read_events(response, on_text)
+
     def ping(self) -> tuple[bool, str]:
         """Cheap credential check used by the settings screen."""
         try:
@@ -120,17 +147,27 @@ class OpenAICompatModel:
             payload["tool_choice"] = "auto"
         return payload
 
-    def _request(self, payload: dict) -> dict:
+    def _build(self, payload: dict, *, accept: str = "application/json"):
         url = f"{self.base_url}/chat/completions"
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        headers = {"Content-Type": "application/json", "Accept": accept}
         if self.api_key:
             # A local proxy or Ollama rejects an empty bearer; send none instead.
             headers["Authorization"] = f"Bearer {self.api_key}"
-        request = urllib.request.Request(url, data=data, method="POST", headers=headers)
-        try:
+        return url, urllib.request.Request(url, data=data, method="POST", headers=headers)
+
+    def _request(self, payload: dict) -> dict:
+        url, request = self._build(payload)
+        with self._errors(url):
             with net.urlopen(request, timeout=self.timeout) as response:
                 raw = response.read()
+        return self._decode(raw)
+
+    @contextmanager
+    def _errors(self, url: str):
+        """Turn transport failures into a ``ModelError`` the person can read."""
+        try:
+            yield
         except urllib.error.HTTPError as exc:
             detail = _short_body(exc)
             raise ModelError(
@@ -144,10 +181,71 @@ class OpenAICompatModel:
             raise ModelError(
                 t(self.language, "model.timeout", url=url, seconds=self.timeout)
             ) from None
+        except OSError as exc:
+            # A connection cut while the answer was still arriving.
+            raise ModelError(
+                t(self.language, "model.unreachable", url=url, reason=exc)
+            ) from None
+
+    def _decode(self, raw: bytes) -> dict:
         try:
             return json.loads(raw.decode("utf-8"))
         except ValueError:
             raise ModelError(t(self.language, "model.not_json")) from None
+
+    def _read_events(self, lines: Iterable[bytes], on_text: Callable[[str], None]) -> Reply:
+        """Gather one streamed turn from ``data:`` lines until ``[DONE]``."""
+        text: list[str] = []
+        reasoning: list[str] = []
+        calls: dict[int, dict[str, str]] = {}
+        chunks = 0
+        for raw in lines:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue  # comments, event names and the blank separators
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            if chunk.get("error"):
+                raise ModelError(
+                    t(self.language, "model.no_choices", body=str(chunk["error"])[:200])
+                )
+            choices = chunk.get("choices") or []
+            if not choices or not isinstance(choices[0], dict):
+                continue
+            chunks += 1
+            delta = choices[0].get("delta") or choices[0].get("message") or {}
+            piece = delta.get("content")
+            if piece:
+                text.append(piece)
+                on_text(piece)
+            thought = delta.get("reasoning_content") or delta.get("reasoning")
+            if isinstance(thought, str):
+                reasoning.append(thought)
+            for position, call in enumerate(delta.get("tool_calls") or []):
+                _merge_call(calls, position, call)
+        if not chunks:
+            raise ModelError(t(self.language, "model.no_choices", body="(empty stream)"))
+        tool_calls = [
+            ToolCall(
+                id=call["id"] or f"call_{index}",
+                name=call["name"].strip(),
+                arguments=call["arguments"] or "{}",
+            )
+            for index, call in sorted(calls.items())
+            if call["name"].strip()
+        ]
+        return Reply(
+            text="".join(text).strip(),
+            tool_calls=tool_calls,
+            reasoning="".join(reasoning).strip(),
+        )
 
     def _parse(self, body: dict) -> Reply:
         try:
@@ -188,6 +286,32 @@ def model_from_settings(settings) -> OpenAICompatModel:
         thinking=bool(settings.model_thinking),
         language=getattr(settings, "language", "es"),
     )
+
+
+def _merge_call(calls: dict[int, dict[str, str]], position: int, call: Any) -> None:
+    """Add one streamed fragment of a tool call to the call it belongs to.
+
+    The id and the name come once, in the first fragment; the arguments come
+    in pieces that only make JSON together. A server that repeats the name in
+    every fragment is not taken to be spelling a longer one.
+    """
+    if not isinstance(call, dict):
+        return
+    index = call.get("index")
+    if not isinstance(index, int):
+        index = position
+    entry = calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+    if call.get("id"):
+        entry["id"] = str(call["id"])
+    function = call.get("function") or {}
+    name = function.get("name") or ""
+    if name and name != entry["name"]:
+        entry["name"] += name
+    arguments = function.get("arguments")
+    if isinstance(arguments, dict):
+        entry["arguments"] = json.dumps(arguments, ensure_ascii=False)
+    elif arguments:
+        entry["arguments"] += str(arguments)
 
 
 def _short_body(error: urllib.error.HTTPError) -> str:
