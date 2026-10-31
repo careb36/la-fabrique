@@ -143,12 +143,12 @@ export function text(value: string, size = 1.8, color: string = COLORS.text, bol
 export function button(
   label: string,
   onClick: () => void,
-  opts: { primary?: boolean; color?: string; grow?: boolean } = {},
+  opts: { primary?: boolean; color?: string; grow?: boolean; compact?: boolean } = {},
 ): { root: UIKit.Container; label: UIKit.Text } {
   const bg = opts.color ?? (opts.primary ? COLORS.accent : COLORS.button);
   const root = new UIKit.Container({
     minHeight: 4.5,
-    paddingX: 2,
+    paddingX: opts.compact ? 0.8 : 2,
     borderRadius: 1.2,
     backgroundColor: bg,
     hover: { backgroundColor: opts.primary ? COLORS.accentHover : COLORS.buttonHover },
@@ -156,11 +156,16 @@ export function button(
     justifyContent: 'center',
     alignItems: 'center',
     flexGrow: opts.grow ? 1 : 0,
-    flexShrink: 0,
+    // Grown buttons in a row split it evenly, whatever their labels, and
+    // may shrink with it; the others keep their size.
+    flexShrink: opts.grow ? 1 : 0,
+    ...(opts.grow ? { flexBasis: 0, minWidth: 0 } : {}),
     cursor: 'pointer',
     onClick,
   });
-  const labelText = text(label, 1.9, opts.primary ? COLORS.panel : COLORS.text, true);
+  // Compact buttons share a row; their label is smaller so the longest one
+  // ("Next sprint", "Resume") stays inside its half.
+  const labelText = text(label, opts.compact ? 1.5 : 1.9, opts.primary ? COLORS.panel : COLORS.text, true);
   root.add(labelText);
   painted.buttons.push({ root, color: opts.color ? undefined : nameOf(bg) });
   return { root, label: labelText };

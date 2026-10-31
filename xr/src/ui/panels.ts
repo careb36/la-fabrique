@@ -225,18 +225,18 @@ export function controlPanel(actions: {
   /** What voice is doing, in a few words, or '' when it is off. */
   voice: () => string;
 }): Panel {
-  const root = panel(0.24);
+  const root = panel(0.26);
   root.add(text('Room', 2.4, COLORS.text, true));
   const buttons = row(1);
-  const pause = button('Pause', actions.onPause, { grow: true });
+  const pause = button('Pause', actions.onPause, { grow: true, compact: true });
   buttons.add(pause.root);
-  const restart = button('Restart', actions.onRestart, { grow: true });
+  const restart = button('Restart', actions.onRestart, { grow: true, compact: true });
   buttons.add(restart.root);
   root.add(buttons);
   // Seated or standing, the room comes back in front of the head.
   const placeRow = row(1);
-  placeRow.add(button('Recenter', actions.onRecenter, { grow: true }).root);
-  const sound = button('Mute', actions.onSound, { grow: true });
+  placeRow.add(button('Recenter', actions.onRecenter, { grow: true, compact: true }).root);
+  const sound = button('Mute', actions.onSound, { grow: true, compact: true });
   placeRow.add(sound.root);
   root.add(placeRow);
   // Other ways in: high contrast, and voice where the browser can listen.
