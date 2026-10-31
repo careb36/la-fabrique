@@ -53,3 +53,19 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   room draws its first frame; a browser without WebGL 2 (hardware
   acceleration off, a blocked GPU) is told so and what to try, and a room
   that fails to start says why.
+
+## 2026-11-01
+
+- **The factory lives on your desk and your wall** (`src/room.ts`,
+  `src/surfaces.ts`). With plane and mesh detection, the room reads the
+  person's real space: the panels a hand uses stand on the desk in front of
+  them, leaning back toward the eyes, and the agents hang on the wall ahead
+  as the team's board, larger for the distance. A desk counts when it is at
+  desk height below the eyes and its near edge is within reach; a wall when
+  it is ahead and within reading range (doors, windows and wall art never
+  do). Whatever the room lacks falls back to the floating arc, so it works
+  in any room. Recenter lays it out again. 37 tests.
+- **A real-looking room in the emulator**: the published page's Quest 3
+  emulator runs in a synthetic office, whose desk and walls are detected
+  like a real room's, so the passthrough view and the video show a room
+  rather than black.
