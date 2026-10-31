@@ -19,10 +19,14 @@ no backend: the page runs a self-contained demo of recorded agent runs.
 2. Put the controllers down. Hand tracking takes over; every action is a
    **poke** (touch a button with a fingertip) or a **pinch** (point and
    pinch thumb and index finger).
-3. On the **Tasks** panel (left), launch **Password reset endpoint**.
+3. On the **Tasks** panel (left), launch **Password reset endpoint**. For
+   the first moves a guide (an orange arrow and one line of text) points at
+   where each one is made, and is gone once you have decided once.
 4. Watch the agents on the panels above: the Architect writes a brief, the
    Developer delivers, the Verifier checks what was really written to disk
    and runs the tests, QA reviews. About thirty seconds.
+   Look at an agent for half a second and its panel opens: larger, with what
+   that agent is for. Look away and it closes.
 5. The **Result** panel (ahead) shows the diff, the Verifier's checks and the
    risk tier: authentication is high risk, so the delivery waits for you.
    The delivery itself, a glowing block above the panel, is yours to take:
@@ -101,6 +105,9 @@ The Room panel says where it went.
   or from across the desk) and dropped on a ring 17 cm to either side of it
   (`src/decide.ts`). Released anywhere else it glides back, so a slip never
   decides. The panel's buttons stay as the alternative.
+- Looking is enough to ask: the head's direction (not eye tracking, so any
+  headset) picks the agent panel within 9 degrees, and half a second of
+  dwell opens it (`src/gaze.ts`); a glance opens nothing.
 - No locomotion, no moving the panels by hand, nothing behind you.
 - The room's clock moves only while it is not paused, so pause and resume
   are exact; restart returns to the initial state.
