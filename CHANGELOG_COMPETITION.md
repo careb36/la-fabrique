@@ -86,3 +86,14 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   a slip never decides. The panel's buttons remain as the alternative.
   Checked in the emulator with an emulated hand: pinch, carry, release on
   each ring. 44 tests.
+- **Look at an agent to ask what it does** (`src/gaze.ts`). Half a second
+  of the head resting on an agent's panel opens it: it grows and shows that
+  agent's duty (the Verifier "observes what really happened: hashes the
+  files on disk and runs the tests"). Head direction, not eye tracking, so
+  it works on any headset; a glance opens nothing.
+- **A guide for the first moves** (`src/guide.ts`, `src/ui/guide.ts`). An
+  orange arrow, a ring and one line point at where each first move is
+  made: Launch, then an agent to look at while they work, then the
+  delivery to carry to a ring. It disappears once the person has decided
+  once. Checked in the emulator, seated: each step shows in turn, and
+  turning the head to the Verifier opens its panel. 54 tests.

@@ -13,6 +13,8 @@ import {
 import { Object3D, Vector3 } from 'three';
 
 import { dropOn } from './decide';
+import { Dwell, gazed } from './gaze';
+import { GUIDE_TEXT, guideStep } from './guide';
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
 import { layoutRoom, type Placed, type RoomLayout, type Surface } from './room';
@@ -20,6 +22,7 @@ import { SurfaceSystem } from './surfaces';
 import { connectLive, liveConfig } from './live';
 import { awaitingDecision, ROLES, tokenAt } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
+import { guide } from './ui/guide';
 import { dropZone, presence, token } from './ui/presence';
 
 /** Seated eye height above the floor. */
@@ -99,6 +102,8 @@ interface Hosted {
   root: Panel['root'];
   /** The edge the panel is held by, from the last layout. */
   anchor?: 'top' | 'bottom';
+  /** Its size from the last layout, before any opening by a look. */
+  scale: number;
 }
 const handPanels: Hosted[] = [];
 const agentPanels: Hosted[] = [];
@@ -108,7 +113,7 @@ function place(p: Panel, group: Hosted[]): void {
   // pinch while pointing at it (ray). Either works with controllers too.
   const entity = world.createTransformEntity().addComponent(RayInteractable).addComponent(PokeInteractable);
   entity.object3D!.add(new UIKitDocument(p.root));
-  group.push({ object: entity.object3D!, root: p.root });
+  group.push({ object: entity.object3D!, root: p.root, scale: 1 });
   panels.push(p);
 }
 
@@ -124,6 +129,7 @@ function apply(group: Hosted[], spots: Placed[]): void {
     object.scale.setScalar(at.scale);
     root.setProperties({ anchorY: at.anchor });
     group[i].anchor = at.anchor;
+    group[i].scale = at.scale;
   });
 }
 
@@ -151,16 +157,14 @@ function headPose(): { head: Vector3; yaw: number } {
 
 // Tasks on the left, the result ahead, the room's controls on the right:
 // on the desk when there is one, otherwise on a floating arc.
-place(
-  taskPanel(
-    tasks,
-    (id) => {
-      if (player.launch(id)) touch();
-    },
-    live ? 'Watching the factory: tasks start from the web app.' : undefined,
-  ),
-  handPanels,
+const tasksPanel = taskPanel(
+  tasks,
+  (id) => {
+    if (player.launch(id)) touch();
+  },
+  live ? 'Watching the factory: tasks start from the web app.' : undefined,
 );
+place(tasksPanel, handPanels);
 place(
   resultPanel((id, approved) => decide(id, approved), live ? 'Live mode watches: approve or send back in the web app.' : undefined),
   handPanels,
@@ -187,7 +191,8 @@ place(
   handPanels,
 );
 // The agents only show: on the wall ahead as the team's board, or above.
-for (const role of ROLES) place(agentPanel({ ...player.state.agents[role] }), agentPanels);
+const agentViews = ROLES.map((role) => agentPanel({ ...player.state.agents[role] }));
+for (const view of agentViews) place(view, agentPanels);
 
 // Each agent's light sits just above its panel, wherever the panel goes;
 // the task travels between them and down to the result.
@@ -216,6 +221,15 @@ const zones = {
 };
 handPanels[1].object.add(zones.approve.group, zones.reject.group);
 let held = false;
+
+// Looking at an agent for a moment opens its panel: larger, with its duty.
+const dwell = new Dwell();
+/** The person has opened an agent by looking at it at least once. */
+let looked = false;
+// The guide for the first moves; demo only, since live mode starts and
+// decides tasks in the web app.
+const firstMoves = guide();
+world.scene.add(firstMoves.group);
 
 function decide(id: string, approved: boolean): void {
   if (player.decide(id, approved, approved ? '' : DECISION.decline)) touch();
@@ -271,6 +285,47 @@ const surfaces = world.registerSystem(SurfaceSystem).getSystem(SurfaceSystem)!;
 class RoomSystem extends createSystem() {
   private waited = 0;
 
+  /** Which agent the head rests on; that panel opens. */
+  look(delta: number): void {
+    const before = dwell.open;
+    let target = -1;
+    if (world.visibilityState.value !== VisibilityState.NonImmersive) {
+      const head = new Vector3();
+      const forward = new Vector3();
+      world.camera.getWorldPosition(head);
+      world.camera.getWorldDirection(forward);
+      // The middle of each panel: it stands on its bottom edge.
+      const middles = agentPanels.map((h) => h.object.localToWorld(new Vector3(0, 0.08, 0)));
+      target = gazed(head, forward, middles);
+    }
+    const open = dwell.update(target, delta);
+    if (open !== before) {
+      agentViews.forEach((v, i) => v.focus(i === open));
+      if (open >= 0) looked = true;
+    }
+    // Opened panels grow a little, smoothly.
+    const k = 1 - Math.exp(-delta * 10);
+    agentPanels.forEach((h, i) => {
+      const want = h.scale * (i === open ? 1.2 : 1);
+      h.object.scale.setScalar(h.object.scale.x + (want - h.object.scale.x) * k);
+    });
+  }
+
+  /** The guide points at the next first move, until the person has decided once. */
+  guide(time: number): void {
+    const step = live ? 'none' : guideStep(player.state, looked);
+    let at: Vector3 | undefined;
+    if (step === 'launch') {
+      at = tasksPanel.firstLaunch(player.state)?.getWorldPosition(new Vector3());
+    } else if (step === 'look') {
+      const i = ROLES.indexOf(player.state.active ?? 'Architect');
+      at = presences[i].p.group.localToWorld(new Vector3(0, 0.03, 0));
+    } else if (step === 'decide' && !held) {
+      at = task.group.getWorldPosition(new Vector3());
+    }
+    firstMoves.update(at, step === 'none' ? '' : GUIDE_TEXT[step], world.camera.getWorldPosition(new Vector3()), time);
+  }
+
   /** The drop zones and the delivery in hand: release over a zone decides. */
   hands(time: number): void {
     // Only a delivery that waits for a person can be decided, and in live
@@ -320,6 +375,8 @@ class RoomSystem extends createSystem() {
       x.p.update(now, time, x.changedAt);
     }
     this.hands(time);
+    this.look(delta);
+    this.guide(time);
     task.update(taskTarget(), player.state.seals, delta, time, held);
     if (!dirty) return;
     dirty = false;
@@ -359,5 +416,7 @@ if (new URLSearchParams(location.search).has('e2e')) {
       reject: zones.reject.group.getWorldPosition(new Vector3()),
     }),
     held: () => held,
+    open: () => dwell.open,
+    guide: () => (live ? 'none' : guideStep(player.state, looked)),
   };
 }

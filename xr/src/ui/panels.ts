@@ -4,6 +4,7 @@
  */
 
 import { UIKit } from '@iwsdk/core';
+import type { Object3D } from 'three';
 
 import type { DemoTask } from '../demo/scenario';
 import { AGENT_LINES, awaitingDecision, LOG_LINES, type AgentState, type AgentView, type RoomState, type TaskState } from '../model';
@@ -30,8 +31,22 @@ export interface Panel {
   update(state: RoomState, paused: boolean): void;
 }
 
+/** What each agent is for, shown when the person looks at it. */
+export const ROLE_DUTY: Record<AgentView['role'], string> = {
+  Architect: 'Writes the brief before the code: what to build, and the traps to avoid.',
+  Developer: 'Writes the code. What it says it wrote is a claim, never evidence.',
+  QA: 'Reviews the delivery against the brief. Only an explicit APPROVED closes a task.',
+  Verifier: 'Observes what really happened: hashes the files on disk and runs the tests.',
+  ScrumMaster: 'Sends rework back, escalates what is stuck, and learns from each sprint.',
+};
+
+/** An agent's panel can be opened by looking at it. */
+export interface AgentPanel extends Panel {
+  focus(on: boolean): void;
+}
+
 /** One agent: its name, role, state and latest lines. Read-only. */
-export function agentPanel(view: AgentView): Panel {
+export function agentPanel(view: AgentView): AgentPanel {
   const root = panel(0.2, undefined, 'bottom');
   root.setProperties({ padding: 1.5, gap: 0.6 });
   const header = row(0.8);
@@ -43,8 +58,16 @@ export function agentPanel(view: AgentView): Panel {
   root.add(stateText);
   const lines = Array.from({ length: AGENT_LINES }, () => text('', 1.2, COLORS.muted));
   for (const l of lines) root.add(l);
+  // Its duty, under a rule: shown only while the person looks at it.
+  const duty = text(ROLE_DUTY[view.role], 1.25, COLORS.text);
+  duty.setProperties({ display: 'none', borderTopWidth: 0.15, borderColor: COLORS.border, paddingTop: 0.6 });
+  root.add(duty);
   return {
     root,
+    focus(on) {
+      duty.setProperties({ display: on ? 'flex' : 'none' });
+      root.setProperties({ borderColor: on ? COLORS.accent : COLORS.border, borderWidth: on ? 0.35 : 0.2 });
+    },
     update(state) {
       const agent = state.agents[view.role];
       dot.setProperties({ backgroundColor: AGENT_COLOR[agent.state] });
@@ -56,12 +79,17 @@ export function agentPanel(view: AgentView): Panel {
   };
 }
 
+/** The tasks panel can say where its first Launch button is, for the guide. */
+export interface TaskPanel extends Panel {
+  firstLaunch(state: RoomState): Object3D | undefined;
+}
+
 /** The tasks a person can launch with a pinch. */
 export function taskPanel(
   tasks: DemoTask[],
   onLaunch: (id: string) => void,
   hint = 'Pinch or poke one to hand it to the agents.',
-): Panel {
+): TaskPanel {
   const root = panel(0.3);
   root.add(text('Tasks', 2.4, COLORS.text, true));
   root.add(text(hint, 1.3, COLORS.muted));
@@ -88,6 +116,9 @@ export function taskPanel(
   });
   return {
     root,
+    firstLaunch(state) {
+      return rows.find((r) => state.tasks[r.task.id].state === 'queued')?.launch.root;
+    },
     update(state) {
       for (const r of rows) {
         const t = state.tasks[r.task.id];
