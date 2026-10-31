@@ -26,3 +26,12 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   a rejection plays the rework and asks again. The player's clock moves only
   while it is not paused, so pause and resume are exact, and restart is the
   initial state; the whole demo runs in under ten minutes (tested).
+- **The control room** (`src/ui/`, `src/main.ts`). A task panel (launch a
+  task with a pinch or a poke), one panel per agent (Architect, Developer,
+  QA, Verifier, ScrumMaster) with its state and latest output, a result
+  panel with the delivery's diff, the Verifier's checks and the risk tier,
+  where a person approves or sends it back, and the room's controls (pause,
+  resume, restart) with its recent events. Everything a hand touches hangs
+  on an arc at 45 cm; the agents, which only show, stand on one at 55 cm.
+  Buttons are at least 4.5 cm tall for a fingertip. Taking the headset off
+  or opening the system menu pauses the room, and coming back resumes it.

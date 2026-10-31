@@ -25,7 +25,12 @@ export interface Placement {
  * Place `count` panels on an arc of `spreadDeg` degrees centered in front of
  * the head. One panel goes straight ahead.
  */
-export function arc(count: number, spreadDeg = 100, distance = PANEL_DISTANCE_M): Placement[] {
+export function arc(
+  count: number,
+  spreadDeg = 100,
+  distance = PANEL_DISTANCE_M,
+  drop = PANEL_DROP_M,
+): Placement[] {
   if (count <= 0) return [];
   const spread = (spreadDeg * Math.PI) / 180;
   const step = count === 1 ? 0 : spread / (count - 1);
@@ -34,7 +39,7 @@ export function arc(count: number, spreadDeg = 100, distance = PANEL_DISTANCE_M)
     const angle = start + i * step;
     return {
       x: Math.sin(angle) * distance,
-      y: -PANEL_DROP_M,
+      y: -drop,
       z: -Math.cos(angle) * distance,
       yaw: -angle,
     };
