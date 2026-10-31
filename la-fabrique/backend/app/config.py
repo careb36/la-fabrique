@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # The .env is shared with docker compose and keeps keys the backend
+        # does not read (retired ones included, like VOICE_API_KEY): they are
+        # ignored instead of stopping the backend at startup.
+        extra = "ignore"
 
 
 # Module-level singleton; import this object rather than instantiating Settings directly.
