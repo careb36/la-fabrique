@@ -97,3 +97,16 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   delivery to carry to a ring. It disappears once the person has decided
   once. Checked in the emulator, seated: each step shows in turn, and
   turning the head to the Verifier opens its panel. 54 tests.
+- **High contrast** (`setContrast` in `src/ui/kit.ts`). A button on the
+  Room panel turns every panel black with a white border, all text white,
+  every button outlined; the layout does not move. Remembered on the
+  device.
+- **Voice as an alternative** (`src/voice.ts`). Where the browser has
+  speech recognition, a Voice button listens for short commands in English
+  or Spanish: approve, send it back, pause, resume, restart, recenter, and
+  launch a task by a word of its title or its place ("launch the CSV
+  export", "lanzar la primera"). A send back always wins over an approval
+  in the same sentence, and the Room panel shows what it heard and what it
+  did. Without speech recognition the button is not shown. Checked in the
+  emulator with a stand-in recognizer: the spoken launch started the task.
+  59 tests.

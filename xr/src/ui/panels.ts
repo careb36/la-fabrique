@@ -10,12 +10,9 @@ import type { DemoTask } from '../demo/scenario';
 import { AGENT_LINES, awaitingDecision, LOG_LINES, type AgentState, type AgentView, type RoomState, type TaskState } from '../model';
 import { button, COLORS, panel, row, text } from './kit';
 
-const AGENT_COLOR: Record<AgentState, string> = {
-  idle: COLORS.muted,
-  working: COLORS.warn,
-  done: COLORS.ok,
-  error: COLORS.bad,
-};
+/** An agent's state color, read from the palette in use. */
+const agentColor = (state: AgentState): string =>
+  ({ idle: COLORS.muted, working: COLORS.warn, done: COLORS.ok, error: COLORS.bad })[state];
 
 const TASK_LABEL: Record<TaskState, string> = {
   queued: 'Ready',
@@ -50,7 +47,7 @@ export function agentPanel(view: AgentView): AgentPanel {
   const root = panel(0.2, undefined, 'bottom');
   root.setProperties({ padding: 1.5, gap: 0.6 });
   const header = row(0.8);
-  const dot = new UIKit.Container({ width: 1.4, height: 1.4, borderRadius: 0.7, backgroundColor: AGENT_COLOR.idle });
+  const dot = new UIKit.Container({ width: 1.4, height: 1.4, borderRadius: 0.7, backgroundColor: agentColor('idle') });
   header.add(dot);
   header.add(text(view.name === view.role ? view.role : `${view.name} (${view.role})`, 1.7, COLORS.text, true));
   root.add(header);
@@ -70,8 +67,8 @@ export function agentPanel(view: AgentView): AgentPanel {
     },
     update(state) {
       const agent = state.agents[view.role];
-      dot.setProperties({ backgroundColor: AGENT_COLOR[agent.state] });
-      stateText.setProperties({ text: agent.state, color: AGENT_COLOR[agent.state] });
+      dot.setProperties({ backgroundColor: agentColor(agent.state) });
+      stateText.setProperties({ text: agent.state, color: agentColor(agent.state) });
       // Newest line on top, the older ones fading.
       const recent = [...agent.lines].reverse();
       lines.forEach((l, i) => l.setProperties({ text: recent[i] ?? '', color: i === 0 ? COLORS.text : COLORS.muted }));
@@ -210,6 +207,13 @@ export function controlPanel(actions: {
   onRestart: () => void;
   /** Where the room is laid out, in a few words. */
   where: () => string;
+  /** Switch high contrast; the label says what a press turns it to. */
+  onContrast: () => void;
+  contrast: () => boolean;
+  /** Voice on or off; absent when the browser cannot listen. */
+  onVoice?: () => void;
+  /** What voice is doing, in a few words, or '' when it is off. */
+  voice: () => string;
 }): Panel {
   const root = panel(0.24);
   root.add(text('Room', 2.4, COLORS.text, true));
@@ -220,6 +224,14 @@ export function controlPanel(actions: {
   root.add(buttons);
   // Seated or standing, the room comes back in front of the head.
   root.add(button('Recenter', actions.onRecenter).root);
+  // Other ways in: high contrast, and voice where the browser can listen.
+  // One per row: side by side, their longer labels outgrow the panel.
+  const contrast = button('Contrast', actions.onContrast);
+  root.add(contrast.root);
+  const voice = actions.onVoice ? button('Voice', actions.onVoice) : undefined;
+  if (voice) root.add(voice.root);
+  const heard = text('', 1.2, COLORS.muted);
+  root.add(heard);
   const clock = text('', 1.3, COLORS.muted);
   root.add(clock);
   const where = text('', 1.2, COLORS.muted);
@@ -232,6 +244,10 @@ export function controlPanel(actions: {
       pause.label.setProperties({ text: paused ? 'Resume' : 'Pause' });
       clock.setProperties({ text: paused ? 'Paused: nothing moves until you resume.' : 'Live', color: paused ? COLORS.warn : COLORS.ok });
       where.setProperties({ text: actions.where() });
+      contrast.label.setProperties({ text: actions.contrast() ? 'Contrast off' : 'Contrast' });
+      const v = actions.voice();
+      voice?.label.setProperties({ text: v ? 'Voice off' : 'Voice' });
+      heard.setProperties({ text: v, display: v ? 'flex' : 'none' });
       const recent = [...state.log].reverse();
       log.forEach((l, i) => l.setProperties({ text: recent[i] ?? '' }));
     },

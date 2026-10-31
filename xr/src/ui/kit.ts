@@ -8,7 +8,23 @@
 
 import { UIKit } from '@iwsdk/core';
 
-export const COLORS = {
+type ColorName =
+  | 'panel'
+  | 'border'
+  | 'text'
+  | 'muted'
+  | 'accent'
+  | 'accentHover'
+  | 'ok'
+  | 'warn'
+  | 'bad'
+  | 'button'
+  | 'buttonHover'
+  | 'add'
+  | 'remove';
+
+/** The palette in use. High contrast swaps it in place (`setContrast`). */
+export const COLORS: Record<ColorName, string> = {
   panel: '#111317',
   border: '#2a2f37',
   text: '#f4f4f5',
@@ -22,15 +38,70 @@ export const COLORS = {
   buttonHover: '#2c333d',
   add: '#86efac',
   remove: '#fca5a5',
-} as const;
+};
+
+const STANDARD = { ...COLORS };
+
+/**
+ * High contrast: pure black panels with white borders and white text, and
+ * the state colors at their brightest. The same layout, nothing hidden.
+ */
+const HIGH_CONTRAST: Partial<Record<ColorName, string>> = {
+  panel: '#000000',
+  border: '#ffffff',
+  text: '#ffffff',
+  muted: '#f4f4f5',
+  button: '#000000',
+  buttonHover: '#3f3f46',
+  ok: '#bef264',
+  warn: '#fde047',
+  bad: '#fca5a5',
+};
+
+// What the palette paints, so a change of palette repaints it.
+const painted = {
+  panels: [] as UIKit.Container[],
+  texts: [] as { text: UIKit.Text; color: ColorName }[],
+  buttons: [] as { root: UIKit.Container; color?: ColorName }[],
+};
+
+const nameOf = (value: string): ColorName | undefined =>
+  (Object.keys(COLORS) as ColorName[]).find((k) => COLORS[k] === value);
+
+export let highContrast = false;
+
+/** Switch the palette and repaint every panel, text and button made so far. */
+export function setContrast(high: boolean): void {
+  highContrast = high;
+  Object.assign(COLORS, STANDARD, high ? HIGH_CONTRAST : {});
+  for (const p of painted.panels) {
+    p.setProperties({ backgroundColor: COLORS.panel, borderColor: COLORS.border, borderWidth: high ? 0.4 : 0.2 });
+  }
+  for (const { text: t, color } of painted.texts) t.setProperties({ color: COLORS[color] });
+  for (const { root, color } of painted.buttons) {
+    // A button in a color of its own (Approve's green) keeps it; every
+    // button gets a white outline.
+    root.setProperties({
+      ...(color ? { backgroundColor: COLORS[color] } : {}),
+      borderColor: COLORS.border,
+      borderWidth: high ? 0.3 : 0,
+    });
+  }
+}
 
 /**
  * A panel's root: `widthM` meters wide, laid out in centimeters. Its height
  * follows its content unless `heightM` fixes it; it hangs from its top edge,
- * or stands on its bottom edge.
+ * or stands on its bottom edge. A panel in colors of its own (the guide's
+ * card) passes `repaint: false` so high contrast leaves it alone.
  */
-export function panel(widthM: number, heightM?: number, anchorY: 'top' | 'bottom' = 'top'): UIKit.Container {
-  return new UIKit.Container({
+export function panel(
+  widthM: number,
+  heightM?: number,
+  anchorY: 'top' | 'bottom' = 'top',
+  repaint = true,
+): UIKit.Container {
+  const root = new UIKit.Container({
     sizeX: widthM,
     // Anchored by an edge, so a panel that grows or shrinks with its content
     // never moves into its neighbors.
@@ -43,14 +114,16 @@ export function panel(widthM: number, heightM?: number, anchorY: 'top' | 'bottom
     backgroundColor: COLORS.panel,
     borderRadius: 2,
     borderColor: COLORS.border,
-    borderWidth: 0.2,
+    borderWidth: highContrast ? 0.4 : 0.2,
   });
+  if (repaint) painted.panels.push(root);
+  return root;
 }
 
 // Text, rows and buttons never shrink: yoga shrinks children by default,
 // which laid lines over each other when a panel's content was tall.
 export function text(value: string, size = 1.8, color: string = COLORS.text, bold = false): UIKit.Text {
-  return new UIKit.Text({
+  const t = new UIKit.Text({
     text: value,
     fontSize: size,
     color,
@@ -58,6 +131,9 @@ export function text(value: string, size = 1.8, color: string = COLORS.text, bol
     wordBreak: 'break-word',
     flexShrink: 0,
   });
+  const name = nameOf(color);
+  if (name) painted.texts.push({ text: t, color: name });
+  return t;
 }
 
 /**
@@ -86,6 +162,7 @@ export function button(
   });
   const labelText = text(label, 1.9, opts.primary ? COLORS.panel : COLORS.text, true);
   root.add(labelText);
+  painted.buttons.push({ root, color: opts.color ? undefined : nameOf(bg) });
   return { root, label: labelText };
 }
 
