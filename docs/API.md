@@ -346,9 +346,12 @@ as a correction on the next attempt.
 
 ## Rate limiting
 
-100 requests per minute per client address (`RATE_LIMIT_DEFAULT`), in memory by
-default (`RATE_LIMIT_STORAGE_URI`), so the counter is per process. Exceeding it
-returns **429**.
+Every route gets 300 requests per minute per client address
+(`RATE_LIMIT_DEFAULT`), in memory by default (`RATE_LIMIT_STORAGE_URI`), so the
+counter is per process. Login, registration and the desktop key exchange have
+their own, tighter limit (`AUTH_RATE_LIMIT`, 10 per minute). `/health`,
+`/health/deep`, `/metrics` and the Glassroom stream are never limited.
+Exceeding a limit returns **429**.
 
 No `X-RateLimit-*` headers are sent: `slowapi` is configured without
 `headers_enabled`, so a client cannot read the remaining budget from the
