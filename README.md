@@ -505,7 +505,7 @@ The GlassRoom is the real-time observability view for a running sprint. It uses 
 
 The SSE endpoint (`GET /v1/glassroom/stream?sprint_id=<id>`) replays the last 50 events on connect so late-joining clients get full context. With authentication required it also takes `ticket=<t>`, a five-minute token for that sprint from `POST /v1/sprints/{id}/stream_ticket` (a browser EventSource cannot send an Authorization header). Keepalive pings are sent every 15 seconds to maintain the connection.
 
-The same room in a headset, Glassroom VR (the Meta VR Start Developer Competition entry), lives on the `main_meta` branch; `main` is the web product.
+The same room in a headset, La Fabrique XR (the Meta VR Start Developer Competition entry), lives on the `meta-vr` branch and is published at <https://careb36.github.io/la-fabrique/>; `main` is the web product.
 
 [⬆ Back to Top](#la-fabrique)
 
