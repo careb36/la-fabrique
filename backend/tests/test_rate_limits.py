@@ -72,3 +72,61 @@ def test_only_the_api_counts_and_the_stream_never_does():
         "/assets/index.js",
     ):
         assert not is_rate_limited(path)
+
+
+def _allowed_origin() -> str:
+    from security import get_cors_origins
+
+    origin = get_cors_origins()[0]
+    return "http://localhost:5173" if origin == "*" else origin
+
+
+def test_a_limited_answer_still_carries_the_cors_headers(test_client, limits_on):
+    # The limiter used to sit outside CORS: a browser saw a network error
+    # instead of a 429 it could read.
+    origin = _allowed_origin()
+    allowed = _limit_of(settings.RATE_LIMIT_DEFAULT)
+    for _ in range(allowed):
+        test_client.get("/v1/capabilities", headers={"Origin": origin})
+    limited = test_client.get("/v1/capabilities", headers={"Origin": origin})
+    assert limited.status_code == 429
+    assert limited.headers.get("access-control-allow-origin") in {origin, "*"}
+
+
+def test_preflights_never_count(test_client, limits_on):
+    origin = _allowed_origin()
+    allowed = _limit_of(settings.RATE_LIMIT_DEFAULT)
+    preflight = {"Origin": origin, "Access-Control-Request-Method": "GET"}
+    statuses = {
+        test_client.options("/v1/capabilities", headers=preflight).status_code
+        for _ in range(allowed + 5)
+    }
+    assert 429 not in statuses
+    assert test_client.get("/v1/capabilities").status_code == 200
+
+
+def test_a_remote_store_is_asked_off_the_event_loop(
+    test_client, limits_on, monkeypatch
+):
+    import asyncio
+
+    import security
+
+    seen = []
+    real_hit = security.limiter._limiter.hit
+
+    def on_the_loop() -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def hit(*args):
+        seen.append(on_the_loop())
+        return real_hit(*args)
+
+    monkeypatch.setattr(security, "_LOCAL_STORAGE", False)
+    monkeypatch.setattr(security.limiter._limiter, "hit", hit)
+    assert test_client.get("/v1/capabilities").status_code == 200
+    assert seen and not any(seen), "the store was called on the event loop's thread"
