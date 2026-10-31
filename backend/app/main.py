@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 from config import Settings
 from exception_handlers import register_exception_handlers
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from lifecycle import shutdown, startup
 from metrics import setup_metrics
@@ -35,7 +35,7 @@ from routers import (
 )
 from security import (
     add_security_headers,
-    exempt_from_rate_limit,
+    check_default_rate_limit,
     get_cors_origins,
     setup_security,
 )
@@ -60,6 +60,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
+    dependencies=[Depends(check_default_rate_limit)],
     lifespan=lifespan,
     title="Fabrique Enterprise API",
     description="Autonomous AI Engineering Factory API with Multi-Tenancy, Governance, and Auto-Healing support.",
@@ -134,9 +135,6 @@ async def deep_health_check(request: Request):
 
 # Last, so every API route above wins over the SPA fallback.
 mount_ui(app)
-
-# Every route is registered now: the probes and the stream are never limited.
-exempt_from_rate_limit(app)
 
 # Even later: the shell the SPA fallback returns is exactly what an iframe
 # loads, so the headers have to wrap that middleware too.

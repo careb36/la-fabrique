@@ -6,7 +6,7 @@ who can reach the port, so each client address gets a few tries a minute.
 
 import pytest
 from config import settings
-from security import limiter
+from security import RATE_LIMIT_EXEMPT, check_default_rate_limit, limiter
 
 
 @pytest.fixture
@@ -57,15 +57,20 @@ def test_probes_are_never_limited(test_client, limits_on):
     assert statuses == {200}
 
 
-def test_the_glassroom_stream_and_metrics_are_exempt():
-    from main import app
-    from security import RATE_LIMIT_EXEMPT, limiter
+def test_exempt_routes_skip_the_default_limit(monkeypatch):
+    from types import SimpleNamespace
 
-    exempt = {
-        route.path
-        for route in app.routes
-        if getattr(route, "endpoint", None) is not None
-        and f"{route.endpoint.__module__}.{route.endpoint.__name__}"
-        in limiter._exempt_routes
-    }
-    assert RATE_LIMIT_EXEMPT <= exempt
+    checked = []
+    monkeypatch.setattr(
+        limiter,
+        "_check_request_limit",
+        lambda *args, **kwargs: checked.append(args),
+    )
+    for path in RATE_LIMIT_EXEMPT:
+        request = SimpleNamespace(
+            url=SimpleNamespace(path=path),
+            scope={"endpoint": test_exempt_routes_skip_the_default_limit},
+        )
+        check_default_rate_limit(request)
+
+    assert checked == []

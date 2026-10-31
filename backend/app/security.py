@@ -108,19 +108,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 def setup_security(app):
     """Configure security middleware and rate limiting on the app.
 
-    The middleware is what applies ``RATE_LIMIT_DEFAULT`` to every route; the
+    The application dependency applies ``RATE_LIMIT_DEFAULT`` to every route;
     routes that carry their own limit (sign-in, the desktop exchange) keep it,
     and the ones listed in ``RATE_LIMIT_EXEMPT`` are never limited.
     """
     from slowapi import _rate_limit_exceeded_handler
-    from slowapi.middleware import SlowAPIMiddleware
 
     # Add rate limiter to app state
     app.state.limiter = limiter
 
     # Add rate limit exceeded handler
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
 
     logger.info("Security middleware configured (rate limiting)")
 
@@ -130,12 +128,14 @@ def setup_security(app):
 RATE_LIMIT_EXEMPT = {"/health", "/health/deep", "/metrics", "/v1/glassroom/stream"}
 
 
-def exempt_from_rate_limit(app, paths=RATE_LIMIT_EXEMPT):
-    """Exempt the routes at *paths*; call it once every route is registered."""
-    for route in app.routes:
-        endpoint = getattr(route, "endpoint", None)
-        if endpoint is not None and getattr(route, "path", None) in paths:
-            limiter.exempt(endpoint)
+def check_default_rate_limit(request: Request):
+    """Apply the default limit once FastAPI has selected the request endpoint."""
+    if request.url.path in RATE_LIMIT_EXEMPT:
+        return
+
+    endpoint = request.scope.get("endpoint")
+    if endpoint is not None:
+        limiter._check_request_limit(request, endpoint, in_middleware=True)
 
 
 def add_security_headers(app):
