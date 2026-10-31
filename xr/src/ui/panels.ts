@@ -7,6 +7,7 @@ import { UIKit } from '@iwsdk/core';
 import type { Object3D } from 'three';
 
 import type { DemoTask } from '../demo/scenario';
+import { curve, type Company } from '../learning';
 import { AGENT_LINES, awaitingDecision, LOG_LINES, type AgentState, type AgentView, type RoomState, type TaskState } from '../model';
 import { button, COLORS, panel, row, text } from './kit';
 
@@ -207,6 +208,8 @@ export function controlPanel(actions: {
   onRestart: () => void;
   /** Where the room is laid out, in a few words. */
   where: () => string;
+  /** 'Restart', or 'Next sprint' once the sprint has closed. */
+  restartLabel: () => string;
   /** Switch high contrast; the label says what a press turns it to. */
   onContrast: () => void;
   contrast: () => boolean;
@@ -220,7 +223,8 @@ export function controlPanel(actions: {
   const buttons = row(1);
   const pause = button('Pause', actions.onPause, { grow: true });
   buttons.add(pause.root);
-  buttons.add(button('Restart', actions.onRestart, { grow: true }).root);
+  const restart = button('Restart', actions.onRestart, { grow: true });
+  buttons.add(restart.root);
   root.add(buttons);
   // Seated or standing, the room comes back in front of the head.
   root.add(button('Recenter', actions.onRecenter).root);
@@ -244,12 +248,83 @@ export function controlPanel(actions: {
       pause.label.setProperties({ text: paused ? 'Resume' : 'Pause' });
       clock.setProperties({ text: paused ? 'Paused: nothing moves until you resume.' : 'Live', color: paused ? COLORS.warn : COLORS.ok });
       where.setProperties({ text: actions.where() });
+      restart.label.setProperties({ text: actions.restartLabel() });
       contrast.label.setProperties({ text: actions.contrast() ? 'Contrast off' : 'Contrast' });
       const v = actions.voice();
       voice?.label.setProperties({ text: v ? 'Voice off' : 'Voice' });
       heard.setProperties({ text: v, display: v ? 'flex' : 'none' });
       const recent = [...state.log].reverse();
       log.forEach((l, i) => l.setProperties({ text: recent[i] ?? '' }));
+    },
+  };
+}
+
+/** How many sprints the curve shows, newest last. */
+const CURVE_SPRINTS = 6;
+/** The tallest bar, in centimeters. */
+const BAR_CM = 5;
+
+/**
+ * The company's record across sessions: rework per task, sprint by sprint,
+ * and the procedures in force with where each came from.
+ */
+export function companyPanel(read: () => Company, onNewCompany: () => void): Panel {
+  const root = panel(0.2, undefined, 'bottom');
+  root.setProperties({ padding: 1.5, gap: 0.6 });
+  root.add(text('The company learns', 1.7, COLORS.text, true));
+  const headline = text('', 1.25, COLORS.muted);
+  root.add(headline);
+  const chart = new UIKit.Container({ flexDirection: 'row', gap: 0.6, alignItems: 'flex-end', height: BAR_CM + 2.4, flexShrink: 0 });
+  const columns = Array.from({ length: CURVE_SPRINTS }, () => {
+    const col = new UIKit.Container({ flexDirection: 'column', alignItems: 'center', gap: 0.2, flexGrow: 1, flexShrink: 0 });
+    const value = text('', 0.9, COLORS.muted);
+    const bar = new UIKit.Container({ width: 1.6, height: 0.2, borderRadius: 0.3, backgroundColor: COLORS.accent });
+    const label = text('', 0.9, COLORS.muted);
+    col.add(value);
+    col.add(bar);
+    col.add(label);
+    chart.add(col);
+    return { col, value, bar, label };
+  });
+  root.add(chart);
+  const procedures = Array.from({ length: 3 }, () => text('', 1.25, COLORS.text));
+  for (const p of procedures) root.add(p);
+  const fresh = button('New company', onNewCompany);
+  // Tight padding: the label fits the narrow panel on one line.
+  fresh.root.setProperties({ paddingX: 0.6 });
+  fresh.label.setProperties({ fontSize: 1.5 });
+  root.add(fresh.root);
+  return {
+    root,
+    update() {
+      const company = read();
+      const values = curve(company).slice(-CURVE_SPRINTS);
+      const first = Math.max(0, company.sprints.length - CURVE_SPRINTS);
+      const top = Math.max(...values, 0.01);
+      columns.forEach((c, i) => {
+        const v = values[i];
+        c.col.setProperties({ display: v === undefined ? 'none' : 'flex' });
+        if (v === undefined) return;
+        c.value.setProperties({ text: v.toFixed(2) });
+        // A sprint with no rework still shows a sliver, in green.
+        c.bar.setProperties({ height: Math.max(0.2, (v / top) * BAR_CM), backgroundColor: v === 0 ? COLORS.ok : COLORS.accent });
+        c.label.setProperties({ text: `S${first + i + 1}` });
+      });
+      chart.setProperties({ display: values.length ? 'flex' : 'none' });
+      const n = company.sprints.length;
+      headline.setProperties({
+        text:
+          n === 0
+            ? 'Finish a sprint: its rework becomes procedures, and the next sprint runs with them.'
+            : `Rework per task. In force:`,
+      });
+      procedures.forEach((t, i) => {
+        const p = company.procedures[i];
+        t.setProperties({
+          text: p ? `${p.text} From ${p.from === 'you' ? 'you' : 'QA'}, S${p.adoptedAfter}.` : '',
+          display: p ? 'flex' : 'none',
+        });
+      });
     },
   };
 }

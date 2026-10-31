@@ -20,8 +20,9 @@ import { Player } from './engine/player';
 import { layoutRoom, type Placed, type RoomLayout, type Surface } from './room';
 import { SurfaceSystem } from './surfaces';
 import { connectLive, liveConfig } from './live';
+import { closeSprint, NEW_COMPANY, parseCompany, tasksWith, type Company } from './learning';
 import { awaitingDecision, ROLES, tokenAt } from './model';
-import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
+import { agentPanel, companyPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
 import { guide } from './ui/guide';
 import { highContrast, setContrast } from './ui/kit';
 import { listen, parseCommand, speechSupported, type Command } from './voice';
@@ -85,10 +86,31 @@ const world = await World.create(container, {
 // Live mode follows a real sprint when the build names a backend
 // (VITE_FABRIQUE_API) and the address a sprint (?sprint=); otherwise the demo.
 const live = liveConfig(import.meta.env.VITE_FABRIQUE_API, location.search);
+// The company's record is kept on this device: each finished run of the demo
+// is a sprint, and what it taught runs in the next one.
+const COMPANY_KEY = 'la-fabrique-xr.company';
+function loadCompany(): Company {
+  try {
+    return parseCompany(localStorage.getItem(COMPANY_KEY));
+  } catch {
+    return NEW_COMPANY;
+  }
+}
+function saveCompany(c: Company): void {
+  try {
+    localStorage.setItem(COMPANY_KEY, JSON.stringify(c));
+  } catch {
+    /* kept for this session only */
+  }
+}
+let company = loadCompany();
+/** This run's sprint has closed and been recorded. */
+let sprintClosed = false;
+
 const tasks = live
   ? [{ id: 'live', title: `Sprint ${live.sprintId}`, summary: 'Live from the factory', script: [] }]
   : DEMO_TASKS;
-const player = new Player(tasks);
+const player = new Player(live ? tasks : tasksWith(company, DEMO_TASKS));
 let previous = VisibilityState.NonImmersive as VisibilityState;
 /** Paused by the headset (system menu, headset off), not by the person. */
 let autoPaused = false;
@@ -178,7 +200,9 @@ function setPaused(paused: boolean): void {
   touch();
 }
 function restart(): void {
-  player.restart();
+  // The next sprint runs with every procedure in force.
+  player.restart(live ? undefined : tasksWith(company, DEMO_TASKS));
+  sprintClosed = false;
   // Live mode clears the view; the sprint itself goes on.
   if (live) player.ingest({ type: 'task_state', taskId: 'live', state: 'in_progress' });
   touch();
@@ -256,6 +280,7 @@ place(
     },
     onRestart: restart,
     where: () => PLACEMENT_TEXT[placement],
+    restartLabel: () => (sprintClosed ? 'Next sprint' : 'Restart'),
     onContrast: () => {
       setContrast(!highContrast);
       try {
@@ -274,6 +299,45 @@ place(
 // The agents only show: on the wall ahead as the team's board, or above.
 const agentViews = ROLES.map((role) => agentPanel({ ...player.state.agents[role] }));
 for (const view of agentViews) place(view, agentPanels);
+// The company's record hangs with the team, after the agents.
+if (!live) {
+  place(
+    companyPanel(
+      () => company,
+      () => {
+        company = NEW_COMPANY;
+        saveCompany(company);
+        restart();
+      },
+    ),
+    agentPanels,
+  );
+}
+
+/**
+ * When every task of the run is done, the sprint closes: its numbers are
+ * recorded and its rework becomes procedures, announced by the ScrumMaster.
+ */
+function closeIfDone(): void {
+  if (live || sprintClosed) return;
+  if (!Object.values(player.state.tasks).every((t) => t.state === 'done')) return;
+  sprintClosed = true;
+  const before = company.procedures.length;
+  company = closeSprint(company, player.history(), DEMO_TASKS);
+  saveCompany(company);
+  const last = company.sprints[company.sprints.length - 1];
+  const adopted = company.procedures.length - before;
+  player.ingest({
+    type: 'message',
+    role: 'ScrumMaster',
+    agent: 'Sam',
+    message:
+      `Sprint ${last.sprint} closed: ${last.rework} rework on ${last.tasks} tasks. ` +
+      (adopted ? `Adopted ${adopted} procedure${adopted === 1 ? '' : 's'}; Next sprint runs with them.` : 'Nothing new to learn.'),
+    taskId: DEMO_TASKS[0].id,
+  });
+  touch();
+}
 
 // Each agent's light sits just above its panel, wherever the panel goes;
 // the task travels between them and down to the result.
@@ -394,7 +458,8 @@ class RoomSystem extends createSystem() {
 
   /** The guide points at the next first move, until the person has decided once. */
   guide(time: number): void {
-    const step = live ? 'none' : guideStep(player.state, looked);
+    // Only for a company's first sprint: after that, the person knows the moves.
+    const step = live || company.sprints.length ? 'none' : guideStep(player.state, looked);
     let at: Vector3 | undefined;
     if (step === 'launch') {
       at = tasksPanel.firstLaunch(player.state)?.getWorldPosition(new Vector3());
@@ -446,6 +511,7 @@ class RoomSystem extends createSystem() {
     }
     // IWSDK passes seconds; a long frame (tab restored) is clamped.
     if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
+    closeIfDone();
     // The lights and the task move every frame; the panels only on a change.
     for (const x of presences) {
       const now = player.state.agents[x.role].state;
@@ -498,6 +564,8 @@ if (new URLSearchParams(location.search).has('e2e')) {
     }),
     held: () => held,
     open: () => dwell.open,
-    guide: () => (live ? 'none' : guideStep(player.state, looked)),
+    guide: () => (live || company.sprints.length ? 'none' : guideStep(player.state, looked)),
+    company: () => company,
+    restart,
   };
 }
