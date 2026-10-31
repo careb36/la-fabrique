@@ -1,89 +1,90 @@
-# Envío — Hackathon Global de IA NVIDIA × Nebius
+# Submission — NVIDIA × Nebius Global AI Hackathon
 
-**Proyecto:** La Fabrique — agentes de código con voz, sobre Nemotron en Nebius
-Token Factory
+*English · [Español](SUBMISSION.es.md)*
 
-**Categoría:** Programa de Ingeniería de Codificación y Agentes
+**Project:** La Fabrique — voice-driven coding agents on Nemotron, served by
+Nebius Token Factory
 
-**Licencia:** [Apache-2.0](LICENSE) para todo lo que se envía: la fábrica, la
-fusión, la demo y el asistente (`asistente-b1/`), escrito desde cero para este
-repositorio. `profesor3/`, una obra derivada de **MARK 56 — JARVIS** de
-FatihMakes bajo [CC BY-NC 4.0](profesor3/LICENSE), queda como referencia y como
-segunda interfaz opcional (`--asistente profesor3`); no forma parte del producto
-que se distribuye.
+**Category:** Coding & Agents Engineering Program
 
-| Campo del formulario | Valor |
+**License:** [Apache-2.0](LICENSE) for everything submitted: the factory, the
+fusion, the demo and the assistant (`asistente-b1/`), written from scratch for
+this repository. `profesor3/`, a derivative work of **MARK 56 — JARVIS** by
+FatihMakes under CC BY-NC 4.0, is a separate reference checkout and an optional
+second front end (`--asistente profesor3`); it is not in this repository and is
+not part of the product that ships.
+
+| Form field | Value |
 |---|---|
-| Repositorio público | `https://github.com/careb36/la-fabrique/tree/fusion` (rama `fusion`) |
-| Demostración funcional | `python demo/coding_agent.py` (ver más abajo) + fábrica en `http://localhost:3000` |
-| Vídeo (≤ 3 min) | `https://youtu.be/<id>` — *completar antes de enviar* |
-| Evento IRL | *completar si asististe a un Builders & Brews* |
+| Public repository | `https://github.com/careb36/la-fabrique/tree/fusion` (`fusion` branch) |
+| Working demo | `python demo/coding_agent.py` (see below) + the factory at `http://localhost:3000` |
+| Video (≤ 3 min) | `https://youtu.be/<id>` — *fill in before submitting* |
+| IRL event | *fill in if you attended a Builders & Brews* |
 
 ---
 
-## 1. Descripción del proyecto
+## 1. Project description
 
-**Qué es.** La Fabrique es una fábrica de software con ocho agentes —Product
-Owner, Arquitecto, Scrum Master, Desarrollo, QA, SecOps, Documentación y
-Memoria— que toma un requisito escrito y devuelve código con sus pruebas. Cada
-rol tiene su propio modelo, su propio presupuesto de tokens y su propio turno de
-conversación; el resultado no se acepta por lo que dice el modelo, se acepta
-porque el intérprete lo ejecuta y las pruebas pasan.
+**What it is.** La Fabrique is a software factory with eight agents — Product
+Owner, Architect, Scrum Master, Developer, QA, SecOps, Technical Writer and
+Memory — that takes a written requirement and returns code with its tests. Each
+role has its own model, its own token budget and its own turn in the
+conversation. A result is not accepted because the model says it is done; it is
+accepted because the interpreter runs it and the tests pass.
 
-Encima de eso hay un asistente de escritorio (Asistente B1) que **oye y habla**:
-«fabricá el login», «¿cómo va el sprint?», «pausá el sprint». La fusión de los
-dos proyectos añade a la fábrica una puerta de voz (`/v1/voice/*`) y al
-asistente un plugin que la llama. Las órdenes habladas pasan por los mismos
-endpoints que la interfaz web, así que una frase no puede hacer nada que la web
-no permita. Habla en español y en inglés con el mismo motor: escucha con pistas
-de idioma, contesta con Piper o con la voz del sistema, y la fábrica redacta su
-respuesta en el idioma de la conversación.
+On top of that sits a desktop assistant (Assistant B1) that **listens and
+speaks**: "build the login", "how is the sprint going?", "pause the sprint".
+The fusion of the two projects gives the factory a voice door (`/v1/voice/*`)
+and the assistant a plugin that calls it. Spoken commands go through the same
+endpoints as the web UI, so a sentence cannot do anything the web does not
+allow. It speaks Spanish and English with the same engine: it listens with
+language hints, answers with Piper or the system voice, and the factory writes
+its reply in the language of the conversation.
 
-**Por qué.** Los agentes de código suelen fallar de dos maneras: dicen que
-terminaron sin haber ejecutado nada, o cuestan una fortuna porque cada llamada
-va al modelo más grande. Este proyecto ataca las dos: el agente **ejecuta** las
-pruebas de verdad y devuelve la salida al modelo cuando fallan, y el trabajo se
-reparte entre tres niveles — Ultra para razonar, Super/Nano para el resto.
+**Why.** Coding agents tend to fail in two ways: they say they finished without
+running anything, or they cost a fortune because every call goes to the largest
+model. This project tackles both: the agent really **runs** the tests and feeds
+the output back to the model when they fail, and the work is split across three
+tiers — Ultra for reasoning, Super/Nano for the rest.
 
-**Cómo funciona** (las tres piezas que se pueden ver funcionando):
+**How it works** (the three pieces you can see running):
 
-1. `demo/coding_agent.py` — el bucle mínimo y completo: el modelo propone
-   archivos en JSON, el agente los escribe en un directorio aislado, ejecuta
-   `unittest` y, si algo falla, le pasa la salida real y repite.
-2. `la-fabrique/` — el flujo multiagente (LangGraph) con Postgres, NATS y su
-   `llm-proxy`, que valida cada modelo contra el catálogo del proveedor.
-3. `asistente-b1/` — el asistente, escrito para este envío: fin de frase por
-   energía, transcripción local (faster-whisper), Nemotron para pensar, Piper
-   para hablar y tres herramientas que llaman a la puerta de voz de la fábrica.
-   `profesor3/` queda como interfaz alternativa.
+1. `demo/coding_agent.py` — the minimal, complete loop: the model proposes files
+   as JSON, the agent writes them into an isolated directory, runs `unittest`
+   and, if anything fails, hands the real output back and tries again.
+2. `la-fabrique/` — the multi-agent flow (LangGraph) with Postgres, NATS and its
+   `llm-proxy`, which checks every model against the provider's catalogue.
+3. `asistente-b1/` — the assistant, written for this submission: end of speech
+   detected by energy, local transcription (faster-whisper), Nemotron to think,
+   Piper to speak, and three tools that call the factory's voice door.
+   `profesor3/` remains an alternative front end.
 
-## 2. Cómo se usa NVIDIA Nemotron y Nebius Token Factory
+## 2. How NVIDIA Nemotron and Nebius Token Factory are used
 
-- **Infraestructura:** `https://api.tokenfactory.nebius.com/v1` es la dirección
-  por defecto de todo el proyecto (`profesor3/core/fabrica_env.py`,
-  `la-fabrique/llm-proxy/app.py`). El `llm-proxy` consulta `GET /models` y
-  rechaza cualquier id que el proveedor no esté sirviendo en ese momento.
-- **Modelos abiertos de NVIDIA:** `nvidia/nemotron-3-ultra-550b-a55b` para
-  razonamiento (PO, Arquitecto, SecOps y el agente de la demo) y
-  `nvidia/nemotron-3-super-120b-a12b` / un Nano para las llamadas rápidas.
-- **El reparto se escribe solo:** el panel **⚙ Nemotron** del asistente toma el
-  catálogo real y escribe `NEMOTRON_ROLES`, `NEMOTRON_MODEL`,
-  `NEMOTRON_MODEL_STRATEGIC` y `NEMOTRON_MODEL_FAST` en `la-fabrique/.env`.
-  `la-fabrique/backend/llm/model_factory.py` los aplica por rol.
-- **Por qué Token Factory aceleró el trabajo:** un único cliente compatible con
-  OpenAI para ocho agentes, la demo y el asistente; catálogo como fuente de
-  verdad (nada de ids inventados); y dos niveles de coste sobre el mismo
-  proveedor.
+- **Infrastructure:** `https://api.tokenfactory.nebius.com/v1` is the default
+  endpoint for the whole project (`la-fabrique/llm-proxy/app.py`). The
+  `llm-proxy` queries `GET /models` and refuses any id the provider is not
+  serving at that moment.
+- **NVIDIA open models:** `nvidia/nemotron-3-ultra-550b-a55b` for reasoning (PO,
+  Architect, SecOps and the demo agent) and `nvidia/nemotron-3-super-120b-a12b`
+  / a Nano model for the fast calls.
+- **The split writes itself:** the assistant's **⚙ Nemotron** panel reads the
+  live catalogue and writes `NEMOTRON_ROLES`, `NEMOTRON_MODEL`,
+  `NEMOTRON_MODEL_STRATEGIC` and `NEMOTRON_MODEL_FAST` into `la-fabrique/.env`.
+  `la-fabrique/backend/llm/model_factory.py` applies them per role.
+- **Why Token Factory sped up the work:** a single OpenAI-compatible client for
+  eight agents, the demo and the assistant; the catalogue as the source of
+  truth (no invented ids); and two cost tiers on the same provider.
 
-## 3. Demostración funcional
+## 3. Working demo
 
 ```bash
 git clone -b fusion https://github.com/careb36/la-fabrique.git fusion && cd fusion
 export NEBIUS_API_KEY=nvapi-...        # Nebius Token Factory
-python demo/coding_agent.py            # escribe, ejecuta, prueba, corrige
+python demo/coding_agent.py            # writes, runs, tests, fixes
 ```
 
-Salida real (Nemotron Ultra, Token Factory):
+Real output (Nemotron Ultra, Token Factory; the demo prints in Spanish):
 
 ```
 [ronda 1] Implemented slugify function with unicode normalization...
@@ -93,73 +94,73 @@ Salida real (Nemotron Ultra, Token Factory):
 ✅ las pruebas pasan (1 ronda(s), 26.2s)
 ```
 
-Sin clave: `python demo/coding_agent.py --offline` hace el mismo recorrido con
-dos respuestas grabadas (una ronda que falla, otra que arregla).
+Without a key, `python demo/coding_agent.py --offline` makes the same run with
+two recorded answers (a round that fails, then one that fixes it).
 
-Para la fábrica completa, `cd la-fabrique && docker compose up -d` y abrir
-<http://localhost:3000>; para el asistente, `arrancar.cmd` en Windows.
+For the full factory, `cd la-fabrique && docker compose up -d` and open
+<http://localhost:3000>; for the assistant, `arrancar.cmd` on Windows.
 
-## 4. Guion del vídeo (3 minutos)
+## 4. Video script (3 minutes)
 
-| Tiempo | Qué se ve |
+| Time | What is shown |
 |---|---|
-| 0:00–0:20 | El problema en una frase: «un agente que dice que terminó». Se ve `demo/coding_agent.py --offline` fallando en la ronda 1 y pasando en la 2. |
-| 0:20–0:50 | La demo con Token Factory de verdad: se ejecuta con la clave, se ve el id `nvidia/nemotron-3-ultra-550b-a55b` y las pruebas en verde. |
-| 0:50–1:20 | `⚙ Nemotron` en el asistente: pegar la clave, **Probar clave**, `↻` para traer el catálogo, elegir Ultra y guardar. Se muestra el `.env` con los tres niveles. |
-| 1:20–2:10 | La fábrica: requisito → agentes → sprint en el tablero, con los eventos de cada rol y el modelo que usó cada uno. |
-| 2:10–2:40 | La voz: «B1, ¿cómo va el sprint?» y «pausá el sprint», con la respuesta hablada y el cambio en el tablero. |
-| 2:40–3:00 | Cierre: `python tools/hackathon_check.py` en verde. |
+| 0:00–0:20 | The problem in one sentence: "an agent that says it finished". `demo/coding_agent.py --offline` fails in round 1 and passes in round 2. |
+| 0:20–0:50 | The demo against the real Token Factory: it runs with the key, the id `nvidia/nemotron-3-ultra-550b-a55b` is visible and the tests go green. |
+| 0:50–1:20 | `⚙ Nemotron` in the assistant: paste the key, **Test key**, `↻` to fetch the catalogue, pick Ultra and save. The `.env` with the three tiers is shown. |
+| 1:20–2:10 | The factory: requirement → agents → sprint on the board, with each role's events and the model each one used. |
+| 2:10–2:40 | The voice: "B1, how is the sprint going?" and "pause the sprint", with the spoken answer and the change on the board. |
+| 2:40–3:00 | Closing: `python tools/hackathon_check.py` all green. |
 
 ## 5. Feedback
 
-Está en el README, sección [Feedback para Nebius y NVIDIA](README.md#feedback-for-nebius-and-nvidia):
-lo que funcionó (base_url único, catálogo consultable, niveles de coste) y las
-tres fricciones reales (claves `nvapi-` indistinguibles entre puertas, modelos
-retirados con `410`, y la ausencia de `/audio/transcriptions` para la voz).
+It is in the README, section [Feedback for Nebius and NVIDIA](README.md#feedback-for-nebius-and-nvidia):
+what worked (a single base_url, a queryable catalogue, cost tiers) and the three
+real points of friction (`nvapi-` keys that look the same for both gateways,
+retired models answering `410`, and no `/audio/transcriptions` for voice).
 
-## 6. Si el proyecto existía antes del período de envío
+## 6. Did the project exist before the submission period?
 
-Sí: `la-fabrique` y `profesor3` son dos proyectos anteriores. El detalle de qué
-se añadió durante el período está en
-[Qué existía antes del hackathon](README.md#what-existed-before-the-hackathon).
-En resumen: proveedor Nemotron con detección de puerta y migración de modelos
-retirados, niveles Ultra/Super/Nano aplicados por rol, la puerta de voz, la demo
-del agente y el verificador de requisitos.
+Yes: `la-fabrique` and `profesor3` are two earlier projects. What was added
+during the period is detailed in
+[What Existed Before the Hackathon](README.md#what-existed-before-the-hackathon).
+In short: the Nemotron provider with gateway detection and migration of retired
+models, Ultra/Super/Nano tiers applied per role, the voice door, the agent demo
+and the requirements checker.
 
-## 6.1 Origen del código (transparencia)
+## 6.1 Where the code comes from (transparency)
 
-| Pieza | Origen | Licencia |
+| Piece | Origin | License |
 |---|---|---|
-| `la-fabrique/` | checkout upstream de la fábrica (FastAPI + React) | Apache-2.0 |
-| `asistente-b1/` | escrito desde cero para este envío (2.382 líneas de código, 1.070 de pruebas) | Apache-2.0 |
-| `profesor3/` | obra derivada de *MARK 56 — JARVIS*, de FatihMakes; referencia, no se distribuye | CC BY-NC 4.0 (`profesor3/LICENSE`) |
-| Puerta de voz, guía hablada, proveedor Nemotron, demo y lanzador | escritos para este envío | Apache-2.0 |
+| `la-fabrique/` | upstream checkout of the factory (FastAPI + React) | Apache-2.0 |
+| `asistente-b1/` | written from scratch for this submission (about 4,300 lines of code, 2,400 of tests) | Apache-2.0 |
+| `profesor3/` | derivative work of *MARK 56 — JARVIS* by FatihMakes; reference only, not distributed | CC BY-NC 4.0 |
+| Voice door, spoken guide, Nemotron provider, demo and launcher | written for this submission | Apache-2.0 |
 
-El asistente que se envía es **Asistente B1** (`asistente-b1/`): se reescribió
-completo —audio, modelo, herramientas, interfaz— para que el producto no dependa
-de una licencia no comercial. La independencia se mide, no se declara:
+The assistant that ships is **Assistant B1** (`asistente-b1/`). It was
+rewritten end to end — audio, model, tools, interface — so the product does not
+depend on a non-commercial license. Its independence is measured, not claimed:
 
 ```bash
 cd asistente-b1 && python tools/similarity_check.py ../profesor3
-# prosa: 0 coincidencias de 8 palabras · código: 0 bloques de 14 tokens
+# prose: 0 matches of 8 words · code: 0 blocks of 14 tokens
 ```
 
-La prueba `tests/test_originality.py` incluye además un control positivo: si se
-le pasa un párrafo copiado, el mismo chequeo lo detecta.
+The test `tests/test_originality.py` also includes a positive control: given a
+copied paragraph, the same check catches it.
 
-## 7. Checklist de la convocatoria
+## 7. Submission checklist
 
-- [x] Proyecto funcional sobre Nebius Token Factory con un modelo abierto de NVIDIA
-- [x] Categoría elegida (Programa de Ingeniería de Codificación y Agentes)
-- [x] Descripción del proyecto (este documento)
-- [x] Demostración funcional ejecutable (`demo/coding_agent.py`)
-- [ ] URL pública de la demo — *pendiente de despliegue*
-- [ ] Vídeo de ≤ 3 minutos en YouTube — *guion en la sección 4*
-- [x] Repositorio con licencia Apache-2.0 en la raíz; el asistente que se envía
-      (`asistente-b1/`) también, y `profesor3/` conserva la CC BY-NC 4.0 de su
-      upstream, declarada en la sección de licencia
-- [x] README con instalación y guía de ejecución
-- [x] Explicación de cómo se usan Nemotron y Token Factory
-- [x] Feedback sobre Nebius y NVIDIA
-- [x] Explicación de las actualizaciones del período de envío
-- [x] `python tools/hackathon_check.py` verifica los puntos anteriores
+- [x] Working project on Nebius Token Factory with an NVIDIA open model
+- [x] Category chosen (Coding & Agents Engineering Program)
+- [x] Project description (this document)
+- [x] Runnable working demo (`demo/coding_agent.py`)
+- [ ] Public demo URL — *pending deployment*
+- [ ] Video of ≤ 3 minutes on YouTube — *script in section 4*
+- [x] Repository with the Apache-2.0 license at the root; the assistant that
+      ships (`asistente-b1/`) too, and `profesor3/` keeps its upstream
+      CC BY-NC 4.0, declared in the license section
+- [x] README with installation and run guide
+- [x] Explanation of how Nemotron and Token Factory are used
+- [x] Feedback on Nebius and NVIDIA
+- [x] Explanation of the updates made during the submission period
+- [x] `python tools/hackathon_check.py` verifies the points above
