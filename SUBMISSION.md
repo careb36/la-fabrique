@@ -1,7 +1,5 @@
 # Submission — NVIDIA × Nebius Global AI Hackathon
 
-*English · [Español](SUBMISSION.es.md)*
-
 **Project:** La Fabrique — voice-driven coding agents on Nemotron, served by
 Nebius Token Factory
 
@@ -17,7 +15,7 @@ not part of the product that ships.
 | Form field | Value |
 |---|---|
 | Public repository | `https://github.com/careb36/la-fabrique/tree/fusion` (`fusion` branch) |
-| Working demo | `python demo/coding_agent.py` (see below) + the factory at `http://localhost:3000` |
+| Working demo | `python demo/coding_agent.py` (see below) + the factory at `http://localhost:5173` |
 
 ---
 
@@ -27,8 +25,11 @@ not part of the product that ships.
 Owner, Architect, Scrum Master, Developer, QA, SecOps, Technical Writer and
 Memory — that takes a written requirement and returns code with its tests. Each
 role has its own model, its own token budget and its own turn in the
-conversation. A result is not accepted because the model says it is done; it is
-accepted because the interpreter runs it and the tests pass.
+conversation. A result is not accepted because the model says it is done. In
+the demo it is accepted when the interpreter runs the tests and they pass; in
+the factory, when the files the workspace daemon wrote match the delivery and
+QA answers `APPROVED:` (with `DELIVERY_TESTS_ENABLED=true`, the project's tests
+must pass too).
 
 On top of that sits a desktop assistant (Assistant B1) that **listens and
 speaks**: "build the login", "how is the sprint going?", "pause the sprint".
@@ -60,16 +61,19 @@ tiers — Ultra for reasoning, Super/Nano for the rest.
 ## 2. How NVIDIA Nemotron and Nebius Token Factory are used
 
 - **Infrastructure:** `https://api.tokenfactory.nebius.com/v1` is the default
-  endpoint for the whole project (`la-fabrique/llm-proxy/app.py`). The
-  `llm-proxy` queries `GET /models` and refuses any id the provider is not
-  serving at that moment.
+  endpoint of the factory's proxy (`NEBIUS_PROXY_URL` in
+  `la-fabrique/llm-proxy/app.py`) and of the demo (`demo/nemotron.py`). The
+  `llm-proxy` queries `GET /models` and refuses any id missing from the
+  provider's catalogue.
 - **NVIDIA open models:** `nvidia/nemotron-3-ultra-550b-a55b` for reasoning (PO,
-  Architect, SecOps and the demo agent) and `nvidia/nemotron-3-super-120b-a12b`
-  / a Nano model for the fast calls.
-- **The split writes itself:** the assistant's **⚙ Nemotron** panel reads the
-  live catalogue and writes `NEMOTRON_ROLES`, `NEMOTRON_MODEL`,
-  `NEMOTRON_MODEL_STRATEGIC` and `NEMOTRON_MODEL_FAST` into `la-fabrique/.env`.
-  `la-fabrique/backend/llm/model_factory.py` applies them per role.
+  Architect, SecOps and, by default, the demo agent) and
+  `nvidia/nemotron-3-super-120b-a12b` / a Nano model for the fast calls.
+- **The split is configuration:** `NEMOTRON_ROLES`, `NEMOTRON_MODEL`,
+  `NEMOTRON_MODEL_STRATEGIC` and `NEMOTRON_MODEL_FAST` live in
+  `la-fabrique/.env` (`.env.example` ships them with every role opted in), and
+  `la-fabrique/backend/llm/model_factory.py` applies them per role. The
+  reference assistant's **⚙ Nemotron** panel can write them from the live
+  catalogue; that assistant is not distributed here.
 - **Why Token Factory sped up the work:** a single OpenAI-compatible client for
   eight agents, the demo and the assistant; the catalogue as the source of
   truth (no invented ids); and two cost tiers on the same provider.
@@ -96,7 +100,8 @@ Without a key, `python demo/coding_agent.py --offline` makes the same run with
 two recorded answers (a round that fails, then one that fixes it).
 
 For the full factory, `cd la-fabrique && docker compose up -d` and open
-<http://localhost:3000>; for the assistant, `arrancar.cmd` on Windows.
+<http://localhost:5173>; for the assistant, `arrancar.cmd` on Windows or
+`python run_fusion.py` elsewhere.
 
 ## 4. Video script (3 minutes)
 
@@ -104,7 +109,7 @@ For the full factory, `cd la-fabrique && docker compose up -d` and open
 |---|---|
 | 0:00–0:20 | The problem in one sentence: "an agent that says it finished". `demo/coding_agent.py --offline` fails in round 1 and passes in round 2. |
 | 0:20–0:50 | The demo against the real Token Factory: it runs with the key, the id `nvidia/nemotron-3-ultra-550b-a55b` is visible and the tests go green. |
-| 0:50–1:20 | `⚙ Nemotron` in the assistant: paste the key, **Test key**, `↻` to fetch the catalogue, pick Ultra and save. The `.env` with the three tiers is shown. |
+| 0:50–1:20 | `⚙ Nemotron` in the reference assistant (`profesor3`, not distributed): paste the key, **Test key**, `↻` to fetch the catalogue, pick Ultra and save. The `.env` with the three tiers is shown. |
 | 1:20–2:10 | The factory: requirement → agents → sprint on the board, with each role's events and the model each one used. |
 | 2:10–2:40 | The voice: "B1, how is the sprint going?" and "pause the sprint", with the spoken answer and the change on the board. |
 | 2:40–3:00 | Closing: `python tools/hackathon_check.py` all green. |
@@ -140,8 +145,11 @@ depend on a non-commercial license. Its independence is measured, not claimed:
 
 ```bash
 cd asistente-b1 && python tools/similarity_check.py ../profesor3
-# prose: 0 matches of 8 words · code: 0 blocks of 14 tokens
+# … prosa: 0 coincidencias de 8 palabras · código: 0 bloques de 14 tokens
 ```
+
+(The tool prints in Spanish: 0 prose matches of 8 words, 0 code blocks of 14
+tokens.)
 
 The test `tests/test_originality.py` also includes a positive control: given a
 copied paragraph, the same check catches it.
@@ -162,4 +170,6 @@ copied paragraph, the same check catches it.
 - [x] Explanation of how Nemotron and Token Factory are used
 - [x] Feedback on Nebius and NVIDIA
 - [x] Explanation of the updates made during the submission period
-- [x] `python tools/hackathon_check.py` verifies the points above
+- [x] `python tools/hackathon_check.py` verifies the license, the README, the
+      Token Factory and Nemotron defaults, the offline demo and that no `.env`
+      is tracked (and, with a key, the provider and its catalogue)

@@ -1,11 +1,12 @@
-# Botón «Informe de estado»: crea un issue en este repositorio con la etiqueta
-# `informe`. La automatización de documentación de la fábrica reacciona a esa
-# etiqueta y publica el informe ejecutivo como comentario en ese mismo issue.
+# The «Informe de estado» (status report) button: opens an issue in this
+# repository with the `informe` label. The factory's documentation automation
+# reacts to that label and posts the executive report as a comment on that
+# same issue.
 #
-# El informe NO se commitea: este repositorio es público y el informe detalla el
-# estado operativo de los cinco sistemas, incluidos los que son privados (qué CI
-# falla, cuántas alertas de dependencias hay abiertas y cuántas son críticas).
-# El issue queda igual de accesible para dirección y no lo indexa un buscador.
+# The report is NOT committed: this repository is public and the report details
+# the operational state of the five systems, private ones included (which CI
+# fails, how many dependency alerts are open and how many are critical). The
+# issue is just as accessible to management and no search engine indexes it.
 
 name: Informe de estado
 
@@ -13,11 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       foco:
-        description: "Foco opcional del informe (p. ej. 'entrega del pendrive', 'seguridad')"
+        description: "Optional focus of the report (e.g. 'USB stick delivery', 'security')"
         required: false
         type: string
       periodo:
-        description: "Ventana a comparar (por defecto, desde el informe anterior)"
+        description: "Window to compare (by default, since the previous report)"
         required: false
         type: string
 
@@ -31,12 +32,12 @@ permissions:
 
 jobs:
   solicitar:
-    name: Solicitar informe
+    name: Request report
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Crear el issue y etiquetarlo
+      - name: Create the issue and label it
         env:
           GH_TOKEN: ${{ github.token }}
           FOCO: ${{ inputs.foco }}
@@ -55,8 +56,8 @@ jobs:
             --body "$body")"
           number="${url##*/}"
 
-          # La etiqueta se agrega en un segundo paso a propósito: así GitHub
-          # emite el evento `issues.labeled` que dispara la automatización.
+          # The label is added in a second step on purpose: that way GitHub
+          # emits the `issues.labeled` event that triggers the automation.
           gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label informe
 
           echo "Issue #$number etiquetado; la fábrica generará el informe."

@@ -5,7 +5,7 @@ Delivery deadline: **30 October 2026, 14:00 GMT-3**.
 
 - Repository: <https://github.com/careb36/la-fabrique>
 - License: Apache 2.0 — see [LICENSE](../LICENSE)
-- Commits are written in Spanish (the team's convention)
+- Many commit messages are written in Spanish
 
 ## The pitch
 
@@ -38,8 +38,8 @@ claim holds.
 
 Every model call goes through `llm-proxy/`, and the proxy routes NVIDIA open
 models to **Nebius Token Factory** over its OpenAI-compatible endpoint. The
-model catalogue is fetched live at startup and hourly, so new Nemotron releases
-appear without a code change:
+model catalogue is fetched live when the proxy starts and every hour after,
+so new Nemotron releases appear without a code change:
 
 | Route | Setting | Example model |
 | --- | --- | --- |
@@ -51,8 +51,9 @@ appear without a code change:
 `.env.example` opts **every role** in, so a stack started from it with a
 `NEBIUS_API_KEY` runs PO, Architect and SecOps on Nemotron 3 Ultra and every other role on
 Nemotron 3 Super (point `NEMOTRON_MODEL_FAST` at a Nano id to move the
-TechWriter); clearing the
-variable falls back to the Qwen/DeepSeek defaults. `scripts/verify-nebius.sh`
+TechWriter). A role `NEMOTRON_ROLES` does not name gets `AGENT_MODEL`, which the
+shipped file also sets to Nemotron 3 Super; clearing both falls back to the
+Qwen/DeepSeek defaults. `scripts/verify-nebius.sh`
 proves the three layers separately so a failure points at the broken one. See
 [Model Providers](../README.md#model-providers-nebius--nvidia-nemotron).
 
@@ -75,11 +76,13 @@ the audit rows), so a Nemotron sprint is distinguishable from any other.
 
 There is no public deployment: the workspace daemon writes to the folder of the
 person running it, so a shared instance would write to nobody's project. The
-stack runs on any Linux machine with Docker in the three commands above
-(frontend on `:5173`, API and Swagger on `:8000/docs`, proxy on `:5100`); set
-`PUBLIC_API_URL` to the machine's public address if GitHub webhooks should
-reach it. The demo video walks through a stack filled by the end-to-end run
-(`scripts/e2e/run.sh`, the same run CI executes on every pull request).
+stack runs on any Linux machine with Docker with the commands above
+(frontend on `:5173`, API and Swagger on `:8000/docs`, proxy on `:5100`). The
+published ports listen on `BIND_ADDRESS` (NATS on `NATS_BIND`), `127.0.0.1` by
+default; set `PUBLIC_API_URL` to the machine's public address if GitHub
+webhooks should reach it. The demo video walks through a stack filled by the
+end-to-end run (`scripts/e2e/run.sh`, the same run CI executes on pull requests
+that touch `backend/`, `vscode-daemon/` or `scripts/e2e/`).
 
 ## The 5-minute demo (no API keys)
 
@@ -91,8 +94,11 @@ that tells them apart. No model or collector key is needed.
 2. Seed the evidence layer:
 
    ```bash
-   python3 scripts/seed_demo_evidence.py --company-id 1
+   python3 scripts/seed_demo_evidence.py --company-id 1 --token <access token>
    ```
+
+   Authentication is on by default (`AUTH_REQUIRED=true`), so the script needs
+   a Manager's access token (`--token` or `FABRIQUE_TOKEN`).
 
 3. Open `/evidence`. Three runs, one per verdict: **verified**, **refuted**,
    **unverifiable**. Open each to see the claim on one side and the independent
@@ -109,16 +115,17 @@ with its real result, not estimated.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Backend tests | `cd backend && PYTHONPATH=.:app python3 -m pytest tests -q` | 771 passed |
+| Backend tests | `cd backend && PYTHONPATH=.:app python3 -m pytest tests -q` | 857 passed |
 | Backend lint | `cd backend && ruff check app tests && ruff format --check app tests` | clean |
-| Frontend tests | `cd frontend && npm run test:run` | 392 passed (49 files) |
+| Frontend tests | `cd frontend && npm run test:run` | 396 passed (50 files) |
 | Frontend typecheck | `cd frontend && npx tsc --noEmit` | clean |
 | Frontend lint | `cd frontend && npm run lint` | clean |
 | Frontend build | `cd frontend && npm run build` | built |
-| LLM proxy tests | `cd llm-proxy && poetry run python -m pytest tests -q` | 24 passed |
+| LLM proxy tests | `cd llm-proxy && poetry run python -m pytest tests -q` | 35 passed |
 
-Continuous integration runs on every pull request (path-filtered backend,
-frontend, proxy, e2e, security and file-size jobs) on GitHub-hosted runners.
+The workflows in `.github/workflows/` run on pull requests and on pushes to
+`main` (path-filtered backend, frontend, proxy, e2e, security and file-size jobs) on
+GitHub-hosted runners (`ubuntu-latest`).
 
 ## Built during the hackathon
 
@@ -127,7 +134,7 @@ in the [CHANGELOG](../CHANGELOG.md)):
 
 - **Nebius Token Factory as a model provider** in the LLM proxy: prefix
   routing for `nvidia/` and the other vendor ids, the catalogue fetched live
-  at startup and hourly, `GET /v1/models` listing what it found, and each
+  at startup and every hour after, `GET /v1/models` listing what it found, and each
   answer saying whether its token count was reported by the provider or
   estimated.
 - **Per-role Nemotron opt-in** (`NEMOTRON_ROLES`, `NEMOTRON_MODEL`,

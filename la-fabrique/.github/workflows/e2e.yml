@@ -18,8 +18,8 @@ on:
       - '.github/workflows/e2e.yml'
 
 
-# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
-# en vez de encolarse.
+# When a new push arrives, the runs for the commit it replaces are cancelled
+# instead of queueing.
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -41,16 +41,16 @@ jobs:
     # on the runner (another e2e run, a leftover container, a local
     # `docker compose up`) held 5433 or 4223.
     env:
-      # A nivel de job: el venv se crea en el paso de install y lo consume el
-      # paso del e2e, que corre en otra shell. Si solo lo tuviera el primero,
-      # el segundo resolvería otro directorio y crearía un venv vacío.
-      # `runner.temp` no vale aquí: el contexto `runner` no existe en un `env`
-      # de job y deja el workflow inválido.
+      # At job level: the venv is created in the install step and used by
+      # the e2e step, which runs in another shell. If only the first had it,
+      # the second would resolve another directory and create an empty venv.
+      # `runner.temp` does not work here: the `runner` context does not exist
+      # in a job's `env` and makes the workflow invalid.
       POETRY_VIRTUALENVS_PATH: ${{ github.workspace }}/.poetry-backend
-      # Poetry consulta el keyring en cada operación. En un runner sin sesión
-      # de escritorio completa, secretstorage abre DBus, no recibe respuesta y
-      # aborta el `poetry install` ("Cannot install greenlet"). No hay ningún
-      # secreto que buscar aquí: la clave se lee del entorno.
+      # Poetry queries the keyring on every operation. On a runner without a
+      # full desktop session, secretstorage opens DBus, gets no answer and
+      # aborts `poetry install` ("Cannot install greenlet"). There is no
+      # secret to look up here: the key is read from the environment.
       POETRY_NO_INTERACTION: "1"
       PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
     steps:
@@ -115,9 +115,9 @@ jobs:
       - name: Install the backend
         working-directory: ./backend
         run: |
-          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y
-          # puede encontrar uno ajeno al job (con otro Python), instalar Poetry
-          # ahí, fuera del PATH, y el siguiente paso muere con
+          # Explicit `--python`: without it, uv looks for a `.venv` upwards and
+          # may find one that does not belong to the job (with another Python),
+          # install Poetry there, outside the PATH, and the next step dies with
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
           poetry env use python
