@@ -142,3 +142,9 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   of slow frames and the draw calls, measured live on the device that runs
   it. Built without a headset, the frame rate on a Quest was not measured;
   the README says so. 74 tests.
+- **Director mode** (`?director`, `src/director.ts`): plays the demo video's
+  script by itself in the Quest 3 emulator, driving the emulated head and
+  hand through the room's real interactions, so the video can be recorded
+  without a headset. A caption says it was recorded in the emulator; a badge
+  marks the faster stretches. Motion is timed by the clock, not by frames,
+  so a slow machine records the same script.

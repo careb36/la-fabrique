@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEMO_TASKS } from './demo/scenario';
 import { Player } from './engine/player';
-import { tokenAt } from './model';
+import { awaitingDecision, initialState, reduce, tokenAt } from './model';
 
 const at = (p: Player, ms: number) => {
   p.tick(ms - p.elapsed);
@@ -42,5 +42,37 @@ describe('tokenAt', () => {
     p.tick(2000);
     expect(tokenAt(p.state)).toBe('Developer');
     expect(p.state.seals).toBe(0);
+  });
+});
+
+describe('the result panel keeps what waits for the person', () => {
+  const delivery = (runId: string) => ({ runId, files: [], checks: [], risk: 'low' as const, riskReason: '' });
+  const two = () => initialState([{ id: 'ci', title: 'CI' }, { id: 'csv', title: 'CSV' }]);
+
+  it('another task delivering does not take the panel from a delivery that waits', () => {
+    let s = reduce(two(), { type: 'delivery', taskId: 'ci', delivery: delivery('run-44') });
+    s = reduce(s, { type: 'task_state', taskId: 'ci', state: 'waiting_for_person' });
+    s = reduce(s, { type: 'delivery', taskId: 'csv', delivery: delivery('run-43') });
+    expect(s.focus).toBe('ci');
+    expect(awaitingDecision(s)?.id).toBe('ci');
+  });
+
+  it('a delivery that comes to wait after another took the panel gets it back', () => {
+    let s = reduce(two(), { type: 'delivery', taskId: 'ci', delivery: delivery('run-44') });
+    s = reduce(s, { type: 'delivery', taskId: 'csv', delivery: delivery('run-43') });
+    expect(s.focus).toBe('csv');
+    s = reduce(s, { type: 'task_state', taskId: 'ci', state: 'waiting_for_person' });
+    expect(awaitingDecision(s)?.id).toBe('ci');
+  });
+
+  it('once decided, the panel moves to the next delivery that waits', () => {
+    let s = two();
+    for (const id of ['ci', 'csv']) {
+      s = reduce(s, { type: 'delivery', taskId: id, delivery: delivery(id) });
+      s = reduce(s, { type: 'task_state', taskId: id, state: 'waiting_for_person' });
+    }
+    expect(s.focus).toBe('ci');
+    s = reduce(s, { type: 'decision', taskId: 'ci', approved: true, reason: '' });
+    expect(awaitingDecision(s)?.id).toBe('csv');
   });
 });

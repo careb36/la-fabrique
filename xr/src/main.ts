@@ -114,6 +114,8 @@ function saveCompany(c: Company): void {
 let company = loadCompany();
 /** This run's sprint has closed and been recorded. */
 let sprintClosed = false;
+/** How many times faster than real time the demo's clock runs (director mode). */
+let timeScale = 1;
 
 const tasks = live
   ? [{ id: 'live', title: `Sprint ${live.sprintId}`, summary: 'Live from the factory', script: [] }]
@@ -351,14 +353,16 @@ if (!live) {
   place(
     companyPanel(
       () => company,
-      () => {
-        company = NEW_COMPANY;
-        saveCompany(company);
-        restart();
-      },
+      newCompany,
     ),
     agentPanels,
   );
+}
+
+function newCompany(): void {
+  company = NEW_COMPANY;
+  saveCompany(company);
+  restart();
 }
 
 /**
@@ -589,7 +593,7 @@ class RoomSystem extends createSystem() {
       recenter = false;
     }
     // IWSDK passes seconds; a long frame (tab restored) is clamped.
-    if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
+    if (player.tick(Math.min(delta, 0.25) * 1000 * timeScale) > 0) dirty = true;
     closeIfDone();
     this.hear();
     this.meter(delta);
@@ -650,4 +654,39 @@ if (new URLSearchParams(location.search).has('e2e')) {
     sound,
     restart,
   };
+}
+
+// Director mode plays the video's script by itself in the emulator, for
+// recording without a headset (see src/director.ts).
+if (!live && new URLSearchParams(location.search).has('director')) {
+  const labelled = (label: string): Object3D | undefined => {
+    let found: Object3D | undefined;
+    world.scene.traverse((o) => {
+      const text = (o as unknown as { inputProperties?: { text?: unknown } }).inputProperties?.text;
+      if (!found && text === label) found = o.parent ?? o;
+    });
+    return found;
+  };
+  const presenceAt = (i: number) => presences[i].p.group.getWorldPosition(new Vector3());
+  void import('./director').then(({ direct }) =>
+    direct({
+      player,
+      camera: world.camera,
+      inXR: () => world.visibilityState.value === VisibilityState.Visible,
+      token: () => task.group.getWorldPosition(new Vector3()),
+      zone: (kind) => zones[kind].group.getWorldPosition(new Vector3()),
+      launchButton: () => tasksPanel.firstLaunch(player.state),
+      label: labelled,
+      agent: (role) => presenceAt(ROLES.indexOf(role)),
+      // The middle of the team, a little under the lights.
+      wall: () => presenceAt(Math.floor(ROLES.length / 2)).add(new Vector3(0, -0.12, 0)),
+      // The result panel's middle, wherever it stands.
+      desk: () => handPanels[1].object.localToWorld(new Vector3(0, handPanels[1].anchor === 'bottom' ? 0.2 : -0.15, 0)),
+      restart,
+      newCompany,
+      setSpeed: (times) => {
+        timeScale = times;
+      },
+    }),
+  );
 }
