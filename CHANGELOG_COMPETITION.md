@@ -17,3 +17,12 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   and runs real WebXR.
 - **GitHub Pages deployment** (`.github/workflows/xr-pages.yml`): every push
   that touches `xr/` runs its tests, builds it and publishes it.
+- **The room's model and the demo player** (`src/model.ts`,
+  `src/demo/scenario.ts`, `src/engine/player.ts`). The room's state is built
+  only from events shaped like the ones the backend publishes on the
+  Glassroom stream. The demo replays three recorded tasks: a password reset
+  that the risk tier holds for a person, a CSV export that QA closes after one
+  rework, and a CI change held for a person. A person's approval closes a task;
+  a rejection plays the rework and asks again. The player's clock moves only
+  while it is not paused, so pause and resume are exact, and restart is the
+  initial state; the whole demo runs in under ten minutes (tested).
