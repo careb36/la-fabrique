@@ -69,3 +69,12 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   emulator runs in a synthetic office, whose desk and walls are detected
   like a real room's, so the passthrough view and the video show a room
   rather than black.
+- **The agents are presences in the room, and the task travels between
+  them** (`src/ui/presence.ts`, `tokenAt` in `src/model.ts`). Each agent
+  has a light in its own color above its panel, on the wall or on the
+  arc: still while it waits, breathing with a turning ring while it works,
+  a green flash when it finishes. The task is a glowing block that glides
+  to whichever agent has it in hand and then down to the person's result
+  panel, carrying the Verifier's confirmations as green seals that orbit
+  it; a rework starts again with none. Unlit materials and a handful of
+  meshes, for 60 fps on Quest. 41 tests.

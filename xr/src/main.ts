@@ -14,8 +14,9 @@ import { Player } from './engine/player';
 import { layoutRoom, type Placed, type RoomLayout, type Surface } from './room';
 import { SurfaceSystem } from './surfaces';
 import { connectLive, liveConfig } from './live';
-import { ROLES } from './model';
+import { ROLES, tokenAt } from './model';
 import { agentPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
+import { presence, token } from './ui/presence';
 
 /** Seated eye height above the floor. */
 const HEAD_Y = 1.2;
@@ -91,6 +92,8 @@ const touch = () => {
 interface Hosted {
   object: Object3D;
   root: Panel['root'];
+  /** The edge the panel is held by, from the last layout. */
+  anchor?: 'top' | 'bottom';
 }
 const handPanels: Hosted[] = [];
 const agentPanels: Hosted[] = [];
@@ -115,6 +118,7 @@ function apply(group: Hosted[], spots: Placed[]): void {
     object.rotation.set(-at.tilt, at.yaw, 0, 'YXZ');
     object.scale.setScalar(at.scale);
     root.setProperties({ anchorY: at.anchor });
+    group[i].anchor = at.anchor;
   });
 }
 
@@ -181,6 +185,31 @@ place(
 );
 // The agents only show: on the wall ahead as the team's board, or above.
 for (const role of ROLES) place(agentPanel({ ...player.state.agents[role] }), agentPanels);
+
+// Each agent's light sits just above its panel, wherever the panel goes;
+// the task travels between them and down to the result.
+const presences = ROLES.map((role, i) => {
+  const p = presence(role);
+  p.group.position.set(0, 0.22, 0.01);
+  agentPanels[i].object.add(p.group);
+  return { role, p, state: player.state.agents[role].state, changedAt: 0 };
+});
+const task = token();
+world.scene.add(task.group);
+const target = new Vector3();
+
+/** Where the task should be now, in world space, or undefined when idle. */
+function taskTarget(): Vector3 | undefined {
+  const at = tokenAt(player.state);
+  if (at === 'none') return undefined;
+  if (at === 'result') {
+    // Just above the result panel's top edge.
+    const { object, anchor } = handPanels[1];
+    return object.localToWorld(target.set(0, anchor === 'bottom' ? 0.42 : 0.05, 0.02));
+  }
+  const holder = presences.find((x) => x.role === at)!;
+  return holder.p.group.localToWorld(target.set(0, 0.05, 0));
+}
 arrange(SEATED_HEAD, 0);
 
 // Leaving the headset or opening the system menu pauses the room; coming
@@ -219,7 +248,7 @@ const surfaces = world.registerSystem(SurfaceSystem).getSystem(SurfaceSystem)!;
 class RoomSystem extends createSystem() {
   private waited = 0;
 
-  update(delta: number): void {
+  update(delta: number, time: number): void {
     if (recenter && world.visibilityState.value !== VisibilityState.NonImmersive) {
       // Give the headset a moment to report its pose and the room's
       // surfaces, then lay the factory out on them.
@@ -234,6 +263,16 @@ class RoomSystem extends createSystem() {
     }
     // IWSDK passes seconds; a long frame (tab restored) is clamped.
     if (player.tick(Math.min(delta, 0.25) * 1000) > 0) dirty = true;
+    // The lights and the task move every frame; the panels only on a change.
+    for (const x of presences) {
+      const now = player.state.agents[x.role].state;
+      if (now !== x.state) {
+        x.state = now;
+        x.changedAt = time;
+      }
+      x.p.update(now, time, x.changedAt);
+    }
+    task.update(taskTarget(), player.state.seals, delta, time);
     if (!dirty) return;
     dirty = false;
     notice.style.display = 'none';
