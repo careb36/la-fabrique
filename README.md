@@ -93,7 +93,6 @@ open `/evidence`.
 - [Getting Started](#getting-started)
 - [Agent Orchestration](#agent-orchestration)
 - [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
-- [Voice assistant](#voice-assistant)
 - [GlassRoom](#glassroom)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
@@ -460,13 +459,6 @@ What Token Factory did for the project, concretely:
 [⬆ Back to Top](#la-fabrique)
 
 ---
-
-## Voice assistant
-
-The desktop voice assistant (Asistente B1, bilingual Spanish/English) and the
-coding-agent demo are not part of the web product: they live on the `fusion`
-and `meta-vr` branches. The backend still serves the `/v1/voice/*` routes they
-call, behind `VOICE_API_KEY`.
 
 ## GlassRoom
 

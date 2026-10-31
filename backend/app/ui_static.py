@@ -1,8 +1,7 @@
 """Serve the factory's own web UI from the backend.
 
-The React app in ``frontend/`` is the product's interface: the desktop
-runtime talks to this same API, so the built ``dist`` can be served
-same-origin and the browser needs no dev server. Building is a packaging
+The React app in ``frontend/`` is the product's interface and talks to
+this same API, so the built ``dist`` can be served same-origin and the browser needs no dev server. Building is a packaging
 step, not a runtime one — when ``dist`` is absent the API keeps working and
 ``/`` explains how to build it instead of returning a bare 404.
 
@@ -52,10 +51,8 @@ _MISSING = """<!doctype html>
 <h1>La interfaz no está compilada</h1>
 <p>El backend está funcionando, pero no encuentra <code>frontend/dist</code>.</p>
 <p>Compílala una vez con <code>npm ci &amp;&amp; npm run build</code> dentro de
-<code>la-fabrique/frontend</code>, o arranca con <code>arrancar.ps1 -Instalar</code>,
-que lo hace por ti.</p>
-<p>Mientras tanto, la API responde en <a href="/docs">/docs</a> y la voz en
-<code>/v1/voice/*</code>.</p>
+<code>frontend</code>.</p>
+<p>Mientras tanto, la API responde en <a href="/docs">/docs</a>.</p>
 </html>"""
 
 

@@ -144,7 +144,7 @@ async def startup(app):
     app.state.nats_workers_started = False
     app.state.jetstream = False
     if _nats_disabled():
-        # Desktop/single-node installs have no broker: skip the reconnect loop
+        # Single-node installs without a broker: skip the reconnect loop
         # so the console is not flooded with tracebacks every few seconds.
         app.state.nats_state = NATS_STATE_DISABLED
         app.state.nats_connect_task = None

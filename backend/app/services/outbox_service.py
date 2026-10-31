@@ -19,7 +19,7 @@ Concurrency safety:
 -------------------
 ``SELECT ... FOR UPDATE SKIP LOCKED`` acquires row-level locks so that multiple
 worker replicas running in Kubernetes never process the same event simultaneously.
-On SQLite (the desktop build) the clause is skipped: the engine has no row
+On SQLite (the tests, or a DATABASE_URL install) the clause is skipped: the engine has no row
 locks, and a single process owns the loop.
 
 Retry policy:
@@ -64,7 +64,7 @@ async def process_outbox(nats_client) -> None:
             with Session(engine) as session:
                 # Fetch up to 10 pending events; SKIP LOCKED prevents worker
                 # conflicts. SQLite has no row locks and rejects the clause
-                # outright, so the desktop build polls without it — it runs a
+                # outright, so a SQLite engine polls without it — it runs a
                 # single outbox loop, and SQLite serialises the writers anyway.
                 rows = session.exec(
                     text(
@@ -112,7 +112,7 @@ async def process_outbox(nats_client) -> None:
 
                         # Mark the event as successfully delivered.
                         # A bound timestamp instead of NOW(): the function is
-                        # Postgres-only and the desktop build runs SQLite.
+                        # Postgres-only and the tests run on SQLite.
                         session.exec(
                             text(
                                 "UPDATE outbox_events SET status = 'completed', "

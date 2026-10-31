@@ -97,28 +97,6 @@ class SelfImprovementSprintRequest(BaseModel):
     scope_size: str = "M"
 
 
-class VoiceCommandRequest(BaseModel):
-    """Payload for ``POST /v1/voice/command`` — one spoken factory instruction.
-
-    ``action`` is the small vocabulary the assistant's tool declaration
-    exposes; ``text`` carries the dictated objective for the planning actions.
-    Every field is optional apart from the action because the assistant may
-    leave out whatever the sentence did not say.
-    """
-
-    action: str
-    company_id: int | None = None
-    sprint_id: int | None = None
-    run_id: int | None = None
-    text: str | None = None
-    sprint_name: str | None = None
-    scope_size: str | None = None
-    feedback: str | None = None
-    approver_name: str | None = None
-    agent: str | None = None
-    language: str | None = None
-
-
 class GenerateRequest(BaseModel):
     """Payload for ``POST /v1/generate`` — triggers the LangGraph agent workflow."""
 
