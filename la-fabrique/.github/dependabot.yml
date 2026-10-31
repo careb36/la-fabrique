@@ -3,7 +3,7 @@ version: 2
 # Weekly, grouped dependency updates. Security updates are opened as soon as
 # GitHub publishes them; grouped version updates keep the PR queue small.
 updates:
-  # Python — backend y llm-proxy usan Poetry; vscode-daemon usa requirements.txt.
+  # Python — backend and llm-proxy use Poetry; vscode-daemon uses requirements.txt.
   - package-ecosystem: pip
     directory: /backend
     target-branch: main
@@ -15,10 +15,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
-    # sqlmodel 0.0.48 exige datetimes con zona horaria; el codigo crea las
-    # columnas con datetime.utcnow(). Las tres cifras estan en 0.0.x, asi que
-    # para Dependabot todo salto es minor o patch: hay que ignorarlas todas
-    # hasta que exista la migracion del modelo de datos.
+    # sqlmodel 0.0.48 requires timezone-aware datetimes; the code fills the
+    # columns with datetime.utcnow(). All three numbers are at 0.0.x, so to
+    # Dependabot every jump is minor or patch: they all have to be ignored
+    # until the data model migration exists.
     ignore:
       - dependency-name: "sqlmodel"
         update-types: ["version-update:semver-minor", "version-update:semver-patch"]
@@ -71,9 +71,9 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
-    # @vitejs/plugin-react 6 exige vite ^8 y el proyecto esta en vite ^5;
-    # react 19 deja react-dom desemparejado y rompe tsc y los 49 ficheros de
-    # test. Ambos necesitan una migracion propia, no un bump automatico.
+    # @vitejs/plugin-react 6 requires vite ^8 and the project is on vite ^5;
+    # react 19 leaves react-dom mismatched and breaks tsc and the 49 test
+    # files. Both need a migration of their own, not an automatic bump.
     ignore:
       - dependency-name: "@vitejs/plugin-react"
         update-types: ["version-update:semver-major"]
@@ -93,18 +93,19 @@ updates:
       frontend-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
-        # Sin esto, un bump minor de react-dom cae aqui y un bump mayor de
-        # react cae en el grupo `react`: llegan en PRs distintos y el par
-        # queda desalineado, que es exactamente lo que rompio `npm ci` en #252.
+        # Without this, a minor react-dom bump lands here and a major react
+        # bump lands in the `react` group: they arrive in separate PRs and the
+        # pair goes out of step, which is exactly what broke `npm ci` in #252.
         exclude-patterns:
           - "react"
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
 
-      # React y React DOM se mueven siempre juntos: subir react-dom solo deja
-      # react en el major anterior y `npm ci` muere con ERESOLVE. Los paquetes
-      # @types tienen que seguir a su contraparte de runtime por lo mismo.
+      # React and React DOM always move together: bumping react-dom alone
+      # leaves react on the previous major and `npm ci` dies with ERESOLVE.
+      # The @types packages must follow their runtime counterpart for the
+      # same reason.
       react:
         applies-to: version-updates
         patterns:
@@ -113,7 +114,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
 
-  # Docker — un directorio por Dockerfile.
+  # Docker — one directory per Dockerfile.
   - package-ecosystem: docker
     directory: /backend
     target-branch: main
@@ -174,8 +175,8 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # Docker Compose — la raíz solo tiene docker-compose.yml, sin Dockerfile,
-  # así que el ecosistema "docker" no detectaría ese archivo.
+  # Docker Compose — the root only has docker-compose.yml, no Dockerfile,
+  # so the "docker" ecosystem would not detect that file.
   - package-ecosystem: docker-compose
     directory: /
     target-branch: main
@@ -188,7 +189,7 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # GitHub Actions — los workflows de .github/workflows/.
+  # GitHub Actions — the workflows in .github/workflows/.
   - package-ecosystem: github-actions
     directory: /
     target-branch: main

@@ -8,7 +8,7 @@ quickstart; the files below go deeper, each with a single job.
 | Document | What it answers |
 | --- | --- |
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | How the pieces fit: FastAPI, NATS, the daemon, the proxy, the engram graph. |
-| [`API.md`](API.md) | Every HTTP route, generated and verified against the running app. |
+| [`API.md`](API.md) | Every HTTP route, checked against the app's route table, and one sprint walked through. |
 
 ## Operating
 

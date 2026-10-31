@@ -11,8 +11,8 @@ on:
       - '.github/workflows/backend-tests.yml'
 
 
-# Al llegar un push nuevo se cancelan las ejecuciones del commit que reemplaza
-# en vez de encolarse.
+# When a new push arrives, the runs for the commit it replaces are cancelled
+# instead of queueing.
 concurrency:
   group: backend-tests-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -25,22 +25,23 @@ jobs:
       contents: read
       actions: write
     runs-on: ubuntu-latest
-    # Un cuelgue de red en `poetry install` dejó este job 40 minutos parado sin
-    # que nadie se enterara (el default son 6 horas). El job entero tarda ~5
-    # minutos, así que cortar a los 20 convierte un cuelgue en un fallo visible.
+    # A network hang in `poetry install` left this job stalled for 40 minutes
+    # without anyone noticing (the default is 6 hours). The whole job takes ~5
+    # minutes, so cutting it at 20 turns a hang into a visible failure.
     timeout-minutes: 20
     env:
-      # A nivel de job, no de paso: si solo lo tiene `poetry install`, el paso
-      # de tests resuelve otro directorio, no encuentra el venv recién creado y
-      # hace uno vacío ("Creating virtualenv ...n9PHBxPn" -> "Command not found:
-      # pytest"). Con el mismo path, los dos pasos hablan del mismo venv.
-      # `runner.temp` no vale aquí: el contexto `runner` solo existe en un `env`
-      # de paso, y a nivel de job deja el workflow inválido.
+      # At job level, not step level: if only `poetry install` has it, the
+      # test step resolves another directory, does not find the venv just
+      # created and makes an empty one ("Creating virtualenv ...n9PHBxPn" ->
+      # "Command not found: pytest"). With the same path, both steps talk
+      # about the same venv. `runner.temp` does not work here: the `runner`
+      # context only exists in a step's `env`, and at job level it makes the
+      # workflow invalid.
       POETRY_VIRTUALENVS_PATH: ${{ github.workspace }}/.poetry-backend
-      # Poetry consulta el keyring en cada operación. En un runner sin sesión
-      # de escritorio completa, secretstorage abre DBus, no recibe respuesta y
-      # aborta el `poetry install` ("Cannot install greenlet"). No hay ningún
-      # secreto que buscar aquí: la clave se lee del entorno.
+      # Poetry queries the keyring on every operation. On a runner without a
+      # full desktop session, secretstorage opens DBus, gets no answer and
+      # aborts `poetry install` ("Cannot install greenlet"). There is no
+      # secret to look up here: the key is read from the environment.
       POETRY_NO_INTERACTION: "1"
       PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
     steps:
@@ -57,9 +58,9 @@ jobs:
       - name: Install dependencies
         working-directory: ./backend
         run: |
-          # `--python` explícito: sin él, uv busca un `.venv` hacia arriba y
-          # puede encontrar uno ajeno al job (con otro Python), instalar Poetry
-          # ahí, fuera del PATH, y el siguiente paso muere con
+          # Explicit `--python`: without it, uv looks for a `.venv` upwards and
+          # may find one that does not belong to the job (with another Python),
+          # install Poetry there, outside the PATH, and the next step dies with
           # `poetry: command not found`.
           ~/.local/bin/uv pip install --python "$RUNNER_TEMP/venv-3.12/bin/python" poetry >/dev/null
           poetry env use python
@@ -89,16 +90,17 @@ jobs:
       - name: Run llm-proxy tests
         working-directory: .
         env:
-          # El proxy tiene su propio pyproject y necesita un venv separado.
+          # The proxy has its own pyproject and needs a separate venv.
           POETRY_VIRTUALENVS_CREATE: "true"
           POETRY_VIRTUALENVS_PATH: ${{ runner.temp }}/poetry-llm
         run: |
-          # `timeout` para que un registro de PyPI que no responde falle con el
-          # comando a la vista en vez de colgar el job entero. El install va
-          # siempre: es idempotente y sale del caché en segundos, y una guarda
-          # del tipo "¿existe pip?" da por bueno un venv vacío.
-          # Todo por `poetry run`: `poetry env info --path` puede resolver a otro
-          # venv del que `poetry install` acaba de llenar.
+          # `timeout` so that a PyPI registry that does not answer fails with
+          # the command in view instead of hanging the whole job. The install
+          # always runs: it is idempotent and comes from the cache in seconds,
+          # and a guard like "does pip exist?" accepts an empty venv.
+          # Everything through `poetry run`: `poetry env info --path` may
+          # resolve to a different venv than the one `poetry install` just
+          # filled.
           timeout 900 bash -c 'cd llm-proxy && poetry install --no-interaction --no-root'
           timeout 300 poetry run --directory llm-proxy pip install -r requirements-dev.txt
           poetry run --directory llm-proxy python -m pytest -q

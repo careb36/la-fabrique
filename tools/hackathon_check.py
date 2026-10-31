@@ -59,11 +59,8 @@ def check_license(report: Report) -> None:
 
 
 def check_readme(report: Report) -> None:
-    # The README that ships is English; README.es.md is the original Spanish
-    # documentation kept alongside it.
+    # The documentation ships in English only.
     path = ROOT / "README.md"
-    if not path.exists():
-        path = ROOT / "README.es.md"
     text = path.read_text(encoding="utf-8", errors="replace")
     lowered = text.lower()
     required = {

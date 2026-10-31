@@ -1,7 +1,5 @@
 # Assistant B1
 
-*English · [Español](README.es.md)*
-
 A desktop assistant that listens, thinks and acts. Its concrete job is to run
 **La Fabrique** — a software factory staffed by agents — by voice: ask for its
 status, plan a sprint, dispatch it, pause it, approve it, or have it build a
@@ -34,10 +32,13 @@ Three things, and all three can be checked in this repository:
 
 ```bash
 python tools/similarity_check.py ../profesor3
-# 15 own files / 126 in the other tree · prose: 0 matches of 8 words
-#   · code: 0 blocks of 14 tokens
-# Original: no prose or code blocks in common.
+# 18 archivos propios / 126 del otro árbol · prosa: 0 coincidencias de 8 palabras · código: 0 bloques de 14 tokens
+# Original: no hay prosa ni bloques de código en común.
 ```
+
+The tool prints in Spanish: 18 own files / 126 in the other tree, 0 prose
+matches of 8 words, 0 code blocks of 14 tokens, "Original: no prose or code
+blocks in common."
 
 The check compares two different things: **prose** (comments, docstrings and
 literals longer than two words, in runs of 8) and **code** (every token, in runs
@@ -97,7 +98,7 @@ which win over the file):
 
 | Variable | Purpose |
 |---|---|
-| `B1_MODEL_BASE_URL` | an endpoint compatible with `/chat/completions` (NVIDIA `integrate.api.nvidia.com`, Token Factory, OpenAI, vLLM, Ollama) |
+| `B1_MODEL_BASE_URL` | an endpoint compatible with `/chat/completions` (default NVIDIA `https://integrate.api.nvidia.com/v1`; Token Factory, OpenAI, vLLM, Ollama also work) |
 | `B1_MODEL_API_KEY` | the provider's key (`nvapi-…` for NVIDIA's gateway) |
 | `B1_MODEL` | model id (default `nvidia/nemotron-3-ultra-550b-a55b`) |
 | `B1_MODEL_THINKING` | `true` asks Nemotron for its reasoning (`chat_template_kwargs`) |
@@ -107,11 +108,16 @@ which win over the file):
 | `B1_VOICE_KEY` | the `X-Voice-Key` the factory expects |
 | `B1_LANGUAGE` | `es` / `en`: the language the conversation starts in |
 | `B1_STT_LANGUAGE` | `auto` (follows the conversation), or `es` / `en` to fix what it listens for |
-| `B1_STT_MODEL` | faster-whisper model size (`tiny`, `base`, `small`…) |
 | `B1_TTS_VOICE` | Piper voice for Spanish: path to an `.onnx` file or a name (`es_ES-sharvard-medium`) |
 | `B1_TTS_VOICE_EN` | Piper voice for English (`en_US-amy-medium`) |
 | `B1_MIC_DEVICE` | microphone name; empty means whatever the system picks |
 | `B1_SPEAKER_DEVICE` | audio output name; empty means the system's |
+| `B1_NAME` | the assistant's name (default `B1`) |
+| `B1_HOME` | the settings folder (default `~/.asistente-b1`) |
+| `B1_ALLOW_INSECURE_HTTP` | `1` allows keys over plain `http://` to another machine (trusted networks only) |
+
+The faster-whisper model size (`tiny`, `base`, `small`…) is the `stt_model` key
+in `config.json` (default `small`); it has no environment variable.
 
 The voice key and the model key can be entered in **Settings**, which also has
 test buttons: model, factory, microphone and speaker.
@@ -194,6 +200,7 @@ b1/
   speech.py       faster-whisper and piper behind two methods
   i18n.py         all interface and voice text, in Spanish and English
   config.py       JSON settings with environment overrides
+  net.py          HTTP opener: no key follows a redirect to another origin
   originality.py  prose and code comparison against another tree
   ui/             Qt window and an orb drawn with QPainter
 ```
@@ -217,7 +224,7 @@ Decisions worth knowing:
 ## Tests
 
 ```bash
-pytest -q          # 187 tests
+pytest -q          # 187 passed, 2 skipped without the reference tree
 ```
 
 They cover the end-of-speech detector with synthetic signals, the tool registry
