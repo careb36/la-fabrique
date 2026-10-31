@@ -33,12 +33,7 @@ from routers import (
     voice_router,
     workspace_router,
 )
-from security import (
-    add_security_headers,
-    exempt_from_rate_limit,
-    get_cors_origins,
-    setup_security,
-)
+from security import add_security_headers, get_cors_origins, setup_security
 from services.healthcheck import aggregate
 from ui_static import mount_ui
 
@@ -134,9 +129,6 @@ async def deep_health_check(request: Request):
 
 # Last, so every API route above wins over the SPA fallback.
 mount_ui(app)
-
-# Every route is registered now: the probes and the stream are never limited.
-exempt_from_rate_limit(app)
 
 # Even later: the shell the SPA fallback returns is exactly what an iframe
 # loads, so the headers have to wrap that middleware too.

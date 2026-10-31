@@ -11,10 +11,12 @@ import os
 
 from config import settings
 from fastapi import Request
+from limits import parse as parse_limit
 from logging_config import logger
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.responses import JSONResponse
 
 # Rate limiter configuration
 limiter = Limiter(
@@ -105,37 +107,50 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return apply_security_headers(request.url.path, response)
 
 
-def setup_security(app):
-    """Configure security middleware and rate limiting on the app.
+# The Glassroom stream is an EventSource that reconnects on its own, so it is
+# never refused. Health, metrics, the docs and the UI's files are not under
+# /v1/ and are never limited either.
+RATE_LIMIT_EXEMPT = {"/v1/glassroom/stream"}
+_DEFAULT_LIMIT = parse_limit(settings.RATE_LIMIT_DEFAULT)
 
-    The middleware is what applies ``RATE_LIMIT_DEFAULT`` to every route; the
-    routes that carry their own limit (sign-in, the desktop exchange) keep it,
-    and the ones listed in ``RATE_LIMIT_EXEMPT`` are never limited.
+
+def is_rate_limited(path: str) -> bool:
+    """Whether a request to *path* counts against ``RATE_LIMIT_DEFAULT``."""
+    return path.startswith("/v1/") and path not in RATE_LIMIT_EXEMPT
+
+
+class DefaultRateLimitMiddleware(BaseHTTPMiddleware):
+    """Apply ``RATE_LIMIT_DEFAULT`` to every API request, per client address.
+
+    slowapi's own middleware finds the route before counting, and FastAPI no
+    longer flattens included routers into ``app.routes``, so it found none and
+    limited nothing. This counts by path instead, in the limiter's storage;
+    the sign-in routes still carry their own, tighter limit on top.
     """
+
+    async def dispatch(self, request: Request, call_next):
+        if limiter.enabled and is_rate_limited(request.url.path):
+            key = get_remote_address(request)
+            if not limiter._limiter.hit(_DEFAULT_LIMIT, "default", key):
+                return JSONResponse(
+                    {"error": f"Rate limit exceeded: {settings.RATE_LIMIT_DEFAULT}"},
+                    status_code=429,
+                )
+        return await call_next(request)
+
+
+def setup_security(app):
+    """Configure security middleware and rate limiting on the app."""
     from slowapi import _rate_limit_exceeded_handler
-    from slowapi.middleware import SlowAPIMiddleware
 
     # Add rate limiter to app state
     app.state.limiter = limiter
 
     # Add rate limit exceeded handler
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(DefaultRateLimitMiddleware)
 
     logger.info("Security middleware configured (rate limiting)")
-
-
-# Probes and the Glassroom stream: a monitor polls the first, and an
-# EventSource reconnects on its own, so neither should ever be refused.
-RATE_LIMIT_EXEMPT = {"/health", "/health/deep", "/metrics", "/v1/glassroom/stream"}
-
-
-def exempt_from_rate_limit(app, paths=RATE_LIMIT_EXEMPT):
-    """Exempt the routes at *paths*; call it once every route is registered."""
-    for route in app.routes:
-        endpoint = getattr(route, "endpoint", None)
-        if endpoint is not None and getattr(route, "path", None) in paths:
-            limiter.exempt(endpoint)
 
 
 def add_security_headers(app):
