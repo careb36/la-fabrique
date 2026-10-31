@@ -348,7 +348,7 @@ as a correction on the next attempt.
 
 Every route gets 300 requests per minute per client address
 (`RATE_LIMIT_DEFAULT`), in memory by default (`RATE_LIMIT_STORAGE_URI`), so the
-counter is per process. Login, registration and the desktop key exchange have
+counter is per process. Login and registration have
 their own, tighter limit (`AUTH_RATE_LIMIT`, 10 per minute). `/health`,
 `/health/deep`, `/metrics` and the Glassroom stream are never limited.
 Exceeding a limit returns **429**.

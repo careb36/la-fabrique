@@ -7,8 +7,6 @@ Provides:
 - CORS configuration
 """
 
-import os
-
 from config import settings
 from fastapi import Request
 from limits import parse as parse_limit
@@ -30,19 +28,6 @@ limiter = Limiter(
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
-def frame_ancestors() -> list[str]:
-    """Origins allowed to embed this UI in an iframe, empty by default.
-
-    The factory ships its own React interface and the desktop assistant's
-    dashboard embeds it, which is a *different* origin: `X-Frame-Options: DENY`
-    blanked that panel. `SAMEORIGIN` does not help and `ALLOW-FROM` is dead, so
-    the caller (run_fusion.py) names the dashboard origins explicitly; without
-    that variable the strict default stands.
-    """
-    raw = os.getenv("FRAME_ANCESTORS", "")
-    return [o.strip().rstrip("/") for o in raw.replace(",", " ").split() if o.strip()]
-
-
 def apply_security_headers(path: str, response):
     """Set the security headers on *response* for a request to *path*.
 
@@ -56,12 +41,8 @@ def apply_security_headers(path: str, response):
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
 
-    # Prevent clickjacking. An explicit embedder allowlist replaces the
-    # blanket DENY, because frame-ancestors is the only header browsers
-    # still honour for that.
-    ancestors = frame_ancestors()
-    if not ancestors:
-        response.headers["X-Frame-Options"] = "DENY"
+    # Prevent clickjacking
+    response.headers["X-Frame-Options"] = "DENY"
 
     # XSS protection
     response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -71,13 +52,8 @@ def apply_security_headers(path: str, response):
         "max-age=31536000; includeSubDomains"
     )
 
-    # Content security policy. A route that set its own (the generated
-    # project previews, which are sandboxed) keeps it: this middleware is
-    # outermost, so overwriting would silently drop the sandbox.
-    existing = response.headers.get("Content-Security-Policy")
-    if existing:
-        csp = existing
-    elif path in {"/docs", "/redoc", "/openapi.json"}:
+    # Content security policy
+    if path in {"/docs", "/redoc", "/openapi.json"}:
         csp = (
             "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net "
             "'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net "
@@ -87,8 +63,6 @@ def apply_security_headers(path: str, response):
         )
     else:
         csp = "default-src 'self'"
-    if ancestors:
-        csp += "; frame-ancestors 'self' " + " ".join(ancestors)
     response.headers["Content-Security-Policy"] = csp
 
     # Referrer policy

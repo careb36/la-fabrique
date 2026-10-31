@@ -151,12 +151,6 @@ services:
       NEMOTRON_MODEL_STRATEGIC: ${NEMOTRON_MODEL_STRATEGIC:-}
       NEMOTRON_MODEL_FAST: ${NEMOTRON_MODEL_FAST:-}
       AGENT_MODEL: ${AGENT_MODEL:-}
-      # The desktop assistant's shared key for /v1/voice/*; empty keeps the
-      # voice routes closed while AUTH_REQUIRED is on.
-      VOICE_API_KEY: ${VOICE_API_KEY:-}
-      VOICE_COMPANY_ID: ${VOICE_COMPANY_ID:-}
-      # Projects the factory writes from a chat sentence (/v1/voice/build).
-      FABRICA_BUILDS_DIR: ${FABRICA_BUILDS_DIR:-/workspace/builds}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"

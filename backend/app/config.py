@@ -11,7 +11,6 @@ Usage::
     db_url = settings.POSTGRES_HOST
 """
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -115,21 +114,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # ---------------------------------------------------------------------------
-    # Voice control — shared secret the desktop assistant presents as
-    # ``X-Voice-Key`` on /v1/voice/*. Unset means the voice façade refuses to
-    # answer (503) while AUTH_REQUIRED is on; it never opens anonymously.
-    # ---------------------------------------------------------------------------
-    VOICE_API_KEY: str | None = None
-    # Company the voice façade uses when the caller does not name one. Unset
-    # means "the oldest company", which is what a single-tenant install wants.
-    VOICE_COMPANY_ID: int | None = None
-
-    @field_validator("VOICE_COMPANY_ID", mode="before")
-    @classmethod
-    def _empty_company_is_unset(cls, value):
-        # `.env.example` and docker compose pass it as an empty string.
-        return None if isinstance(value, str) and not value.strip() else value
-
     # Audit signing — separate HMAC key for decision_signature values.
     # ---------------------------------------------------------------------------
     AUDIT_SIGNING_KEY: str | None = None
@@ -164,8 +148,8 @@ class Settings(BaseSettings):
     # address, and the UI's own polling takes about forty a minute.
     RATE_LIMIT_DEFAULT: str = "300/minute"
     RATE_LIMIT_STORAGE_URI: str = "memory://"
-    # Login, registration and the desktop key exchange, per client address:
-    # enough for a person, too few to guess a password or a voice key.
+    # Login and registration, per client address: enough for a person, too
+    # few to guess a password.
     AUTH_RATE_LIMIT: str = "10/minute"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     # Off only behind a proxy that sets these headers itself.
