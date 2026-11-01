@@ -28,6 +28,9 @@ export default defineConfig({
     outDir: 'dist',
     target: 'esnext',
   },
+  // The voice recognizer's worker imports transformers.js, which loads its
+  // ONNX backend on demand: an ES module worker can.
+  worker: { format: 'es' },
   esbuild: { target: 'esnext' },
   optimizeDeps: {
     exclude: ['@babylonjs/havok'],

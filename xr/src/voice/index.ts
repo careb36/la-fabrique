@@ -8,7 +8,12 @@
  * can move to its own package unchanged.
  */
 
+export { concat, Endpointer, padded, type EndpointerOptions } from './endpointer';
 export { Grammar, guessLang, resolveItem, type IntentSpec } from './grammar';
+export { MIC_FRAME, MIC_SAMPLE_RATE, microphoneSupported, openMicrophone } from './microphone';
+export { SileroVad, VAD_CONTEXT, VAD_SAMPLE_RATE, VAD_WINDOW } from './silero';
+export { detectLanguage, pickLanguage, promptedInitTokens, transcribe } from './whisper-core';
+export { WHISPER_MODELS, WhisperRecognizer, whisperSize, type WhisperRecognizerOptions, type WhisperSize } from './whisper-recognizer';
 export { listOf, message, MESSAGES, pick, type MessageKey } from './messages';
 export { firstAvailable, recognitionLanguage, WebSpeechRecognizer } from './recognizer';
 export { CommandRegistry } from './registry';

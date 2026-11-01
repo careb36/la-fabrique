@@ -26,7 +26,18 @@ import { agentPanel, companyPanel, controlPanel, resultPanel, taskPanel, type Pa
 import { guide } from './ui/guide';
 import { highContrast, setContrast } from './ui/kit';
 import { roomRegistry, taskItems } from './commands';
-import { FallbackSpeaker, firstAvailable, SilentSpeaker, VoiceSession, WebSpeechRecognizer, WebSpeechSpeaker, type Lang } from './voice';
+import {
+  FallbackSpeaker,
+  firstAvailable,
+  SilentSpeaker,
+  VoiceSession,
+  WebSpeechRecognizer,
+  WebSpeechSpeaker,
+  WhisperRecognizer,
+  whisperSize,
+  type Lang,
+  type Recognizer,
+} from './voice';
 import { FrameStats, perfLine } from './perf';
 import { cueFor, Sound } from './sound';
 import { ROLE_COLOR } from './ui/presence';
@@ -338,15 +349,36 @@ const voiceRegistry = roomRegistry(
 /** The last exchange, shown on the Room panel; '' while voice is off. */
 let voiceLine = '';
 let lastHeard = '';
-const voiceRecognizer = firstAvailable([new WebSpeechRecognizer(voiceLang)]);
+// Who listens: the browser's own recognizer where it exists (instant, no
+// download), else Whisper running in the page, the only one the Meta Quest
+// browser has. `?stt=whisper` forces the latter, `?stt=tiny|base|small`
+// picks its size (the bench's numbers decide the default).
+const voiceParams = new URLSearchParams(location.search);
+const sttChoice = voiceParams.get('stt') ?? 'auto';
+const whisper = new WhisperRecognizer({
+  size: whisperSize(sttChoice, 'base'),
+  hints: () => ({ es: voiceRegistry.vocabularyHint('es'), en: voiceRegistry.vocabularyHint('en') }),
+  preferredLanguage: voiceLang,
+  // Absolute: the worker fetches it, and a relative path would be read against the worker's own URL.
+  vadUrl: new URL(`${import.meta.env.BASE_URL}silero_vad_v6.onnx`, document.baseURI).href,
+});
+const webSpeech = new WebSpeechRecognizer(voiceLang);
+const voiceRecognizer: Recognizer | undefined = firstAvailable(sttChoice === 'auto' || sttChoice === 'web' ? [webSpeech, whisper] : [whisper, webSpeech]);
 const voice = new VoiceSession({
   registry: voiceRegistry,
-  recognizer: voiceRecognizer ?? new WebSpeechRecognizer(voiceLang),
+  recognizer: voiceRecognizer ?? webSpeech,
   speaker: new FallbackSpeaker([new WebSpeechSpeaker(), new SilentSpeaker()]),
   language: voiceLang,
   onEvent: (e) => {
     if (e.kind === 'heard') {
       lastHeard = e.text;
+      return;
+    }
+    if (e.kind === 'status') {
+      // Progress and "hearing you" replace the line only while nothing was said.
+      if (e.text && !lastHeard) voiceLine = e.text;
+      else if (e.status.kind === 'speech-start') lastHeard = '';
+      touch();
       return;
     }
     if (e.kind === 'listening') lastHeard = '';

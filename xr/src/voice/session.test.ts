@@ -194,6 +194,17 @@ describe('VoiceSession', () => {
     expect(h.said).toEqual(['Paused.', 'Paused.']);
   });
 
+  it('a speaker that never finishes does not leave the session deaf for good', () => {
+    const h = harness(actions, 'en');
+    h.session.start();
+    h.say('pause');
+    expect(h.said).toEqual(['Paused.']);
+    // The speaker never resolves; after a generous estimate the session listens again.
+    h.advance(2_000 + 400 + 1);
+    h.say('pause');
+    expect(h.said).toEqual(['Paused.', 'Paused.']);
+  });
+
   it('help lists the actions in the language asked', () => {
     const h = harness(actions, 'en');
     h.session.start();

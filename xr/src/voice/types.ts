@@ -92,15 +92,27 @@ export interface Understanding {
 export const BUILTIN_INTENTS = ['yes', 'no', 'help'] as const;
 export type BuiltinIntent = (typeof BUILTIN_INTENTS)[number];
 
+/** What a recognizer is up to, for the person to see: a model loading, a phrase heard. */
+export type RecognizerStatus =
+  | { kind: 'loading'; percent: number }
+  | { kind: 'ready' }
+  | { kind: 'speech-start' }
+  | { kind: 'speech-end' };
+
 export interface Recognizer {
   /** Whether this recognizer can work here at all (an API present, a model reachable). */
   available(): boolean;
   /**
    * Listen until the returned function is called, handing every final
    * transcript (and the language heard, when known) to `heard`. `failed`
-   * ends listening with a reason the layer tells the person.
+   * ends listening with a reason the layer tells the person; `status`
+   * reports progress the person may want to see.
    */
-  listen(heard: (transcript: string, lang?: Lang) => void, failed: (reason: RecognizerFailure) => void): () => void;
+  listen(
+    heard: (transcript: string, lang?: Lang) => void,
+    failed: (reason: RecognizerFailure) => void,
+    status?: (status: RecognizerStatus) => void,
+  ): () => void;
 }
 
 export type RecognizerFailure = 'unsupported' | 'microphone' | 'network' | 'model';
@@ -114,6 +126,7 @@ export interface Speaker {
 
 export type VoiceEvent =
   | { kind: 'listening'; text: string; lang: Lang }
+  | { kind: 'status'; text: string; lang: Lang; status: RecognizerStatus }
   | { kind: 'heard'; text: string; lang: Lang }
   | { kind: 'said'; text: string; lang: Lang }
   | { kind: 'stopped'; text: string; lang: Lang }

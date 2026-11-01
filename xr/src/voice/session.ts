@@ -14,7 +14,7 @@
 
 import { listOf, message, pick } from './messages';
 import type { CommandRegistry } from './registry';
-import type { Action, Item, Lang, Recognizer, RecognizerFailure, Speaker, VoiceEvent } from './types';
+import type { Action, Item, Lang, Recognizer, RecognizerFailure, RecognizerStatus, Speaker, VoiceEvent } from './types';
 
 export const PENDING_MS = 15_000;
 /** Transcripts arriving this long after the speaker finished are still its echo. */
@@ -64,6 +64,7 @@ export class VoiceSession {
     this.stopListening = this.o.recognizer.listen(
       (text, heardLang) => this.hear(text, heardLang),
       (reason) => this.fail(reason),
+      (status) => this.status(status),
     );
     this.emit({ kind: 'listening', text: message(lang, 'listening'), lang });
   }
@@ -162,14 +163,32 @@ export class VoiceSession {
 
   private say(text: string, lang: Lang): void {
     this.emit({ kind: 'said', text, lang });
-    // Until the speaker is done, and a moment after, the microphone hears it.
-    this.speakingUntil = Number.POSITIVE_INFINITY;
+    // Until the speaker is done, and a moment after, the microphone hears
+    // it. A speaker that never reports the end (a browser voice can) must
+    // not leave the session deaf: the window is at most what the sentence
+    // would take to say, generously.
+    const estimate = Math.max(2_000, text.length * 90);
+    const spokenBy = this.now() + estimate + ECHO_MS;
+    this.speakingUntil = spokenBy;
     void this.o.speaker
       .say(text, lang)
       .catch(() => undefined)
       .finally(() => {
-        this.speakingUntil = this.now() + ECHO_MS;
+        this.speakingUntil = Math.min(spokenBy, this.now() + ECHO_MS);
       });
+  }
+
+  private status(status: RecognizerStatus): void {
+    const lang = this.o.language();
+    const text =
+      status.kind === 'loading'
+        ? message(lang, 'loadingModel', { percent: String(status.percent) })
+        : status.kind === 'ready'
+          ? message(lang, 'listening')
+          : status.kind === 'speech-start'
+            ? message(lang, 'hearing')
+            : '';
+    this.emit({ kind: 'status', text, lang, status });
   }
 
   private fail(reason: RecognizerFailure): void {
