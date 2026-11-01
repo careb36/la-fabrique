@@ -13,6 +13,19 @@ import pytest
 
 import run_fusion
 
+REAL_FACTORY = run_fusion.FACTORY
+REAL_AGENTS_DIR = run_fusion.AGENTS_DIR
+
+
+@pytest.fixture(autouse=True)
+def _launcher_writes_stay_in_tmp(tmp_path, monkeypatch):
+    """main() creates the agents' folder and writes la-fabrique/.env (with a
+    fresh JWT secret) before it looks for Docker; in a test both go to a
+    temporary folder, never into the working tree."""
+    monkeypatch.setattr(run_fusion, "FACTORY", tmp_path / "la-fabrique")
+    monkeypatch.setattr(run_fusion, "AGENTS_DIR", tmp_path / "agentes")
+    (tmp_path / "la-fabrique").mkdir()
+
 
 class _FactoryHandler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 - http.server API
@@ -524,6 +537,19 @@ def test_without_docker_the_full_mode_explains_itself(tmp_path, monkeypatch, cap
     err = capsys.readouterr().err
     assert "necesita Docker" in err
     assert "sin -Completa" in err
+
+
+def test_running_the_launcher_in_a_test_leaves_the_tree_alone(tmp_path, monkeypatch):
+    env_before = (REAL_FACTORY / ".env").exists()
+    agents_before = REAL_AGENTS_DIR.exists()
+    monkeypatch.setenv("PATH", str(tmp_path / "vacio"))
+
+    assert run_fusion.main(["--completa", "--no-browser"]) == 1
+
+    assert (tmp_path / "agentes").is_dir()
+    assert "JWT_SECRET_KEY=" in (tmp_path / "la-fabrique" / ".env").read_text(encoding="utf-8")
+    assert (REAL_FACTORY / ".env").exists() == env_before
+    assert REAL_AGENTS_DIR.exists() == agents_before
 
 
 def test_secrets_are_generated_once_and_comments_survive(tmp_path, monkeypatch):
