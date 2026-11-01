@@ -37,7 +37,7 @@ from .. import APP_NAME, __version__, devices
 from ..assistant import Assistant, build_assistant
 from ..config import Settings
 from ..i18n import normalize, t
-from ..speech import make_speaker, make_transcriber, mic_ready, stt_ready
+from ..speech import make_transcriber, mic_ready, speaker_from_settings, stt_ready
 from .orb import Orb
 
 OVERLAY_FLAGS = (
@@ -501,14 +501,9 @@ class MainWindow(QMainWindow):
     # -- helpers ------------------------------------------------------------
     @staticmethod
     def _speaker(settings: Settings):
-        """Piper, the system voice or the console — in the session language."""
+        """Kokoro, Piper, the system voice or the console — in the session language."""
         language = normalize(settings.language)
-        speaker = make_speaker(
-            settings.tts_voice,
-            settings.speaker_device,
-            voice_en=settings.tts_voice_en,
-            language=language,
-        )
+        speaker = speaker_from_settings(settings)
         try:
             speaker.language = language
         except Exception:  # noqa: BLE001 - a read-only speaker is still a speaker

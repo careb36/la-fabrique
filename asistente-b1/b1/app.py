@@ -121,9 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         return _download_voices(settings)
 
     if args.speak:
-        speaker, description = describe_voice(
-            settings.tts_voice, settings.tts_voice_en, language=language
-        )
+        speaker, description = describe_voice(language=language, settings=settings)
         print(t(language, "app.check_tts"), description)
         speaker.say(args.speak)
         return 0
@@ -147,16 +145,28 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _download_voices(settings: Settings) -> int:
-    """Fetch the configured Piper voices once, so the app can speak offline."""
+    """Fetch Kokoro and the configured Piper voices once, to speak offline."""
+    from . import kokoro  # noqa: PLC0415 - optional engine
+
     language = settings.language
+    failed = 0
+    if kokoro.engine_installed():
+        print(t(language, "app.kokoro_downloading", path=kokoro.kokoro_dir()))
+        for name, error in kokoro.download().items():
+            if error:
+                failed += 1
+                print(f" ✕ {name}: {error}")
+            else:
+                print(t(language, "app.voices_ok", name=name))
+    else:
+        print(t(language, "app.kokoro_missing"))
     names = [voice_name(settings.tts_voice), voice_name(settings.tts_voice_en)]
     names = [name for name in names if name]
     if not names:
         print(t(language, "app.voices_paths_set"))
-        return 0
+        return 1 if failed else 0
     print(t(language, "app.voices_downloading", names=", ".join(names)))
     results = download_voices(names)
-    failed = 0
     for name, error in results.items():
         if error:
             failed += 1
@@ -178,9 +188,7 @@ def _qt_available() -> bool:
 def _check(settings: Settings) -> int:
     language = settings.language
     yes = t(language, "app.yes")
-    speaker, voice = describe_voice(
-        settings.tts_voice, settings.tts_voice_en, language=language
-    )
+    speaker, voice = describe_voice(language=language, settings=settings)
     rows: list[tuple[str, str]] = [
         ("app.check_config", str(config_file())),
         ("app.check_model", f"{settings.model} @ {settings.model_url_clean()}"),

@@ -602,7 +602,7 @@ Apache-2.0, with no code or prose from the reference assistant:
   is **standard library only**.
 - The window is **PyQt6**. Without PyQt6, faster-whisper, Piper or sounddevice,
   it still starts as a console and says what is missing.
-- Voice chain: **Piper → system voice → console**. A missing model or engine
+- Voice chain: **Kokoro → Piper → system voice → console**. A missing model or engine
   falls through and reports the reason; it never leaves the assistant silent
   without saying why.
 - The phrase ends when the **voice** stops, not the noise: Silero VAD (shipped
