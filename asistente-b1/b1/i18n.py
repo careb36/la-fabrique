@@ -100,6 +100,19 @@ _TEXTS: dict[str, dict[str, str]] = {
     "app.check_input": {"es": "entrada:", "en": "input:"},
     "app.check_output": {"es": "salida:", "en": "output:"},
     "app.check_stt": {"es": "voz a texto:", "en": "speech to text:"},
+    "app.check_vad": {"es": "fin de frase:", "en": "end of phrase:"},
+    "vad.silero": {
+        "es": "Silero VAD (distingue la voz del ruido)",
+        "en": "Silero VAD (tells a voice from noise)",
+    },
+    "vad.energy_chosen": {
+        "es": "por volumen (B1_VAD=energy)",
+        "en": "by loudness (B1_VAD=energy)",
+    },
+    "vad.energy_fallback": {
+        "es": "por volumen: Silero no está disponible (viene con faster-whisper)",
+        "en": "by loudness: Silero is not available (it comes with faster-whisper)",
+    },
     "app.check_tts": {"es": "voz de salida:", "en": "voice out:"},
     "app.check_qt": {"es": "Qt:", "en": "Qt:"},
     "app.check_key": {"es": "clave modelo:", "en": "model key:"},

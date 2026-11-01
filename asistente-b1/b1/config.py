@@ -35,6 +35,10 @@ def _coerce(field_name: str, value: str):
     """A saved/env value as the type its field declares (bad values are ignored)."""
     if field_name == "language":
         return normalize(value)
+    if field_name == "vad":
+        from .vad import normalize_choice  # noqa: PLC0415 - avoids an import cycle
+
+        return normalize_choice(value)
     if field_name == "stt_language":
         text = str(value).strip().lower()
         if text in {"auto", "es", "en"}:
@@ -93,6 +97,9 @@ class Settings:
     # "auto" lets Whisper decide; "es"/"en" pins the listening language and is
     # the difference between a transcript and a guess on short phrases.
     stt_language: str = "auto"
+    # What ends a phrase: "silero" (a voice detector, from faster-whisper) or
+    # "energy" (loudness alone). Silero falls back to energy when missing.
+    vad: str = "silero"
     tts_voice: str = "es_ES-sharvard-medium"
     tts_voice_en: str = "en_US-amy-medium"
     assistant_name: str = "B1"
@@ -116,6 +123,7 @@ class Settings:
             "voice_key": "VOICE_KEY",
             "language": "LANGUAGE",
             "stt_language": "STT_LANGUAGE",
+            "vad": "VAD",
             "tts_voice": "TTS_VOICE",
             "tts_voice_en": "TTS_VOICE_EN",
             "assistant_name": "NAME",

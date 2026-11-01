@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-* **Asistente B1, the coding-agent demo and the requirements checker left `main`.** `main` is the web product; the voice assistant lives on the `fusion` and `meta-vr` branches. `asistente-b1/`, `demo/`, `tests/` (the demo's), `tools/hackathon_check.py` and the `assistant-tests` workflow are gone from here; the backend keeps the `/v1/voice/*` routes the assistant calls.
-
 ### Added
 
 * **Asistente B1, the coding-agent demo and the requirements checker, from the `fusion` branch, after a security review.** `asistente-b1/` drives the factory by voice through `/v1/voice/*`; `demo/coding_agent.py` writes, runs and tests code until green (offline or on Nemotron); `tools/hackathon_check.py` checks the submission requirements. A new CI job runs their tests. The review's fixes: decisive factory actions run only after the person says "sí, confirmo" (checked in code, not in the prompt); only the factory's previews are opened; keys do not follow cross-origin redirects; Windows speech passes text as data, never as PowerShell source; a leading dash is not read as an option; `config.json` is created 0600; the demo runs model-written tests without the parent's environment.

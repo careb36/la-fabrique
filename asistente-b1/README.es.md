@@ -108,6 +108,7 @@ ganan sobre el archivo):
 | `B1_VOICE_KEY` | `X-Voice-Key` que espera la fábrica |
 | `B1_LANGUAGE` | `es` / `en`: el idioma en que arranca la charla |
 | `B1_STT_LANGUAGE` | `auto` (sigue la conversación), o `es` / `en` para fijar lo que escucha |
+| `B1_VAD` | `silero` (por defecto) termina la frase cuando calla la voz, haya el ruido que haya; `energy` usa solo el volumen |
 | `B1_STT_MODEL` | tamaño del modelo de faster-whisper (`tiny`, `base`, `small`…) |
 | `B1_TTS_VOICE` | voz de Piper para español: ruta a un `.onnx` o nombre (`es_ES-sharvard-medium`) |
 | `B1_TTS_VOICE_EN` | voz de Piper para inglés (`en_US-amy-medium`) |
@@ -147,6 +148,13 @@ interfaz, es el mismo programa hablando en uno u otro idioma.
   con esa pista no devuelve nada —pasa cuando alguien cambia de idioma a mitad
   de una frase—, se repite la transcripción sin pista y gana la detección del
   modelo. Con `B1_STT_LANGUAGE=es` o `=en` se fija y no se adivina nunca.
+* **Cuándo terminó la frase.** Silero VAD, un detector de voz chico, decide
+  qué tramos de 32 ms son voz; la frase termina después de 0,7 s sin voz. Un
+  ventilador, un teclado o una puerta no abren ni estiran una frase, y una voz
+  baja en un cuarto ruidoso sí. Silero viene dentro de `faster-whisper`, así
+  que no hay nada más que instalar ni bajar; sin él, o con `B1_VAD=energy`,
+  decide el volumen contra el ruido de la habitación, como antes.
+  `b1 --check` dice cuál se usa.
 * **Habla.** Primero Piper, si hay binario y modelo; si no, la voz del sistema
   (SAPI en Windows, `say` en macOS, `espeak-ng`/`spd-say` en Linux) elegida por
   el idioma de la frase; y si no hay ninguna, el texto por consola. Nunca se
@@ -198,6 +206,7 @@ b1/
   fabrica.py      cliente /v1/voice/*, guía y las tres herramientas
   prompts.py      prompt de sistema armado en runtime
   audio.py        micrófono, RMS, detector de fin de frase
+  vad.py          detector de voz Silero (de faster-whisper), con el volumen de respaldo
   devices.py      qué micrófono y qué parlante, elegidos por nombre
   speech.py       faster-whisper y piper detrás de dos métodos
   i18n.py         todo el texto de la interfaz y de la voz, en español y en inglés

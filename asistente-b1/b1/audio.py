@@ -1,8 +1,9 @@
 """Microphone capture and end-of-speech detection.
 
-The endpointer is plain arithmetic on frame energy — no model, no dependency —
-so it can be unit-tested with synthetic frames and behaves the same on every
-machine. Recording stops when the person stops talking, not on a fixed timer.
+Recording stops when the person stops talking, not on a fixed timer. Whether a
+frame is speech is decided by a voice detector when one is given (Silero, see
+``vad.py``) and otherwise by plain arithmetic on frame energy — no model, no
+dependency — which is unit-tested with synthetic frames.
 """
 
 from __future__ import annotations
@@ -51,6 +52,10 @@ class Endpointer:
     ``speech_ratio`` is how many times louder than the running noise floor a
     frame must be to count as voice. The floor adapts only while idle, so a fan
     that switches on mid-phrase cannot swallow the end of the sentence.
+
+    With a ``detector`` (anything with ``is_speech(frame) -> bool``), the
+    detector decides what is voice instead of loudness: a fan or a keyboard no
+    longer opens a phrase, and a soft voice still does.
     """
 
     def __init__(
@@ -64,7 +69,9 @@ class Endpointer:
         silence_ms: int = 700,
         preroll_ms: int = 240,
         max_ms: int = 20_000,
+        detector=None,
     ) -> None:
+        self.detector = detector
         self.sample_rate = sample_rate
         self.frame_ms = frame_ms
         self.speech_ratio = speech_ratio
@@ -94,7 +101,10 @@ class Endpointer:
     def feed(self, frame: Sequence[float]) -> bytes | None:
         """Consume one frame; return the finished utterance as PCM16, if any."""
         level = rms(frame)
-        loud = level >= self.threshold
+        if self.detector is not None:
+            loud = bool(self.detector.is_speech(frame))
+        else:
+            loud = level >= self.threshold
 
         if not self._collecting:
             self._preroll.append(frame)
@@ -228,8 +238,15 @@ def record_phrase(
     device: str = "",
     language: str = "es",
     should_stop: Callable[[], bool] | None = None,
+    vad: str = "silero",
 ) -> bytes:
     """Convenience wrapper: open the mic, listen for one phrase, close it."""
-    endpointer = Endpointer(silence_ms=silence_ms, max_ms=int(max_seconds * 1000))
+    from .vad import load_detector  # noqa: PLC0415 - optional model
+
+    endpointer = Endpointer(
+        silence_ms=silence_ms,
+        max_ms=int(max_seconds * 1000),
+        detector=load_detector(vad),
+    )
     with Microphone(device=device, language=language) as mic:
         return mic.listen(endpointer, on_level=on_level, should_stop=should_stop) or b""
