@@ -1,0 +1,6 @@
+# The speech service: the server tier of the voice layer.
+fastapi==0.162.0
+uvicorn==0.54.0
+numpy==2.4.6
+faster-whisper==1.2.1
+kokoro-onnx==0.6.1
