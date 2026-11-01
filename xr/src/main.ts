@@ -30,6 +30,7 @@ import {
   FallbackSpeaker,
   firstAvailable,
   PiperSpeaker,
+  ServerSpeaker,
   SilentSpeaker,
   VoiceSession,
   WebSpeechRecognizer,
@@ -356,29 +357,41 @@ let lastHeard = '';
 // picks its size (the bench's numbers decide the default).
 const voiceParams = new URLSearchParams(location.search);
 const sttChoice = voiceParams.get('stt') ?? 'auto';
-const whisper = new WhisperRecognizer({
-  size: whisperSize(sttChoice, 'base'),
+// A speech service (speech-service/), when the build or the address names
+// one, is the best ear and voice the room can have: faster-whisper and
+// Kokoro on a server. It comes first; the page's own recognizers and
+// voices stay behind it.
+const speechUrl = voiceParams.get('speech') ?? import.meta.env.VITE_SPEECH_API ?? '';
+const speechService = speechUrl ? { url: speechUrl, apiKey: voiceParams.get('speech_key') ?? undefined } : undefined;
+const whisperOptions = {
   hints: () => ({ es: voiceRegistry.vocabularyHint('es'), en: voiceRegistry.vocabularyHint('en') }),
   preferredLanguage: voiceLang,
   // Absolute: the worker fetches it, and a relative path would be read against the worker's own URL.
   vadUrl: new URL(`${import.meta.env.BASE_URL}silero_vad_v6.onnx`, document.baseURI).href,
-});
+};
+const whisper = new WhisperRecognizer({ ...whisperOptions, size: whisperSize(sttChoice, 'base') });
 const webSpeech = new WebSpeechRecognizer(voiceLang);
-const voiceRecognizer: Recognizer | undefined = firstAvailable(sttChoice === 'auto' || sttChoice === 'web' ? [webSpeech, whisper] : [whisper, webSpeech]);
+const localRecognizers = sttChoice === 'auto' || sttChoice === 'web' ? [webSpeech, whisper] : [whisper, webSpeech];
+const voiceRecognizer: Recognizer | undefined = firstAvailable(
+  speechService && sttChoice !== 'web' && sttChoice !== 'whisper' ? [new WhisperRecognizer({ ...whisperOptions, server: speechService }), ...localRecognizers] : localRecognizers,
+);
 // Who talks back: the browser's voice where it has one, else Piper running
 // in the page (a voice per language, downloaded once); `?tts=piper` forces
 // Piper, `?tts=web` the browser's. Without either the words stay on the panel.
 const ttsChoice = voiceParams.get('tts') ?? 'auto';
+const spoke = (who: string, s: { lang: Lang; audioSeconds: number; synthesisSeconds: number }) =>
+  console.info(`[voice] ${who} spoke ${s.audioSeconds.toFixed(1)} s of ${s.lang} in ${s.synthesisSeconds.toFixed(1)} s`);
 const piper = new PiperSpeaker({
   onStatus: (s) => {
     if (s.kind === 'loading') {
       voiceLine = s.percent < 100 ? `${s.lang === 'es' ? 'Descargando la voz' : 'Downloading the voice'} (${s.percent}%)...` : voiceLine;
       touch();
-    } else console.info(`[voice] piper spoke ${s.audioSeconds.toFixed(1)} s of ${s.lang} in ${s.synthesisSeconds.toFixed(1)} s`);
+    } else spoke('piper', s);
   },
 });
 const browserVoice = new WebSpeechSpeaker();
-const speakers = ttsChoice === 'piper' ? [piper, browserVoice] : ttsChoice === 'web' ? [browserVoice] : [browserVoice, piper];
+const localSpeakers = ttsChoice === 'piper' ? [piper, browserVoice] : ttsChoice === 'web' ? [browserVoice] : [browserVoice, piper];
+const speakers = speechService && ttsChoice === 'auto' ? [new ServerSpeaker({ service: speechService, onStatus: (s) => spoke('service', s) }), ...localSpeakers] : localSpeakers;
 const voice = new VoiceSession({
   registry: voiceRegistry,
   recognizer: voiceRecognizer ?? webSpeech,

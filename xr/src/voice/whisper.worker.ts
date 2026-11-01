@@ -35,6 +35,11 @@ export interface LoadMessage {
   languages: Lang[];
   /** The language the page is read in: wins a close call. */
   preferred?: Lang;
+  /**
+   * 'local' (default) transcribes here; 'segments' only finds the phrases
+   * and hands them back, for a recognizer that sends them to a server.
+   */
+  mode?: 'local' | 'segments';
 }
 export interface AudioMessage {
   type: 'audio';
@@ -50,14 +55,20 @@ export type FromWorker =
   | { type: 'ready' }
   | { type: 'speech'; speaking: boolean }
   | { type: 'transcript'; text: string; lang: Lang; seconds: number }
+  | { type: 'segment'; samples: Float32Array }
   | { type: 'error'; reason: 'model' | 'microphone' | 'network'; detail: string };
 
-const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
+const post = (m: FromWorker, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer);
 
-interface Loaded {
+interface Asr {
   model: WhisperLike;
   processor: ProcessorLike;
   tokenizer: TokenizerLike;
+}
+
+interface Loaded {
+  /** Absent in 'segments' mode: the phrases go elsewhere to be transcribed. */
+  asr?: Asr;
   vad: SileroVad;
   hints: Localized<string>;
   languages: Lang[];
@@ -80,8 +91,7 @@ async function usableDevice(wanted: 'webgpu' | 'wasm'): Promise<'webgpu' | 'wasm
   }
 }
 
-async function load(m: LoadMessage): Promise<void> {
-  env.allowLocalModels = false;
+async function loadAsr(m: LoadMessage): Promise<Asr> {
   const seen = new Map<string, number>();
   const device = await usableDevice(m.device);
   const asr = (await pipeline('automatic-speech-recognition', m.model, {
@@ -93,13 +103,19 @@ async function load(m: LoadMessage): Promise<void> {
       const values = [...seen.values()];
       post({ type: 'progress', percent: Math.round(values.reduce((a, b) => a + b, 0) / values.length), file: p.file });
     },
-  })) as unknown as { model: WhisperLike; processor: ProcessorLike; tokenizer: TokenizerLike };
+  })) as unknown as Asr;
+  return { model: asr.model, processor: asr.processor, tokenizer: asr.tokenizer };
+}
+
+async function load(m: LoadMessage): Promise<void> {
+  env.allowLocalModels = false;
+  const asr = m.mode === 'segments' ? undefined : await loadAsr(m);
   // Silero: small enough for WASM whatever Whisper runs on.
   const response = await fetch(m.vadUrl);
   if (!response.ok) throw new Error(`voice detector not found at ${m.vadUrl} (${response.status})`);
   const session = await ort.InferenceSession.create(await response.arrayBuffer(), { executionProviders: ['wasm'] });
   const vad = new SileroVad(session as never, (data, dims) => new ort.Tensor('float32', data, dims) as never);
-  loaded = { model: asr.model, processor: asr.processor, tokenizer: asr.tokenizer, vad, hints: m.hints, languages: m.languages, preferred: m.preferred };
+  loaded = { asr, vad, hints: m.hints, languages: m.languages, preferred: m.preferred };
   post({ type: 'ready' });
 }
 
@@ -117,13 +133,18 @@ async function onAudio(samples: Float32Array): Promise<void> {
 
 async function heard(phrase: Float32Array): Promise<void> {
   if (!loaded) return;
+  if (!loaded.asr) {
+    post({ type: 'segment', samples: phrase }, [phrase.buffer]);
+    return;
+  }
+  const { model, processor, tokenizer } = loaded.asr;
   const started = performance.now();
   const audio = padded(phrase);
   const lang =
     loaded.languages.length === 1
       ? loaded.languages[0]
-      : await detectLanguage(loaded.model, loaded.processor, Tensor as never, audio, loaded.languages, loaded.preferred);
-  const text = await transcribe(loaded.model, loaded.processor, loaded.tokenizer, audio, lang, loaded.hints[lang]);
+      : await detectLanguage(model, processor, Tensor as never, audio, loaded.languages, loaded.preferred);
+  const text = await transcribe(model, processor, tokenizer, audio, lang, loaded.hints[lang]);
   post({ type: 'transcript', text, lang, seconds: (performance.now() - started) / 1000 });
 }
 

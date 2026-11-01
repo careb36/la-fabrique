@@ -7,8 +7,12 @@
  */
 
 import { microphoneSupported, openMicrophone } from './microphone';
+import { transcribeRemote, type SpeechService } from './speech-service';
 import type { Lang, Localized, Recognizer, RecognizerFailure, RecognizerStatus } from './types';
 import type { FromWorker, ToWorker } from './whisper.worker';
+
+/** Consecutive failures of the speech service before listening gives up. */
+const REMOTE_FAILURES_TOLERATED = 3;
 
 export type WhisperSize = 'tiny' | 'base' | 'small';
 
@@ -27,6 +31,11 @@ export interface WhisperRecognizerOptions {
   webgpu?: boolean;
   /** How to make the worker; the default is Vite's `new Worker(new URL(...))`. */
   createWorker?: () => Worker;
+  /**
+   * A speech service to transcribe with instead of the model in the page:
+   * the phrases are still found here (Silero), the words come from there.
+   */
+  server?: SpeechService;
 }
 
 export const WHISPER_MODELS: Record<WhisperSize, string> = {
@@ -40,9 +49,11 @@ export function whisperSize(value: string | null | undefined, fallback: WhisperS
 }
 
 export class WhisperRecognizer implements Recognizer {
-  readonly name = 'whisper';
+  readonly name: string;
 
-  constructor(private readonly o: WhisperRecognizerOptions) {}
+  constructor(private readonly o: WhisperRecognizerOptions) {
+    this.name = o.server ? 'whisper-server' : 'whisper';
+  }
 
   available(): boolean {
     return typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined' && microphoneSupported();
@@ -65,11 +76,32 @@ export class WhisperRecognizer implements Recognizer {
       // Give the worker a moment to flush a phrase in progress, then end it.
       setTimeout(() => worker.terminate(), 5_000);
     };
+    let remoteFailures = 0;
+    const languages = this.o.languages ?? ['es', 'en'];
+    const preferred = this.o.preferredLanguage?.();
+    const hints = this.o.hints();
+    const remote = (samples: Float32Array) => {
+      if (!this.o.server) return;
+      transcribeRemote(this.o.server, samples, { languages, preferred, hint: hints[preferred ?? 'es'] }).then(
+        (t) => {
+          remoteFailures = 0;
+          if (t.text) heard(t.text, t.lang);
+        },
+        (err: Error) => {
+          console.warn(`[voice] speech service failed: ${err.message}`);
+          if (++remoteFailures >= REMOTE_FAILURES_TOLERATED) {
+            stop();
+            failed('network');
+          }
+        },
+      );
+    };
     worker.onmessage = (e: MessageEvent<FromWorker>) => {
       const m = e.data;
       if (m.type === 'progress') status?.({ kind: 'loading', percent: m.percent });
       else if (m.type === 'ready') status?.({ kind: 'ready' });
       else if (m.type === 'speech') status?.({ kind: m.speaking ? 'speech-start' : 'speech-end' });
+      else if (m.type === 'segment') remote(m.samples);
       else if (m.type === 'transcript') {
         if (m.text) heard(m.text, m.lang);
       } else if (m.type === 'error') {
@@ -89,9 +121,10 @@ export class WhisperRecognizer implements Recognizer {
       model: WHISPER_MODELS[this.o.size ?? 'base'],
       device,
       vadUrl: this.o.vadUrl,
-      hints: this.o.hints(),
-      languages: this.o.languages ?? ['es', 'en'],
-      preferred: this.o.preferredLanguage?.(),
+      hints,
+      languages,
+      preferred,
+      mode: this.o.server ? 'segments' : 'local',
     });
     openMicrophone((frame) => {
       if (!stopped) send({ type: 'audio', samples: frame }, [frame.buffer]);
