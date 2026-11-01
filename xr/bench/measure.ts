@@ -24,7 +24,9 @@
  * The transformers.js models are the ones the device would run (q8 weights).
  * `--language detect` (the default) finds the language the way the device
  * will: one decoder step, the likeliest of the languages the app speaks.
- * `force` gives the recognizer the phrase's own language, an upper bound;
+ * `prior` adds what the device also knows, the language the page is read
+ * in (here the phrase's), which wins a close call. `force` gives the
+ * recognizer the phrase's own language, an upper bound;
  * `es` or `en` fixes one, which is what a person speaking the other
  * language would get from a page that does not detect. Node's CPU timing is
  * not the headset's, but the ratio between models is.
@@ -35,6 +37,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { roomRegistry, taskItems, type RoomHandlers } from '../src/commands.ts';
+import { padded } from '../src/voice/endpointer.ts';
+import { detectLanguage, transcribe } from '../src/voice/whisper-core.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AUDIO = join(HERE, 'audio');
@@ -84,8 +88,6 @@ const handlers: RoomHandlers = {
 const registry = roomRegistry(handlers, () => taskItems(bank.tasks));
 const { grammar } = registry;
 
-/** Silence added before and after a phrase: Whisper is unsure on a clip that starts mid-breath. */
-const PAD_SECONDS = 0.5;
 
 // -- text ------------------------------------------------------------------
 
@@ -185,12 +187,6 @@ async function samplesOf(path: string): Promise<Float32Array> {
   return data;
 }
 
-function padded(audio: Float32Array, seconds = PAD_SECONDS): Float32Array {
-  const pad = Math.round(seconds * 16000);
-  const out = new Float32Array(audio.length + 2 * pad);
-  out.set(audio, pad);
-  return out;
-}
 
 /** The written phrase as its own transcript: measures the grammar alone. */
 const perfectRecognizer: Recognizer = {
@@ -212,63 +208,7 @@ function externalRecognizer(file: string): Recognizer {
   };
 }
 
-type LanguageMode = 'detect' | 'force' | Lang;
-
-/**
- * Whisper's own language detection, the way the device will do it: the
- * encoder once, one decoder step from <|startoftranscript|>, and the
- * likeliest token among the languages the app speaks. transformers.js has
- * no detection of its own (an unset language means English).
- */
-async function detectLanguage(model: any, processor: any, Tensor: any, audio: Float32Array): Promise<{ lang: Lang; features: unknown }> {
-  const gc = model.generation_config;
-  const inputs = await processor(audio);
-  const out = await model({ ...inputs, decoder_input_ids: new Tensor('int64', [BigInt(gc.decoder_start_token_id)], [1, 1]) });
-  const logits = out.logits.data as Float32Array;
-  let best: Lang = 'en';
-  let score = -Infinity;
-  for (const lang of LANGS) {
-    const v = logits[gc.lang_to_id[`<|${lang}|>`]];
-    if (v > score) {
-      score = v;
-      best = lang;
-    }
-  }
-  return { lang: best, features: inputs };
-}
-
-interface TransformersOptions {
-  mode: LanguageMode;
-  /** Give Whisper the room's vocabulary as the text "said before" the phrase. */
-  prompt: boolean;
-  /** Measure only the first N files (a smoke run). */
-  limit?: number;
-}
-
-/**
- * Transcribe with the vocabulary as Whisper's previous-text prompt. The
- * pipeline has no such option, so the decoder's first tokens are built by
- * hand: <|startofprev|> + the hint + <|startoftranscript|><|lang|>
- * <|transcribe|><|notimestamps|>, and only what follows them is decoded.
- */
-async function transcribePrompted(asr: any, audio: Float32Array, lang: Lang, hint: string): Promise<string> {
-  const { model, processor, tokenizer } = asr;
-  const gc = model.generation_config;
-  const encode = (text: string): number[] => Array.from(tokenizer.encode(text, { add_special_tokens: false }), Number);
-  const hintIds = encode(` ${hint}`);
-  const init = [
-    Number(gc.prev_sot_token_id ?? encode('<|startofprev|>')[0]),
-    ...hintIds.slice(-200),
-    gc.decoder_start_token_id,
-    gc.lang_to_id[`<|${lang}|>`],
-    gc.task_to_id.transcribe,
-    gc.no_timestamps_token_id,
-  ];
-  const inputs = await processor(audio);
-  const generated = await model.generate({ ...inputs, decoder_input_ids: init, max_new_tokens: 60 });
-  const ids = Array.from(generated.tolist()[0] as (number | bigint)[], Number).slice(init.length);
-  return (tokenizer.decode(ids, { skip_special_tokens: true }) as string).trim();
-}
+type LanguageMode = 'detect' | 'prior' | 'force' | Lang;
 
 function transformersRecognizer(size: string, o: TransformersOptions): Recognizer {
   return {
@@ -286,11 +226,13 @@ function transformersRecognizer(size: string, o: TransformersOptions): Recognize
         const audio = padded(await samplesOf(f.path));
         const started = performance.now();
         let lang: Lang | undefined;
-        if (o.mode === 'detect') lang = (await detectLanguage(asr.model, asr.processor, Tensor, audio)).lang;
+        // 'prior': detection with the phrase's language as the page's, the common case.
+        if (o.mode === 'detect') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS);
+        else if (o.mode === 'prior') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS, byId.get(f.id)?.lang);
         else if (o.mode === 'force') lang = byId.get(f.id)?.lang;
         else lang = o.mode;
         const text = o.prompt
-          ? await transcribePrompted(asr, audio, lang ?? 'en', hints[lang ?? 'en'])
+          ? await transcribe(asr.model, asr.processor, asr.tokenizer, audio, lang ?? 'en', hints[lang ?? 'en'])
           : ((await asr(audio, { language: lang, task: 'transcribe' })) as { text: string }).text.trim();
         out.push({ voice: f.voice, id: f.id, text, language: lang, seconds: (performance.now() - started) / 1000 });
         if (++n % 50 === 0) process.stderr.write(`${this.name}: ${n}/${files.length}\n`);
