@@ -35,6 +35,10 @@ def _coerce(field_name: str, value: str):
     """A saved/env value as the type its field declares (bad values are ignored)."""
     if field_name == "language":
         return normalize(value)
+    if field_name == "tts_engine":
+        from .speech import normalize_engine  # noqa: PLC0415 - avoids an import cycle
+
+        return normalize_engine(value)
     if field_name == "vad":
         from .vad import normalize_choice  # noqa: PLC0415 - avoids an import cycle
 
@@ -100,6 +104,11 @@ class Settings:
     # What ends a phrase: "silero" (a voice detector, from faster-whisper) or
     # "energy" (loudness alone). Silero falls back to energy when missing.
     vad: str = "silero"
+    # Which voice speaks first: "auto" (Kokoro, then Piper, then the system
+    # voice), or start the chain at "kokoro", "piper" or "system".
+    tts_engine: str = "auto"
+    kokoro_voice: str = "ef_dora"
+    kokoro_voice_en: str = "af_heart"
     tts_voice: str = "es_ES-sharvard-medium"
     tts_voice_en: str = "en_US-amy-medium"
     assistant_name: str = "B1"
@@ -124,6 +133,9 @@ class Settings:
             "language": "LANGUAGE",
             "stt_language": "STT_LANGUAGE",
             "vad": "VAD",
+            "tts_engine": "TTS_ENGINE",
+            "kokoro_voice": "KOKORO_VOICE",
+            "kokoro_voice_en": "KOKORO_VOICE_EN",
             "tts_voice": "TTS_VOICE",
             "tts_voice_en": "TTS_VOICE_EN",
             "assistant_name": "NAME",

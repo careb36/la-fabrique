@@ -521,28 +521,75 @@ def _python_candidates() -> list[str]:
     return list(dict.fromkeys(found))
 
 
+ENGINES = ("auto", "kokoro", "piper", "system")
+
+
+def normalize_engine(value: str | None) -> str:
+    text = (value or "").strip().lower()
+    return text if text in ENGINES else "auto"
+
+
 def make_speaker(
     voice: str = "",
     output: str = "",
     *,
     voice_en: str = "",
     language: str = "es",
+    engine: str = "auto",
+    kokoro_voice: str = "",
+    kokoro_voice_en: str = "",
 ) -> Speaker:
-    """Best speaker available: Piper, else the system voice, else the console."""
-    piper = PiperSpeaker.if_available(voice, output, voice_en=voice_en, language=language)
-    if piper is not None:
-        return piper
+    """Best speaker available: Kokoro, Piper, the system voice, the console.
+
+    ``engine`` starts the chain further down ("piper" skips Kokoro, "system"
+    skips both); whatever is missing still falls through to the next one.
+    """
+    engine = normalize_engine(engine)
+    if engine in ("auto", "kokoro"):
+        from .kokoro import KokoroSpeaker  # noqa: PLC0415 - optional engine
+
+        kokoro = KokoroSpeaker.if_available(
+            voice=kokoro_voice, voice_en=kokoro_voice_en, output=output, language=language
+        )
+        if kokoro is not None:
+            return kokoro
+    if engine in ("auto", "kokoro", "piper"):
+        piper = PiperSpeaker.if_available(voice, output, voice_en=voice_en, language=language)
+        if piper is not None:
+            return piper
     system = SystemSpeaker.if_available(language=language)
     if system is not None:
         return system
     return ConsoleSpeaker(language)
 
 
+def speaker_from_settings(settings, output: str | None = None) -> Speaker:
+    """The speaker the settings ask for, in the session language."""
+    return make_speaker(
+        settings.tts_voice,
+        settings.speaker_device if output is None else output,
+        voice_en=settings.tts_voice_en,
+        language=normalize(settings.language),
+        engine=getattr(settings, "tts_engine", "auto"),
+        kokoro_voice=getattr(settings, "kokoro_voice", ""),
+        kokoro_voice_en=getattr(settings, "kokoro_voice_en", ""),
+    )
+
+
 def describe_voice(
-    voice: str = "", voice_en: str = "", *, language: str = "es"
+    voice: str = "",
+    voice_en: str = "",
+    *,
+    language: str = "es",
+    settings=None,
 ) -> tuple[Speaker, str]:
     """The speaker plus one sentence naming it (used by ``b1 --check``)."""
-    speaker = make_speaker(voice, "", voice_en=voice_en, language=language)
+    if settings is not None:
+        speaker = speaker_from_settings(settings, output="")
+    else:
+        speaker = make_speaker(voice, "", voice_en=voice_en, language=language)
+    if getattr(speaker, "name", "") == "kokoro":
+        return speaker, t(language, "speech.kokoro", voice=speaker.voice_for(language))
     if isinstance(speaker, PiperSpeaker):
         model = speaker.model_for()
         return speaker, t(language, "speech.piper", voice=model.name if model else "?")

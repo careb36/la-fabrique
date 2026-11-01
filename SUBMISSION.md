@@ -37,7 +37,7 @@ The fusion of the two projects gives the factory a voice door (`/v1/voice/*`)
 and the assistant a plugin that calls it. Spoken commands go through the same
 endpoints as the web UI, so a sentence cannot do anything the web does not
 allow. It speaks Spanish and English with the same engine: it listens with
-language hints, answers with Piper or the system voice, and the factory writes
+language hints, answers with Kokoro, Piper or the system voice, and the factory writes
 its reply in the language of the conversation.
 
 **Why.** Coding agents tend to fail in two ways: they say they finished without
@@ -55,7 +55,7 @@ tiers — Ultra for reasoning, Super/Nano for the rest.
    `llm-proxy`, which checks every model against the provider's catalogue.
 3. `asistente-b1/` — the assistant, written for this submission: end of speech
    detected by Silero VAD (loudness as the fallback), local transcription (faster-whisper), Nemotron to think,
-   Piper to speak, and three tools that call the factory's voice door.
+   Kokoro (Piper as the fallback) to speak, and three tools that call the factory's voice door.
    `profesor3/` remains an alternative front end.
 
 ## 2. How NVIDIA Nemotron and Nebius Token Factory are used
