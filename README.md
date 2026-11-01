@@ -605,6 +605,9 @@ Apache-2.0, with no code or prose from the reference assistant:
 - Voice chain: **Piper → system voice → console**. A missing model or engine
   falls through and reports the reason; it never leaves the assistant silent
   without saying why.
+- The phrase ends when the **voice** stops, not the noise: Silero VAD (shipped
+  inside faster-whisper) tells speech from a fan or a keyboard; without it,
+  or with `B1_VAD=energy`, loudness decides.
 - Answers are streamed: B1 speaks each sentence as soon as the model has
   written it, instead of waiting for the whole answer (`B1_MODEL_STREAM=false`
   turns it off).

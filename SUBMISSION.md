@@ -54,7 +54,7 @@ tiers — Ultra for reasoning, Super/Nano for the rest.
 2. `la-fabrique/` — the multi-agent flow (LangGraph) with Postgres, NATS and its
    `llm-proxy`, which checks every model against the provider's catalogue.
 3. `asistente-b1/` — the assistant, written for this submission: end of speech
-   detected by energy, local transcription (faster-whisper), Nemotron to think,
+   detected by Silero VAD (loudness as the fallback), local transcription (faster-whisper), Nemotron to think,
    Piper to speak, and three tools that call the factory's voice door.
    `profesor3/` remains an alternative front end.
 

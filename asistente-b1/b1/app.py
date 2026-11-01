@@ -25,6 +25,7 @@ from .assistant import build_assistant
 from .config import Settings, config_file
 from .fabrica import FactoryClient, FactoryError, guide_text, guide_title
 from .i18n import normalize, t
+from .vad import describe as describe_vad
 from .speech import (
     ConsoleSpeaker,
     describe_voice,
@@ -187,6 +188,7 @@ def _check(settings: Settings) -> int:
         ("app.check_language", language),
         ("app.check_mic", yes if mic_ready() else t(language, "app.no_mic")),
         ("app.check_stt", yes if stt_ready() else t(language, "app.no_stt")),
+        ("app.check_vad", describe_vad(settings.vad, language)),
         ("app.check_tts", voice),
         ("app.check_qt", yes if _qt_available() else t(language, "app.no_qt")),
         (
