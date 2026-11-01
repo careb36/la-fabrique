@@ -198,6 +198,15 @@ _TEXTS: dict[str, dict[str, str]] = {
         "en": "b1 --voices downloads them once",
     },
     "speech.piper": {"es": "Piper ({voice})", "en": "Piper ({voice})"},
+    "speech.kokoro": {"es": "Kokoro ({voice})", "en": "Kokoro ({voice})"},
+    "app.kokoro_downloading": {
+        "es": "Bajando la voz Kokoro (unos 120 MB, una sola vez) a {path}",
+        "en": "Downloading the Kokoro voice (about 120 MB, once) to {path}",
+    },
+    "app.kokoro_missing": {
+        "es": "Kokoro no está instalado (pip install kokoro-onnx); sigo con Piper.",
+        "en": "Kokoro is not installed (pip install kokoro-onnx); going on with Piper.",
+    },
     "speech.system_voice": {
         "es": "voz del sistema ({engine}, {voice})",
         "en": "system voice ({engine}, {voice})",
