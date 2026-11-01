@@ -19,6 +19,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['devolv*', 'devuelv*', 'rechaz*', 'mand* de vuelta', 'de vuelta', 'rehag*', 'rehac*', 'no va', 'que lo arreglen'],
       en: ['send back', 'send _ back', 'send _ _ back', 'reject*', 'rework', 'needs work', 'not good enough'],
     },
+    hint: { es: ['devolvela', 'devuélvela', 'rechazala', 'mandala de vuelta', 'que lo rehagan'], en: ['send it back', 'reject it', 'rework'] },
     risk: 'confirm',
     confirm: { es: '¿Devuelvo {item}?', en: 'Send {item} back?' },
   },
@@ -29,6 +30,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['aprob*', 'aprueb*', 'acept*', 'esta bien asi', 'dale para adelante'],
       en: ['approv*', 'accept*', 'ship it', 'ship', 'looks good', 'sign off'],
     },
+    hint: { es: ['aprobá', 'aprobala', 'apruebo', 'aceptala', 'aprobado'], en: ['approve', 'approve it', 'accept it', 'ship it'] },
     risk: 'confirm',
     confirm: { es: '¿Apruebo {item}?', en: 'Approve {item}?' },
   },
@@ -39,6 +41,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['reinici*', 'de nuevo', 'otra vez', 'desde cero'],
       en: ['restart*', 'start over', 'start again', 'from scratch', 'begin again'],
     },
+    hint: { es: ['reiniciá', 'de nuevo', 'desde cero'], en: ['restart', 'start over', 'from scratch'] },
   },
   {
     id: 'next',
@@ -55,6 +58,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['pausa*', 'para un momento', 'para un segundo', 'para un rato', 'para ahi', '^para', 'esper*', 'deten*', 'frena*'],
       en: ['pause*', 'hold on', 'hold it', 'wait', 'stop', 'freeze'],
     },
+    hint: { es: ['pausá', 'pausa', 'pará un momento', 'esperá'], en: ['pause', 'hold on', 'wait'] },
   },
   {
     id: 'resume',
@@ -63,6 +67,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['segui*', 'sigue', 'siga', 'sigamos', 'continu*', 'reanud*', 'retom*'],
       en: ['resume*', 'continue', 'go on', 'carry on', 'keep going', 'unpause'],
     },
+    hint: { es: ['seguí', 'continuá', 'reanudá'], en: ['resume', 'continue', 'go on'] },
   },
   {
     id: 'recenter',
@@ -71,6 +76,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['centr*', 'recentr*', 'veni aca', 'ven aca', 'vengan aca', 'al frente', 'aca adelante', 'frente a mi'],
       en: ['recenter*', 'recentre*', 'center*', 'centre*', 'come here', 'in front of me', 'bring _ back'],
     },
+    hint: { es: ['centrá', 'recentrá', 'vení acá', 'al frente'], en: ['recenter', 'center', 'come here'] },
   },
   {
     id: 'mute',
@@ -79,6 +85,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['silenci*', 'sin sonido', 'sac* el sonido', 'apag* el sonido', 'callat*', 'calla*', 'mute*', 'shh'],
       en: ['mute*', 'sound off', 'quiet', 'silence*', 'turn _ sound off', 'hush'],
     },
+    hint: { es: ['silencio', 'sin sonido', 'sacá el sonido', 'callate'], en: ['mute', 'sound off', 'quiet'] },
   },
   {
     id: 'unmute',
@@ -87,6 +94,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['con sonido', 'pon* el sonido', 'pon* sonido', 'activ* el sonido', 'prend* el sonido', 'volve* el sonido'],
       en: ['unmute*', 'sound on', 'turn _ sound on', 'turn _ sound back on'],
     },
+    hint: { es: ['con sonido', 'poné el sonido'], en: ['unmute', 'sound on'] },
   },
   {
     id: 'launch',
@@ -95,6 +103,7 @@ export const ROOM_ACTIONS: ActionSpec[] = [
       es: ['lanz*', 'arranc*', 'empez*', 'empiec*', 'inici*', 'dale con', 'manda* la', 'larg*'],
       en: ['launch*', 'start*', 'run', 'begin*', 'go ahead with', 'kick off', 'fire up'],
     },
+    hint: { es: ['lanzá', 'arrancá', 'empezá', 'iniciá', 'la primera', 'la segunda', 'la tercera'], en: ['launch', 'start', 'begin', 'the first one', 'the second one', 'the third one'] },
     whichItem: { es: '¿Cuál tarea? {items}.', en: 'Which task? {items}.' },
   },
   {

@@ -55,6 +55,11 @@ export interface ActionSpec {
   /** What the action is called when the layer lists what it can do. */
   label: Localized<string>;
   phrases: Localized<string[]>;
+  /**
+   * Whole words a recognizer should expect for this action, where the
+   * phrases are stems ("aprob*" is not a word a model can be primed with).
+   */
+  hint?: Localized<string[]>;
   risk?: 'safe' | 'confirm';
   confirm?: Localized<string>;
   /** The items a person may name; an action with items needs one named. */

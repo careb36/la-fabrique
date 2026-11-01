@@ -15,9 +15,11 @@
  * headset. The misses are listed so the grammar can learn from them.
  *
  *   npx tsx measure.ts --models tiny,base              # transformers.js in Node
+ *   npx tsx measure.ts --models base --prompt          # with the room's vocabulary as Whisper's prompt
  *   npx tsx measure.ts --models base --language force  # the phrase's language given
  *   npx tsx measure.ts --external results/fw-large-v3-turbo.jsonl
  *   npx tsx measure.ts --grammar-only                  # the written phrases, no audio
+ *   npx tsx measure.ts --prompts                       # write the vocabulary hints for other tools
  *
  * The transformers.js models are the ones the device would run (q8 weights).
  * `--language detect` (the default) finds the language the way the device
@@ -79,7 +81,11 @@ const handlers: RoomHandlers = {
   approve: noop, reject: noop, restart: noop, next: noop, pause: noop, resume: noop,
   recenter: noop, mute: noop, unmute: noop, launch: noop, status: noop,
 };
-const { grammar } = roomRegistry(handlers, () => taskItems(bank.tasks));
+const registry = roomRegistry(handlers, () => taskItems(bank.tasks));
+const { grammar } = registry;
+
+/** Silence added before and after a phrase: Whisper is unsure on a clip that starts mid-breath. */
+const PAD_SECONDS = 0.5;
 
 // -- text ------------------------------------------------------------------
 
@@ -179,6 +185,13 @@ async function samplesOf(path: string): Promise<Float32Array> {
   return data;
 }
 
+function padded(audio: Float32Array, seconds = PAD_SECONDS): Float32Array {
+  const pad = Math.round(seconds * 16000);
+  const out = new Float32Array(audio.length + 2 * pad);
+  out.set(audio, pad);
+  return out;
+}
+
 /** The written phrase as its own transcript: measures the grammar alone. */
 const perfectRecognizer: Recognizer = {
   name: 'written',
@@ -224,26 +237,62 @@ async function detectLanguage(model: any, processor: any, Tensor: any, audio: Fl
   return { lang: best, features: inputs };
 }
 
-function transformersRecognizer(size: string, mode: LanguageMode): Recognizer {
+interface TransformersOptions {
+  mode: LanguageMode;
+  /** Give Whisper the room's vocabulary as the text "said before" the phrase. */
+  prompt: boolean;
+  /** Measure only the first N files (a smoke run). */
+  limit?: number;
+}
+
+/**
+ * Transcribe with the vocabulary as Whisper's previous-text prompt. The
+ * pipeline has no such option, so the decoder's first tokens are built by
+ * hand: <|startofprev|> + the hint + <|startoftranscript|><|lang|>
+ * <|transcribe|><|notimestamps|>, and only what follows them is decoded.
+ */
+async function transcribePrompted(asr: any, audio: Float32Array, lang: Lang, hint: string): Promise<string> {
+  const { model, processor, tokenizer } = asr;
+  const gc = model.generation_config;
+  const encode = (text: string): number[] => Array.from(tokenizer.encode(text, { add_special_tokens: false }), Number);
+  const hintIds = encode(` ${hint}`);
+  const init = [
+    Number(gc.prev_sot_token_id ?? encode('<|startofprev|>')[0]),
+    ...hintIds.slice(-200),
+    gc.decoder_start_token_id,
+    gc.lang_to_id[`<|${lang}|>`],
+    gc.task_to_id.transcribe,
+    gc.no_timestamps_token_id,
+  ];
+  const inputs = await processor(audio);
+  const generated = await model.generate({ ...inputs, decoder_input_ids: init, max_new_tokens: 60 });
+  const ids = Array.from(generated.tolist()[0] as (number | bigint)[], Number).slice(init.length);
+  return (tokenizer.decode(ids, { skip_special_tokens: true }) as string).trim();
+}
+
+function transformersRecognizer(size: string, o: TransformersOptions): Recognizer {
   return {
-    name: `whisper-${size}-${mode}`,
+    name: `whisper-${size}-${o.mode}${o.prompt ? '-prompt' : ''}`,
     async transcripts() {
       const { pipeline, Tensor } = await import('@huggingface/transformers');
       const asr = await pipeline('automatic-speech-recognition', `onnx-community/whisper-${size}`, {
         dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' },
       });
+      const hints = { es: registry.vocabularyHint('es'), en: registry.vocabularyHint('en') };
       const out: Transcript[] = [];
-      const files = wavFiles();
+      const files = wavFiles().slice(0, o.limit ?? Infinity);
       let n = 0;
       for (const f of files) {
-        const audio = await samplesOf(f.path);
+        const audio = padded(await samplesOf(f.path));
         const started = performance.now();
         let lang: Lang | undefined;
-        if (mode === 'detect') lang = (await detectLanguage(asr.model, asr.processor, Tensor, audio)).lang;
-        else if (mode === 'force') lang = byId.get(f.id)?.lang;
-        else lang = mode;
-        const result = (await asr(audio, { language: lang, task: 'transcribe' })) as { text: string };
-        out.push({ voice: f.voice, id: f.id, text: result.text.trim(), language: lang, seconds: (performance.now() - started) / 1000 });
+        if (o.mode === 'detect') lang = (await detectLanguage(asr.model, asr.processor, Tensor, audio)).lang;
+        else if (o.mode === 'force') lang = byId.get(f.id)?.lang;
+        else lang = o.mode;
+        const text = o.prompt
+          ? await transcribePrompted(asr, audio, lang ?? 'en', hints[lang ?? 'en'])
+          : ((await asr(audio, { language: lang, task: 'transcribe' })) as { text: string }).text.trim();
+        out.push({ voice: f.voice, id: f.id, text, language: lang, seconds: (performance.now() - started) / 1000 });
         if (++n % 50 === 0) process.stderr.write(`${this.name}: ${n}/${files.length}\n`);
       }
       return out;
@@ -312,10 +361,20 @@ function arg(name: string): string | undefined {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--prompts')) {
+    // The vocabulary hints, for recognizers measured outside Node (the server tier).
+    const prompts = { es: registry.vocabularyHint('es'), en: registry.vocabularyHint('en') };
+    mkdirSync(RESULTS, { recursive: true });
+    writeFileSync(join(RESULTS, 'prompts.json'), JSON.stringify(prompts, null, 2) + '\n');
+    console.log(JSON.stringify(prompts, null, 2));
+    return;
+  }
   const recognizers: Recognizer[] = [];
   if (process.argv.includes('--grammar-only') || (!arg('models') && !arg('external'))) recognizers.push(perfectRecognizer);
   const mode = (arg('language') ?? 'detect') as LanguageMode;
-  for (const size of (arg('models') ?? '').split(',').filter(Boolean)) recognizers.push(transformersRecognizer(size, mode));
+  const prompt = process.argv.includes('--prompt');
+  const limit = arg('limit') ? Number(arg('limit')) : undefined;
+  for (const size of (arg('models') ?? '').split(',').filter(Boolean)) recognizers.push(transformersRecognizer(size, { mode, prompt, limit }));
   for (const file of (arg('external') ?? '').split(',').filter(Boolean)) recognizers.push(externalRecognizer(file));
 
   mkdirSync(RESULTS, { recursive: true });

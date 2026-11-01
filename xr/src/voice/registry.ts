@@ -64,4 +64,32 @@ export class CommandRegistry {
   labels(): Localized<string[]> {
     return { es: this.actions.map((a) => a.label.es), en: this.actions.map((a) => a.label.en) };
   }
+
+  /**
+   * The words a recognizer should expect, as a short text in one language:
+   * Whisper reads it as what was said before and leans toward it, so
+   * "aprobá" is not heard as "a probar". Built from each action's `hint`
+   * (else its whole-word phrases; stems are not words), the items' names
+   * and aliases, and the layer's own yes, no and help.
+   */
+  vocabularyHint(lang: Lang): string {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const add = (text: string) => {
+      const clean = text.replace(/[\^_]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (clean.length > 1 && !clean.includes('*') && !seen.has(clean.toLowerCase())) {
+        seen.add(clean.toLowerCase());
+        out.push(clean);
+      }
+    };
+    for (const a of this.actions) {
+      for (const p of a.hint?.[lang] ?? a.phrases[lang]) add(p);
+      for (const item of a.items?.() ?? []) {
+        add(item.label[lang]);
+        for (const w of item.words?.[lang] ?? []) add(w);
+      }
+    }
+    for (const b of BUILTINS) for (const p of b.phrases[lang]) add(p);
+    return out.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('. ') + '.';
+  }
 }
