@@ -73,4 +73,19 @@ describe('transcribe', () => {
     expect(seen[0].input_features).toBe('f');
     expect(seen[0].max_new_tokens).toBe(60);
   });
+
+  it('a clip the model says nothing about is an empty transcript, not an error', async () => {
+    const model = Object.assign(async () => ({ logits: { data: new Float32Array(0) } }), {
+      generation_config: gc,
+      generate: async (options: Record<string, unknown>) => ({ tolist: () => [options.decoder_input_ids as number[]] }),
+    }) as unknown as WhisperLike;
+    const strict: TokenizerLike = {
+      ...tokenizer,
+      decode: (ids) => {
+        if (!ids.length) throw new Error('token_ids must be a non-empty array of integers.');
+        return 'x';
+      },
+    };
+    await expect(transcribe(model, async () => ({}), strict, new Float32Array(16000), 'en', '')).resolves.toBe('');
+  });
 });

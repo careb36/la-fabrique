@@ -11,7 +11,7 @@ import { MESSAGES } from './messages';
  * the SDK); only its siblings and its own few dependencies. Tests are
  * exempt; they may read the bench's phrase bank.
  */
-const OWN_DEPENDENCIES = new Set(['@huggingface/transformers', 'onnxruntime-web/webgpu']);
+const OWN_DEPENDENCIES = new Set(['@huggingface/transformers', 'onnxruntime-web/webgpu', '@mintplex-labs/piper-tts-web']);
 
 describe('the voice layer stands alone', () => {
   const folder = fileURLToPath(new URL('.', import.meta.url));

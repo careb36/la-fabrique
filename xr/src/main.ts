@@ -29,6 +29,7 @@ import { roomRegistry, taskItems } from './commands';
 import {
   FallbackSpeaker,
   firstAvailable,
+  PiperSpeaker,
   SilentSpeaker,
   VoiceSession,
   WebSpeechRecognizer,
@@ -364,10 +365,24 @@ const whisper = new WhisperRecognizer({
 });
 const webSpeech = new WebSpeechRecognizer(voiceLang);
 const voiceRecognizer: Recognizer | undefined = firstAvailable(sttChoice === 'auto' || sttChoice === 'web' ? [webSpeech, whisper] : [whisper, webSpeech]);
+// Who talks back: the browser's voice where it has one, else Piper running
+// in the page (a voice per language, downloaded once); `?tts=piper` forces
+// Piper, `?tts=web` the browser's. Without either the words stay on the panel.
+const ttsChoice = voiceParams.get('tts') ?? 'auto';
+const piper = new PiperSpeaker({
+  onStatus: (s) => {
+    if (s.kind === 'loading') {
+      voiceLine = s.percent < 100 ? `${s.lang === 'es' ? 'Descargando la voz' : 'Downloading the voice'} (${s.percent}%)...` : voiceLine;
+      touch();
+    } else console.info(`[voice] piper spoke ${s.audioSeconds.toFixed(1)} s of ${s.lang} in ${s.synthesisSeconds.toFixed(1)} s`);
+  },
+});
+const browserVoice = new WebSpeechSpeaker();
+const speakers = ttsChoice === 'piper' ? [piper, browserVoice] : ttsChoice === 'web' ? [browserVoice] : [browserVoice, piper];
 const voice = new VoiceSession({
   registry: voiceRegistry,
   recognizer: voiceRecognizer ?? webSpeech,
-  speaker: new FallbackSpeaker([new WebSpeechSpeaker(), new SilentSpeaker()]),
+  speaker: new FallbackSpeaker([...speakers, new SilentSpeaker()]),
   language: voiceLang,
   onEvent: (e) => {
     if (e.kind === 'heard') {

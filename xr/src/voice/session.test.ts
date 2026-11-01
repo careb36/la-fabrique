@@ -212,11 +212,15 @@ describe('VoiceSession', () => {
     expect(h.said.at(-1)).toBe('Podés decir: devolver, aprobar, pausar o lanzar una tarea.');
   });
 
-  it('says it did not understand, in the page language when the phrase tells nothing', () => {
+  it('says it did not understand, in the page language whatever the recognizer guessed', () => {
     const h = harness(actions, 'en');
     h.session.start();
     h.say('what a nice room');
     expect(h.said.at(-1)).toBe('I did not catch that. Say "help" to hear the commands.');
+    const es = harness(actions, 'es');
+    es.session.start();
+    es.say('Bowsay', 'en');
+    expect(es.said.at(-1)).toBe('No entendí. Decí «ayuda» para oír las órdenes.');
   });
 
   it('a recognizer failure stops listening with the reason', () => {

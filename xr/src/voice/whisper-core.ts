@@ -107,5 +107,7 @@ export async function transcribe(
   const inputs = await processor(audio);
   const generated = await model.generate({ ...inputs, decoder_input_ids: init, max_new_tokens: maxNewTokens });
   const ids = Array.from(generated.tolist()[0], Number).slice(init.length);
+  // A clip the model has nothing to say about ends at once; the tokenizer refuses an empty list.
+  if (!ids.length) return '';
   return tokenizer.decode(ids, { skip_special_tokens: true }).trim();
 }

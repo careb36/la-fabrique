@@ -231,9 +231,15 @@ function transformersRecognizer(size: string, o: TransformersOptions): Recognize
         else if (o.mode === 'prior') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS, byId.get(f.id)?.lang);
         else if (o.mode === 'force') lang = byId.get(f.id)?.lang;
         else lang = o.mode;
-        const text = o.prompt
-          ? await transcribe(asr.model, asr.processor, asr.tokenizer, audio, lang ?? 'en', hints[lang ?? 'en'])
-          : ((await asr(audio, { language: lang, task: 'transcribe' })) as { text: string }).text.trim();
+        let text = '';
+        try {
+          text = o.prompt
+            ? await transcribe(asr.model, asr.processor, asr.tokenizer, audio, lang ?? 'en', hints[lang ?? 'en'])
+            : ((await asr(audio, { language: lang, task: 'transcribe' })) as { text: string }).text.trim();
+        } catch (err) {
+          // A clip the model has nothing to say about: an empty transcript, scored as a miss.
+          process.stderr.write(`${this.name}: ${f.voice}/${f.id}: ${err instanceof Error ? err.message : String(err)}\n`);
+        }
         out.push({ voice: f.voice, id: f.id, text, language: lang, seconds: (performance.now() - started) / 1000 });
         if (++n % 50 === 0) process.stderr.write(`${this.name}: ${n}/${files.length}\n`);
       }

@@ -21,9 +21,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-const [wav, effect = 'pause', size = 'tiny'] = process.argv.slice(2);
+const [wav, effect = 'pause', size = 'tiny', extraQuery = ''] = process.argv.slice(2);
 if (!wav) {
-  console.error('usage: node scripts/voice-e2e.cjs <wav> [pause|approve|reject|<text>] [tiny|base|small]');
+  console.error('usage: node scripts/voice-e2e.cjs <wav> [pause|approve|reject|<text>] [tiny|base|small] [extra query, e.g. "tts=piper"]');
   process.exit(2);
 }
 
@@ -84,7 +84,9 @@ async function main() {
   const page = await context.newPage();
   const log = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' || m.type() === 'warning') log.push(`[${m.type()}] ${m.text()}`);
+    if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[voice]')) log.push(`[${m.type()}] ${m.text()}`);
+    // The Piper speaker says so when a sentence has been played.
+    if (m.text().startsWith('[voice] piper spoke')) void page.evaluate(() => (window.__voiceSpoken = true)).catch(() => {});
   });
   page.on('pageerror', (e) => log.push(`[pageerror] ${e.message}`));
   // The context sees the worker's requests too.
@@ -92,7 +94,7 @@ async function main() {
     if (r.status() >= 400) log.push(`[http ${r.status()}] ${r.url()}`);
   });
   context.on('requestfailed', (r) => log.push(`[failed] ${r.url()} ${r.failure()?.errorText ?? ''}`));
-  await page.goto(`https://localhost:${PORT}/?e2e&stt=${size}&lang=es`);
+  await page.goto(`https://localhost:${PORT}/?e2e&stt=${size}&lang=es${extraQuery ? `&${extraQuery}` : ''}`);
   await page.waitForFunction(() => !!window.__room, null, { timeout: 60_000 });
   // Every exchange the session has, for the report.
   await page.evaluate(() => {
@@ -115,6 +117,7 @@ async function main() {
       const events = window.__voiceLog;
       const said = events.filter((e) => e.startsWith('said: ')).map((e) => e.slice(6));
       if (want === 'pause') return room.player.paused;
+      if (want === 'spoken') return window.__voiceSpoken === true;
       if (want === 'approve') return said.some((s) => /apruebo|approve/i.test(s));
       if (want === 'reject') return said.some((s) => /devuelvo|send .* back/i.test(s));
       return said.some((s) => s.toLowerCase().includes(want.toLowerCase()));

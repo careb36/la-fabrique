@@ -117,7 +117,9 @@ export class VoiceSession {
       this.pending = undefined;
     }
 
-    if (!understood) return this.say(message(lang, 'notUnderstood'), lang);
+    // Nothing matched: the recognizer's guess at the language of a mumble
+    // means little, so the answer comes in the language the page is read in.
+    if (!understood) return this.say(message(this.o.language(), 'notUnderstood'), this.o.language());
     switch (understood.intent) {
       case 'help':
         return this.say(this.o.registry.help(lang), lang);
