@@ -47,10 +47,13 @@ no backend: the page runs a self-contained demo of recorded agent runs.
    over.
 9. Also on the **Room** panel: **Contrast** switches to black panels with
    white borders and white text (remembered on the device), and **Voice**,
-   where the browser has speech recognition, takes spoken commands in
-   English or Spanish: "approve", "send it back", "pause", "resume",
-   "recenter", "launch the CSV export". The panel shows what it heard and
-   what it did.
+   where the browser has speech recognition, talks with you in English or
+   Spanish: "approve", "mandala de vuelta", "pause", "seguí", "recenter",
+   "launch the CSV export", "lanzá la segunda", "¿cómo va?", "help". It
+   answers out loud in the language you spoke, asks before a decision
+   ("Approve Password reset endpoint? Say yes or no") and, when a launch
+   names no task, asks which. The panel shows what it heard and what it
+   said.
 
 The whole demo takes under five minutes.
 
@@ -133,10 +136,15 @@ The Room panel says where it went.
   headset) picks the agent panel within 9 degrees, and half a second of
   dwell opens it (`src/gaze.ts`); a glance opens nothing.
 - Every action has a second way in: a fingertip or a pinch on a button,
-  the delivery carried by hand or the buttons, and voice for the decisions
-  and the room's controls (`src/voice.ts`; a send back always wins over an
-  approval in the same sentence). High contrast keeps the layout and
-  changes only the palette (`setContrast` in `src/ui/kit.ts`).
+  the delivery carried by hand or the buttons, and voice for everything
+  the Room and Tasks panels do. The voice layer (`src/voice/`) stands
+  alone: the room declares its actions with their phrases in both
+  languages (`src/commands.ts`), and the layer listens, understands with a
+  deterministic grammar (a send back always wins over an approval in the
+  same sentence; "no la apruebo" is a send back), confirms what matters
+  and answers in the language spoken. Its grammar is held to the phrase
+  bank the recognizers are measured with (`bench/`). High contrast keeps
+  the layout and changes only the palette (`setContrast` in `src/ui/kit.ts`).
 - Sound tells you what happens without looking: each agent has its own
   note and its sounds come from its light on the wall (spatial audio, all
   synthesized, no files); a delivery that waits for you chimes from the
