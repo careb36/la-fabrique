@@ -110,6 +110,8 @@ ganan sobre el archivo):
 | `B1_STT_LANGUAGE` | `auto` (sigue la conversación), o `es` / `en` para fijar lo que escucha |
 | `B1_VAD` | `silero` (por defecto) termina la frase cuando calla la voz, haya el ruido que haya; `energy` usa solo el volumen |
 | `B1_STT_MODEL` | tamaño del modelo de faster-whisper (`tiny`, `base`, `small`…) |
+| `B1_TTS_ENGINE` | `auto` (Kokoro, después Piper, después la voz del sistema), o `kokoro` / `piper` / `system` para empezar ahí |
+| `B1_KOKORO_VOICE`, `B1_KOKORO_VOICE_EN` | voces de Kokoro para español e inglés (`ef_dora`, `af_heart`) |
 | `B1_TTS_VOICE` | voz de Piper para español: ruta a un `.onnx` o nombre (`es_ES-sharvard-medium`) |
 | `B1_TTS_VOICE_EN` | voz de Piper para inglés (`en_US-amy-medium`) |
 | `B1_MIC_DEVICE` | nombre del micrófono; vacío es el que elija el sistema |
@@ -155,7 +157,11 @@ interfaz, es el mismo programa hablando en uno u otro idioma.
   que no hay nada más que instalar ni bajar; sin él, o con `B1_VAD=energy`,
   decide el volumen contra el ruido de la habitación, como antes.
   `b1 --check` dice cuál se usa.
-* **Habla.** Primero Piper, si hay binario y modelo; si no, la voz del sistema
+* **Habla.** Primero Kokoro-82M: una voz neuronal abierta (Apache-2.0) con
+  voz en español (`ef_dora`) y en inglés (`af_heart`), que corre en la CPU más
+  rápido que el tiempo real con `kokoro-onnx`, que trae su propio espeak-ng,
+  así que no hay que instalar nada más en la máquina. Después Piper, si hay
+  binario y modelo; si no, la voz del sistema
   (SAPI en Windows, `say` en macOS, `espeak-ng`/`spd-say` en Linux) elegida por
   el idioma de la frase; y si no hay ninguna, el texto por consola. Nunca se
   queda callado sin decir por qué: si el motor existe pero no puede sonar, la
@@ -167,9 +173,11 @@ interfaz, es el mismo programa hablando en uno u otro idioma.
   herramienta ("dejame mirar la fábrica") se dice mientras la herramienta
   corre. El razonamiento se junta y nunca se dice. Un servidor que ignora
   `stream` y contesta de una vez sigue andando; `B1_MODEL_STREAM=false` lo apaga.
-* **Piper no trae voces.** `b1 --voices` baja una vez las dos voces
-  configuradas a `~/.asistente-b1/voces`; después se puede hablar sin
-  internet. Sin ese paso, la voz del sistema cubre el idioma igual.
+* **Las voces se bajan una vez.** `b1 --voices` baja el modelo y las voces de
+  Kokoro (unos 120 MB) a `~/.asistente-b1/kokoro`, y guarda cada archivo solo
+  si coincide con un SHA-256 fijado, y las dos voces de Piper configuradas a
+  `~/.asistente-b1/voces`; después se puede hablar sin internet. Sin ese paso,
+  la voz del sistema cubre el idioma igual.
 * **La fábrica también contesta en el idioma.** Cada llamada a `/v1/voice/*`
   viaja con `language`, así la frase que la fábrica ya redactó llega en el
   idioma de la charla; si alguna vez llegara en otro, el prompt pide decirla en
@@ -208,7 +216,8 @@ b1/
   audio.py        micrófono, RMS, detector de fin de frase
   vad.py          detector de voz Silero (de faster-whisper), con el volumen de respaldo
   devices.py      qué micrófono y qué parlante, elegidos por nombre
-  speech.py       faster-whisper y piper detrás de dos métodos
+  speech.py       faster-whisper y piper detrás de dos métodos; la cadena de voces
+  kokoro.py       voz Kokoro-82M: descarga con hashes fijados, síntesis, reproducción
   i18n.py         todo el texto de la interfaz y de la voz, en español y en inglés
   config.py       ajustes en JSON con override por entorno
   originality.py  comparación de prosa y código contra otro árbol

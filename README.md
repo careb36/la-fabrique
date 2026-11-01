@@ -479,7 +479,7 @@ factory and run without it:
   ```
 
 - **`asistente-b1/`** — a desktop assistant (Apache-2.0, standard library at
-  its core; PyQt6 window, faster-whisper and Piper are optional) that drives
+  its core; PyQt6 window, faster-whisper, Kokoro and Piper are optional) that drives
   the factory by voice through `/v1/voice/*`: the status, plan, create, dispatch,
   pause, resume and decide actions, and `/v1/voice/build` for a project asked
   for in one sentence. Set `VOICE_API_KEY` on the backend and the same key in
