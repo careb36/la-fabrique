@@ -293,8 +293,9 @@ python -m b1 --text       # console loop, no microphone and no Qt
 
 `profesor3/` is the previous assistant (CC BY-NC 4.0) and is **not** part of
 this distribution. If you have that checkout, `python run_fusion.py --asistente
-profesor3` uses it as a second front end; the product that ships is
-`asistente-b1/`.
+profesor3` (or `arrancar.ps1 -Asistente profesor3`) uses it as a second front
+end; the product that ships is `asistente-b1/`, and a fresh clone needs nothing
+else.
 
 ### 4. Verify the submission
 
@@ -318,9 +319,10 @@ NEBIUS_API_KEY=nvapi-... python3 tools/hackathon_check.py   # + provider and mod
    `home` recorded in each venv's `pyvenv.cfg`, and `PATH` — and probes every
    candidate for real.
 2. Reuses `.venv-backend` and the assistant's environment when they exist and
-   work. `arrancar.ps1` keeps the assistant's environment at `profesor3\.venv`
-   and installs it from `profesor3\requirements.txt`; `run_fusion.py` looks for
-   `asistente-b1/.venv` first. On Windows the interpreter is
+   work. The assistant's environment is `asistente-b1\.venv`, installed from
+   `asistente-b1\requirements.txt` (with `-Asistente profesor3`, the reference
+   checkout's own `.venv` and requirements, and a clear message if that folder
+   is missing). On Windows the interpreter is
    `Scripts\python.exe`; `bin/python` is only for Linux/macOS.
 3. Creates only what is missing. A broken environment is moved to
    `<venv>.roto-<date>`, never deleted.
@@ -785,7 +787,7 @@ resolve to the same actions; `crear_sprint` has no English alias.
 ```bash
 # The fusion layer: launcher, demo, codegen and panel guards.
 python3 -m pytest tests -q
-# 130 passed, 7 skipped when the reference profesor3/ checkout is absent
+# 134 passed, 7 skipped when the reference profesor3/ checkout is absent
 # (one launcher test imports the backend, so it needs FastAPI installed).
 
 # The assistant: no network, no microphone, no Qt.

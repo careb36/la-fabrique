@@ -114,7 +114,18 @@ $script:BackendModules = @(
     'fastapi', 'uvicorn', 'sqlmodel', 'sqlalchemy', 'pydantic',
     'httpx', 'langchain_core', 'langsmith'
 )
-$script:AssistantModules = @('PyQt6', 'PyQt6.QtWidgets', 'google.genai', 'sounddevice', 'numpy')
+# El asistente que abre la ventana decide carpeta, entorno y módulos: B1 está en
+# este repositorio; profesor3 es el anterior y no se distribuye.
+$script:AssistantName = if ($Asistente) { $Asistente.Trim().ToLowerInvariant() } else { 'b1' }
+if ($script:AssistantName -notin @('b1', 'profesor3')) {
+    Write-Host "XX  -Asistente acepta 'b1' o 'profesor3', no '$Asistente'." -ForegroundColor Red
+    exit 1
+}
+$script:AssistantModules = if ($script:AssistantName -eq 'b1') {
+    @('PyQt6', 'PyQt6.QtWidgets', 'sounddevice', 'numpy', 'faster_whisper')
+} else {
+    @('PyQt6', 'PyQt6.QtWidgets', 'google.genai', 'sounddevice', 'numpy')
+}
 $script:PreferredMinor = 12
 $script:Diagnostico = [bool]$Diagnostico
 
@@ -134,7 +145,17 @@ if (-not (Test-Path -LiteralPath $Launcher)) {
 }
 
 $BackendDir = Join-Path (Join-Path $Root 'la-fabrique') 'backend'
-$AssistantDir = Join-Path $Root 'profesor3'
+$AssistantFolder = if ($script:AssistantName -eq 'b1') { 'asistente-b1' } else { 'profesor3' }
+$AssistantDir = Join-Path $Root $AssistantFolder
+if ((-not $SoloBackend) -and (-not (Test-Path -LiteralPath $AssistantDir))) {
+    if ($script:AssistantName -eq 'profesor3') {
+        Write-Host "XX  No está la carpeta profesor3: no se distribuye con este repositorio." -ForegroundColor Red
+        Write-Host "    Arranca con el asistente del repositorio:  .\arrancar.ps1 -Asistente b1" -ForegroundColor Red
+    } else {
+        Write-Host "XX  No encuentro $AssistantDir; revisa que el repositorio esté completo." -ForegroundColor Red
+    }
+    exit 1
+}
 $BackendVenv = Join-Path $Root '.venv-backend'
 $AssistantVenv = Join-Path $AssistantDir '.venv'
 $LockFile = Join-Path $BackendDir 'poetry.lock'
@@ -1012,9 +1033,9 @@ function Install-BackendDependencies([string]$PythonExe) {
 function Install-AssistantDependencies([string]$PythonExe) {
     $requirements = Join-Path $AssistantDir 'requirements.txt'
     if (-not (Test-Path -LiteralPath $requirements)) {
-        throw "No encuentro ${requirements}: revisa que la carpeta profesor3 esté completa."
+        throw "No encuentro ${requirements}: revisa que la carpeta $AssistantFolder esté completa."
     }
-    Write-Paso "Instalando dependencias del asistente (PyQt6, Gemini...); la primera vez tarda"
+    Write-Paso "Instalando dependencias del asistente ($AssistantFolder); la primera vez tarda"
     Update-Pip $PythonExe
     & $PythonExe -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r $requirements
     if ($LASTEXITCODE -ne 0) {
@@ -1226,9 +1247,10 @@ try {
             & $assistantPython -m pip check
             if ($LASTEXITCODE -ne 0) { Write-Aviso "'pip check' encontró conflictos; el asistente puede abrir igual." }
 
-            # Piper trae el motor pero no las voces. Se bajan una vez para que
-            # hable en español y en inglés sin depender de la voz del sistema;
-            # si no hay red, la voz del sistema cubre los dos idiomas igual.
+            # Kokoro y Piper traen el motor pero no las voces. Se bajan una vez
+            # para que hable en español y en inglés sin depender de la voz del
+            # sistema; si no hay red, la voz del sistema cubre los dos idiomas.
+            if ($script:AssistantName -eq 'b1') {
             Write-Paso "Preparando las voces del asistente (español e inglés)"
             Push-Location $AssistantDir
             try {
@@ -1238,6 +1260,7 @@ try {
             }
             if ($voices.ExitCode -eq 0) { Write-Ok 'Voces del asistente listas' }
             else { Write-Aviso 'Sin voces descargadas: el asistente usa la voz del sistema.' }
+            }
         }
     }
 
@@ -1283,7 +1306,11 @@ try {
 
     if ($SoloCompilar) {
         # El bloque de arriba sale con 0 al compilar; llegar aquí es no poder.
-        Write-Fallo 'No pude recompilar: falta el entorno del asistente (profesor3\.venv).'
+        if ($script:AssistantName -eq 'b1') {
+            Write-Fallo 'Recompilar el ejecutable es solo para profesor3 (-Asistente profesor3).'
+        } else {
+            Write-Fallo 'No pude recompilar: falta el entorno del asistente (profesor3\.venv).'
+        }
         exit 1
     }
 
@@ -1306,7 +1333,7 @@ try {
     if ($Empresa) { $launcherArgs += @('--company', $Empresa) }
     if ($SinNavegador) { $launcherArgs += '--no-browser' }
     if ($Completa) { $launcherArgs += '--completa' }
-    if ($Asistente) { $launcherArgs += @('--asistente', $Asistente) }
+    $launcherArgs += @('--asistente', $script:AssistantName)
     if ($Agentes) { $launcherArgs += @('--agentes', $Agentes) }
     if (-not $SoloAsistente) { $launcherArgs += @('--backend-python', $backendPython) }
     if ((-not $SoloBackend) -and $assistantPython) { $launcherArgs += @('--assistant-python', $assistantPython) }

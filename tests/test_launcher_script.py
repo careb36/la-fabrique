@@ -134,3 +134,27 @@ def test_backend_serves_the_same_frontend_the_launcher_builds():
     finally:
         sys.path.pop(0)
     assert ui_static.dist_dir() == ROOT / "la-fabrique" / "frontend" / "dist"
+
+
+def test_the_default_assistant_is_the_one_in_this_repository(script):
+    """A fresh clone has asistente-b1/ and not profesor3/: the default must
+    build its environment and install its requirements from asistente-b1."""
+    assert "$script:AssistantName = if ($Asistente)" in script
+    assert "else { 'b1' }" in script
+    assert "if ($script:AssistantName -eq 'b1') { 'asistente-b1' } else { 'profesor3' }" in script
+    assert "$AssistantDir = Join-Path $Root $AssistantFolder" in script
+    assert "Join-Path $Root 'profesor3'" not in script
+    assert "@('--asistente', $script:AssistantName)" in script
+
+
+def test_a_missing_reference_assistant_says_how_to_start_instead(script):
+    assert "No está la carpeta profesor3" in script
+    assert "-Asistente b1" in script
+    assert "-Asistente acepta 'b1' o 'profesor3'" in script
+
+
+def test_b1_does_not_require_the_reference_assistants_gemini_module(script):
+    b1_modules = script.split("$script:AssistantModules = if ($script:AssistantName -eq 'b1') {", 1)[1]
+    b1_modules = b1_modules.split("} else {", 1)[0]
+    assert "google.genai" not in b1_modules
+    assert "faster_whisper" in b1_modules
