@@ -14,7 +14,7 @@ set -uo pipefail
 
 : "${NEBIUS_API_KEY:?falta NEBIUS_API_KEY}"
 BASE="${NEBIUS_PROXY_URL:-https://api.tokenfactory.nebius.com/v1}"
-MODEL="${NEMOTRON_MODEL:-nvidia/nemotron-3-super-120b-a12b}"
+MODEL="${MODEL:-nvidia/nemotron-3-super-120b-a12b}"
 PROXY_URL="${PROXY_URL:-http://localhost:5100}"
 fail=0
 

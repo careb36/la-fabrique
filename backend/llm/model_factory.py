@@ -79,36 +79,19 @@ class ModelFactory:
     @staticmethod
     def model_for_role(role: AgentRole) -> str:
         """
-        The model id to use for *role*.
+        The model id *role* asks the proxy for.
 
-        ``AGENT_MODEL`` overrides every role with one model id: the desktop
-        install only guarantees one provider key (the assistant's Gemini), and
-        the ``ROLE_MODEL_MAP`` mix of Qwen/DeepSeek would leave most roles
-        asking the proxy for a model nobody authorised. Unset means the map.
-
-        ``NEMOTRON_ROLES`` (comma-separated role names) opts roles into the
-        NVIDIA models served by Nebius Token Factory; ``NEMOTRON_MODEL``
-        (with ``NEMOTRON_MODEL_STRATEGIC`` / ``_FAST`` overrides) names them.
-        Unset means the ``ROLE_MODEL_MAP`` default, so nothing changes for
-        existing deployments.
+        ``AGENT_MODEL_<ROLE>`` (the role's name in upper case:
+        ``AGENT_MODEL_PO``, ``AGENT_MODEL_SCRUMMASTER``) names one role's
+        model and wins; ``AGENT_MODEL`` names every role's. Unset, the role
+        keeps its ``ROLE_MODEL_MAP`` entry, a default any deployment
+        overrides. No provider is favoured: any id the proxy's catalogues
+        list works, and a deployment with one provider key points every
+        role at it with ``AGENT_MODEL``.
         """
-        default = os.getenv("AGENT_MODEL", "").strip() or (
-            ModelFactory.ROLE_MODEL_MAP[role].model_name
-        )
-        opted_in = {
-            r.strip().lower()
-            for r in os.getenv("NEMOTRON_ROLES", "").split(",")
-            if r.strip()
-        }
-        if role.value.lower() not in opted_in:
-            return default
-        tier_var = {
-            AgentRole.PO: "NEMOTRON_MODEL_STRATEGIC",
-            AgentRole.ARCHITECT: "NEMOTRON_MODEL_STRATEGIC",
-            AgentRole.SECOPS: "NEMOTRON_MODEL_STRATEGIC",
-            AgentRole.TECH_WRITER: "NEMOTRON_MODEL_FAST",
-        }.get(role, "NEMOTRON_MODEL")
-        return os.getenv(tier_var) or os.getenv("NEMOTRON_MODEL", "") or default
+        own = os.getenv(f"AGENT_MODEL_{role.value.upper()}", "").strip()
+        every = os.getenv("AGENT_MODEL", "").strip()
+        return own or every or ModelFactory.ROLE_MODEL_MAP[role].model_name
 
     @classmethod
     def get_model(cls, role: AgentRole) -> ChatOpenAI:
@@ -190,7 +173,7 @@ def default_model_for_role(role: str) -> str:
 
     This is the single source of role defaults: the LangGraph producer and
     the task worker both come through here, so ``AGENT_MODEL`` and the
-    ``NEMOTRON_*`` overrides reach every caller.
+    per-role ``AGENT_MODEL_<ROLE>`` overrides reach every caller.
     """
     return ModelFactory.model_for_role(role_for_name(role))
 

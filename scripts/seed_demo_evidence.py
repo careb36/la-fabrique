@@ -155,7 +155,7 @@ def _ingest(api_url: str, token: str | None, company_id: int, scenario: dict) ->
             "company_id": company_id,
             "external_ref": scenario["external_ref"],
             "producer": "seed",
-            "model": "nvidia/nemotron-4-340b-instruct",
+            "model": "demo/seed-model",
             "agent_role": scenario["agent_role"],
             "subject": scenario["subject"],
             "claims": scenario["claims"],
