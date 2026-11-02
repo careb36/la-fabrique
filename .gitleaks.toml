@@ -5,4 +5,8 @@ useDefault = true
 description = "Reviewed documentation example tokens; not live credentials."
 paths = [
   '''docs/API\.md''',
+  # Removed from the tree; still in history. AGENTS.md held an example
+  # X-Voice-Key header, threat_model.json example tokens in a threat model.
+  '''^AGENTS\.md$''',
+  '''^la-fabrique/docs/threat_model\.json$''',
 ]

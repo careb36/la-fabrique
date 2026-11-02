@@ -1,6 +1,6 @@
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     container_name: factory-jaeger
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
@@ -16,7 +16,7 @@ services:
       retries: 5
 
   nats:
-    image: nats:latest
+    image: nats:2.15.2
     container_name: factory-nats
     # JetStream keeps task assignments and queued deliveries on disk, so they
     # survive a backend or daemon that is down when they are published.

@@ -433,59 +433,49 @@ The SSE endpoint (`GET /v1/glassroom/stream?sprint_id=<id>`) replays the last 50
 la-fabrique/
 ├── backend/
 │   ├── agents/
-│   │   ├── graph.py                  # LangGraph multi-agent workflow
+│   │   ├── graph.py                  # Optional LangGraph producer (AGENT_GRAPH_ENABLED)
 │   │   └── tools/
-│   │       └── openproject_tools.py  # Work package creation
+│   │       └── openproject_tools.py  # Work package creation (optional OpenProject)
 │   ├── app/
-│   │   ├── main.py                   # FastAPI entry point · 4 bg workers · SSE bridge
-│   │   ├── models/                   # SQLModel ORM (Sprint, Company, BacklogItem…)
-│   │   ├── schemas.py                # Pydantic request/response schemas
-│   │   ├── database.py               # Engine · session · _ensure_runtime_schema()
-│   │   ├── routers/                  # sprint · inbox · procedures · messages · agent_runs · support · workspace · github
+│   │   ├── main.py                   # FastAPI app: lifespan, middleware, routers
+│   │   ├── routers/                  # agent_runs · agents · auth · enterprise · github · inbox · messages · procedures · sprint · support · workspace
+│   │   ├── models/                   # SQLModel ORM (Company, Sprint, BacklogItem, AgentRun, Procedure…)
 │   │   ├── services/
-│   │   │   ├── agent_worker.py       # NATS consumer → LangGraph execution
 │   │   │   ├── task_worker.py        # Executes tasks, delivery gate, QA review, closes sprints
+│   │   │   ├── verification.py       # Deterministic checks on a run (files written, tests run, risk tier)
+│   │   │   ├── board.py              # Pure readers of a task's comment thread
 │   │   │   ├── procedures.py         # Procedures: proposals, adoption, keep/revert by the numbers
 │   │   │   ├── carry_over.py         # A blocked task gets another attempt in the next sprint
-│   │   │   ├── scrum_master.py       # The ScrumMaster answers escalations: triage of a blocked task
-│   │   │   ├── board.py              # Pure readers of a task's comment thread
-│   │   │   ├── console_assistants.py # Terminal assistants on the daemon's machine (Copilot CLI, Claude CLI)
+│   │   │   ├── scrum_master.py       # The ScrumMaster answers escalations
+│   │   │   ├── architect.py          # The Architect's briefs and their record
+│   │   │   ├── console_assistants.py # Terminal assistants on the daemon's machine
 │   │   │   ├── support_agent.py      # Triages help-desk tickets (SUPPORT_AGENT_ENABLED)
 │   │   │   ├── reviewer_agent.py     # Suggests the decision on other producers' runs (REVIEWER_AGENT_ENABLED)
-│   │   │   └── outbox_service.py     # Transactional outbox → NATS drain
-│   │   └── nats_client.py            # Async NATS publish/subscribe wrapper
+│   │   │   ├── workspace_daemon.py   # Requests to the workspace daemon over NATS
+│   │   │   └── outbox_service.py     # Transactional outbox → JetStream
+│   │   ├── audit_chain.py            # Per-company audit hash chain
+│   │   ├── history_check.py          # Independent checker of task histories
+│   │   ├── llm_proxy_client.py       # HTTP client for the LLM proxy
+│   │   └── nats_client.py            # JetStream publish/consume
 │   ├── llm/
-│   │   └── model_factory.py          # Role → model mapping
+│   │   └── model_factory.py          # Role → model (AGENT_MODEL, AGENT_MODEL_<ROLE>)
 │   ├── memory/
 │   │   └── engram_processor.py       # pgvector + Neo4j engram persistence
-│   ├── llm_proxy_client.py           # HTTP client for LLM proxy service
 │   └── telemetry.py                  # OpenTelemetry tracer setup
 ├── frontend/
 │   └── src/
-│       ├── components/
-│       │   ├── GlassRoom.tsx         # 3-column real-time sprint view
-│       │   ├── KanbanBoard.tsx       # Sprint backlog board (dnd-kit)
-│       │   ├── GovernancePanel.tsx   # Review: what needs a person (inbox)
-│       │   ├── Conversation.tsx      # Messages between roles per sprint and task
-│       │   ├── ControlPanel.tsx      # Sprint configuration UI
-│       │   └── ErrorBoundary.tsx     # Global React error boundary
-│       ├── pages/
-│       │   ├── Dashboard.tsx         # Sprint planner (QuickLaunch) with carry-over of blocked tasks
-│       │   ├── Sprints.tsx           # Every sprint with done, blocked and rework counts
-│       │   ├── Procedures.tsx        # Proposals, procedures in force, history with their numbers
-│       │   └── CompanyNew.tsx        # Company onboarding wizard
-│       ├── store/
-│       │   └── agentStore.ts         # Zustand FSM store (idle/active/waiting/error)
+│       ├── components/               # GlassRoom · KanbanBoard · GovernancePanel · Conversation · LearningTrend · SupportBot…
+│       ├── pages/                    # Dashboard · Sprints · SprintWorkspace · TaskDetails · Evidence · Procedures · HelpDesk · CompanyNew…
+│       ├── store/                    # Zustand stores (agents, auth)
 │       └── i18n/                     # EN + ES translation files
-├── llm-proxy/                        # Token budget + audit gateway (Flask :5100)
-├── vscode-daemon/                    # Local NATS subscriber for IDE file operations
-├── scripts/
-│   └── verify_infra.py               # Infrastructure health verification script
+├── llm-proxy/                        # Model gateway: routing by id prefix, catalogues, token budgets (Flask :5100)
+├── vscode-daemon/                    # Workspace daemon: runs on your computer, writes files, runs commands
+├── scripts/                          # start-daemon.*, e2e/, verify_infra.py, check_file_sizes.py
 ├── db/
 │   └── init-db/init.sql              # Postgres bootstrap DDL
-├── docker-compose.yml                # 8-service local stack definition
+├── docker-compose.yml                # Local stack
 ├── reset_infra.sh                    # Canonical full-reset script
-└── .env.example                      # Required environment variables template
+└── .env.example                      # Environment variables template
 ```
 
 [⬆ Back to Top](#la-fabrique)
