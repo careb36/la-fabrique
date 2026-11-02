@@ -1,0 +1,207 @@
+## whisper-tiny-detect
+
+| language | phrases | commands right | WER | language right | s/phrase |
+|---|---|---|---|---|---|
+| en | 186 | 82% | 20.1% | 100% | 1.54 |
+| es | 248 | 46% | 56.9% | 79% | 1.60 |
+| all | 434 | 62% | 41.2% | 88% | 1.57 |
+
+| voice | commands right | WER |
+|---|---|---|
+| en-heart | 90% | 14.5% |
+| en-us-lessac | 87% | 14.5% |
+| en-us-ryan | 69% | 31.3% |
+| es-ar-daniela | 32% | 68.3% |
+| es-dora | 56% | 52.4% |
+| es-es-davefx | 35% | 66.3% |
+| es-mx-claude | 60% | 40.7% |
+
+| intent | es | en |
+|---|---|---|
+| approve | 43% | 67% |
+| help | 33% | 89% |
+| launch:ci | 8% | 67% |
+| launch:csv | 17% | 67% |
+| launch:reset | 33% | 100% |
+| mute | 17% | 89% |
+| next | 63% | 67% |
+| no | 67% | 78% |
+| none | 100% | 100% |
+| pause | 56% | 67% |
+| recenter | 50% | 89% |
+| reject | 43% | 86% |
+| restart | 25% | 89% |
+| resume | 44% | 92% |
+| status | 75% | 100% |
+| unmute | 50% | 67% |
+| yes | 44% | 83% |
+
+Misses: 167
+
+- en-heart/en-approve-2: said “Approve it.”, heard “I'll prove it.” (en), understood none (wanted approve)
+- en-heart/en-approve-4: said “Ship it.”, heard “Shippet.” (en), understood none (wanted approve)
+- en-heart/en-launch-ci-1: said “Launch the CI one.”, heard “Launch the CI1.” (en), understood launch:? (wanted launch:ci)
+- en-heart/en-next-1: said “Next sprint.”, heard “Next, Brent.” (en), understood none (wanted next)
+- en-heart/en-no-1: said “No.”, heard “Now.” (en), understood none (wanted no)
+- en-heart/en-reject-4: said “This needs rework.”, heard “This needs to work.” (en), understood none (wanted reject)
+- en-us-lessac/en-approve-2: said “Approve it.”, heard “I'll prove it.” (en), understood none (wanted approve)
+- en-us-lessac/en-approve-4: said “Ship it.”, heard “Shippet” (en), understood none (wanted approve)
+- en-us-lessac/en-launch-ci-1: said “Launch the CI one.”, heard “Launch the C-dI1.” (en), understood launch:? (wanted launch:ci)
+- en-us-lessac/en-launch-csv-3: said “Go ahead with the CSV.”, heard “Go ahead with the C-dash V.” (en), understood launch:? (wanted launch:csv)
+- en-us-lessac/en-pause-4: said “Pause it, please.”, heard “Please.” (en), understood none (wanted pause)
+- en-us-lessac/en-reject-4: said “This needs rework.”, heard “This needs to be worked.” (en), understood none (wanted reject)
+- en-us-lessac/en-restart-1: said “Restart.”, heard “We start.” (en), understood launch:? (wanted restart)
+- en-us-lessac/en-unmute-1: said “Unmute.”, heard “I'm mute.” (en), understood mute (wanted unmute)
+- en-us-ryan/en-approve-1: said “Approve.”, heard “I'll prove.” (en), understood none (wanted approve)
+- en-us-ryan/en-approve-2: said “Approve it.”, heard “I'd probably” (en), understood none (wanted approve)
+- en-us-ryan/en-approve-4: said “Ship it.”, heard “Shut that.” (en), understood none (wanted approve)
+- en-us-ryan/en-help-2: said “Help.”, heard “Oh” (en), understood none (wanted help)
+- en-us-ryan/en-launch-ci-1: said “Launch the CI one.”, heard “Lunch the CIA one.” (en), understood none (wanted launch:ci)
+- en-us-ryan/en-launch-csv-1: said “Launch the CSV export.”, heard “lunch with the ESV export.” (en), understood none (wanted launch:csv)
+- en-us-ryan/en-launch-csv-3: said “Go ahead with the CSV.”, heard “Oh, I had with the CSV.” (en), understood none (wanted launch:csv)
+- en-us-ryan/en-mute-1: said “Mute.”, heard “What?” (en), understood none (wanted mute)
+- en-us-ryan/en-next-1: said “Next sprint.”, heard “Next, Springs.” (en), understood none (wanted next)
+- en-us-ryan/en-no-1: said “No.”, heard “Well,” (en), understood none (wanted no)
+- en-us-ryan/en-pause-1: said “Pause.”, heard “Oh yes.” (en), understood yes (wanted pause)
+- en-us-ryan/en-pause-3: said “Wait.”, heard “What?” (en), understood none (wanted pause)
+- en-us-ryan/en-pause-4: said “Pause it, please.”, heard “Please.” (en), understood none (wanted pause)
+- en-us-ryan/en-recenter-1: said “Recenter the panels.”, heard “The recent of the panels.” (en), understood none (wanted recenter)
+- en-us-ryan/en-reject-4: said “This needs rework.”, heard “This needs to work.” (en), understood none (wanted reject)
+- en-us-ryan/en-resume-1: said “Resume.”, heard “Wait a minute.” (en), understood pause (wanted resume)
+- en-us-ryan/en-unmute-1: said “Unmute.”, heard “I'm moved.” (en), understood none (wanted unmute)
+- en-us-ryan/en-yes-1: said “Yes.”, heard “That's...” (en), understood none (wanted yes)
+- en-us-ryan/en-yes-3: said “Confirmed.”, heard “and turn.” (en), understood none (wanted yes)
+- es-ar-daniela/es-approve-1: said “Aprobá.”, heard “Happy” (en), understood none (wanted approve)
+- es-ar-daniela/es-approve-2: said “Aprobala.”, heard “¡Aprovala!” (es), understood none (wanted approve)
+- es-ar-daniela/es-approve-3: said “Dale, aprobá la entrega.”, heard “Tal vez apó a la entrega.” (es), understood none (wanted approve)
+- es-ar-daniela/es-approve-4: said “Está bien, apruebo.”, heard “Está bien, ha sido...” (es), understood none (wanted approve)
+- es-ar-daniela/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Aplieve la entrada, por favor.” (es), understood none (wanted approve)
+- es-ar-daniela/es-approve-7: said “Eh, sí, aprobado.”, heard “Así, para todo.” (es), understood none (wanted approve)
+- es-ar-daniela/es-help-1: said “¿Qué puedo decir?”, heard “Te puedo decir.” (es), understood none (wanted help)
+- es-ar-daniela/es-help-2: said “Ayuda.”, heard “I don't know.” (en), understood none (wanted help)
+- es-ar-daniela/es-help-3: said “¿Qué órdenes entendés?”, heard “What are you doing this?” (en), understood status (wanted help)
+- es-ar-daniela/es-launch-ci-1: said “Lanzá la del CI.”, heard “La salud de si.” (es), understood none (wanted launch:ci)
+- es-ar-daniela/es-launch-ci-2: said “Arrancá la tercera tarea.”, heard “Ahora, ahora, ahora, ahora.” (es), understood none (wanted launch:ci)
+- es-ar-daniela/es-launch-ci-3: said “Empezá la del runner.”, heard “Empezará el runar.” (es), understood launch:? (wanted launch:ci)
+- es-ar-daniela/es-launch-csv-1: said “Lanzá la exportación CSV.”, heard “La Ensalad Portación C6B.” (es), understood none (wanted launch:csv)
+- es-ar-daniela/es-launch-csv-2: said “Lanzá la segunda.”, heard “Lensala segunda.” (es), understood none (wanted launch:csv)
+- es-ar-daniela/es-launch-csv-3: said “Dale con el CSV.”, heard “Tal vez con ese.” (es), understood none (wanted launch:csv)
+- es-ar-daniela/es-launch-reset-1: said “Lanzá el password reset.”, heard “y la ensalpa su resente.” (es), understood none (wanted launch:reset)
+- es-ar-daniela/es-launch-reset-2: said “Arrancá la primera.”, heard “Ahora con la primera.” (es), understood none (wanted launch:reset)
+- es-ar-daniela/es-launch-reset-3: said “Empezá con la de la contraseña.”, heard “Empezá con la de la contracella.” (es), understood launch:? (wanted launch:reset)
+- es-ar-daniela/es-mute-1: said “Silencio.”, heard “¡Cienso!” (es), understood none (wanted mute)
+- es-ar-daniela/es-mute-2: said “Sacá el sonido.”, heard “¡Sacales sonido!” (es), understood none (wanted mute)
+- es-ar-daniela/es-mute-3: said “Callate un rato.”, heard “¡Cajá, te he un grato!” (es), understood none (wanted mute)
+- es-ar-daniela/es-next-1: said “Siguiente sprint.”, heard “See you in the next video.” (en), understood none (wanted next)
+- es-ar-daniela/es-no-1: said “No.”, heard “Yeah.” (en), understood yes (wanted no)
+- es-ar-daniela/es-pause-1: said “Pausá.”, heard “¡Posa!” (es), understood none (wanted pause)
+- es-ar-daniela/es-recenter-2: said “Vení acá.”, heard “Did you hear that?” (en), understood none (wanted recenter)
+- es-ar-daniela/es-recenter-3: said “Traé todo al frente.”, heard “Te estoy todo el frente.” (es), understood none (wanted recenter)
+- es-ar-daniela/es-reject-1: said “Devolvela.”, heard “¡Téorvela!” (es), understood none (wanted reject)
+- es-ar-daniela/es-reject-3: said “No, rechazala.”, heard “No, pita sola.” (es), understood none (wanted reject)
+- es-ar-daniela/es-reject-5: said “Devuélvela al desarrollador.”, heard “Te voy a ir al desarrollador.” (es), understood none (wanted reject)
+- es-ar-daniela/es-reject-6: said “No la apruebo, mandala de vuelta.”, heard “No le puedo mandar la vuelta.” (es), understood launch:? (wanted reject)
+- es-ar-daniela/es-reject-7: said “Rechazada.”, heard “Thank you.” (en), understood none (wanted reject)
+- es-ar-daniela/es-restart-1: said “Reiniciá.”, heard “¡Encia!” (es), understood none (wanted restart)
+- es-ar-daniela/es-restart-2: said “Empezá de nuevo.”, heard “Empezar el nuevo.” (es), understood launch:? (wanted restart)
+- es-ar-daniela/es-resume-1: said “Seguí.”, heard “See you.” (en), understood none (wanted resume)
+- es-ar-daniela/es-resume-3: said “Reanudá el sprint.”, heard “and like,” (en), understood none (wanted resume)
+- es-ar-daniela/es-resume-4: said “Dale, seguimos.”, heard “¡Talecemos!” (es), understood none (wanted resume)
+- es-ar-daniela/es-status-1: said “¿Cómo va?”, heard “¡Como no ha!” (es), understood none (wanted status)
+- es-ar-daniela/es-unmute-1: said “Poné el sonido.”, heard “Bonnesas, amigos.” (es), understood none (wanted unmute)
+- es-ar-daniela/es-unmute-2: said “Con sonido.”, heard “¡Con Señor!” (es), understood none (wanted unmute)
+- es-ar-daniela/es-yes-1: said “Sí.”, heard “See you.” (en), understood none (wanted yes)
+- es-ar-daniela/es-yes-2: said “Sí, dale.”, heard “¡Síte ale!” (es), understood none (wanted yes)
+- es-ar-daniela/es-yes-3: said “Confirmo.”, heard “Confirgo.” (es), understood none (wanted yes)
+- es-dora/es-approve-1: said “Aprobá.”, heard “Goodbye.” (en), understood none (wanted approve)
+- es-dora/es-approve-2: said “Aprobala.”, heard “He probado.” (es), understood none (wanted approve)
+- es-dora/es-approve-3: said “Dale, aprobá la entrega.”, heard “Next, we'll try the entreg.” (en), understood none (wanted approve)
+- es-dora/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Aprovela entrega por favor.” (es), understood none (wanted approve)
+- es-dora/es-help-1: said “¿Qué puedo decir?”, heard “Can't be the answer.” (en), understood none (wanted help)
+- es-dora/es-help-2: said “Ayuda.”, heard “I knew that.” (en), understood none (wanted help)
+- es-dora/es-launch-ci-1: said “Lanzá la del CI.”, heard “Lansala, they'll say.” (en), understood none (wanted launch:ci)
+- es-dora/es-launch-ci-3: said “Empezá la del runner.”, heard “Empezála del Rúner.” (es), understood launch:? (wanted launch:ci)
+- es-dora/es-launch-csv-2: said “Lanzá la segunda.”, heard “La segunda.” (es), understood none (wanted launch:csv)
+- es-dora/es-launch-csv-3: said “Dale con el CSV.”, heard “Dale con el CSUB.” (es), understood launch:? (wanted launch:csv)
+- es-dora/es-launch-reset-1: said “Lanzá el password reset.”, heard “Lensail password reset.” (en), understood none (wanted launch:reset)
+- es-dora/es-mute-1: said “Silencio.”, heard “See you later.” (en), understood none (wanted mute)
+- es-dora/es-mute-3: said “Callate un rato.”, heard “que ya te un rato.” (es), understood none (wanted mute)
+- es-dora/es-no-2: said “No, cancelá.”, heard “No canse la.” (es), understood none (wanted no)
+- es-dora/es-pause-1: said “Pausá.”, heard “Bowsai.” (en), understood none (wanted pause)
+- es-dora/es-pause-3: said “Esperá.”, heard “It's better.” (en), understood none (wanted pause)
+- es-dora/es-recenter-2: said “Vení acá.”, heard “Benia Cal.” (en), understood none (wanted recenter)
+- es-dora/es-reject-3: said “No, rechazala.”, heard “No orrecias a la.” (es), understood none (wanted reject)
+- es-dora/es-reject-5: said “Devuélvela al desarrollador.”, heard “Te vuelve la desarrollador.” (es), understood none (wanted reject)
+- es-dora/es-reject-7: said “Rechazada.”, heard “Thank you.” (en), understood none (wanted reject)
+- es-dora/es-restart-1: said “Reiniciá.”, heard “Reignicia.” (en), understood none (wanted restart)
+- es-dora/es-restart-2: said “Empezá de nuevo.”, heard “in the new” (en), understood none (wanted restart)
+- es-dora/es-resume-1: said “Seguí.”, heard “So, I'll see you next time.” (en), understood none (wanted resume)
+- es-dora/es-resume-3: said “Reanudá el sprint.”, heard “preanudar el sprint.” (es), understood none (wanted resume)
+- es-dora/es-status-1: said “¿Cómo va?”, heard “Come on, bye.” (en), understood none (wanted status)
+- es-dora/es-yes-1: said “Sí.”, heard “See you.” (en), understood none (wanted yes)
+- es-dora/es-yes-2: said “Sí, dale.”, heard “See you next time.” (en), understood none (wanted yes)
+- es-es-davefx/es-approve-1: said “Aprobá.”, heard “Thank you.” (en), understood none (wanted approve)
+- es-es-davefx/es-approve-2: said “Aprobala.”, heard “¡Rivalen!” (es), understood none (wanted approve)
+- es-es-davefx/es-approve-4: said “Está bien, apruebo.”, heard “Está bien, a por nuevo.” (es), understood none (wanted approve)
+- es-es-davefx/es-approve-5: said “Apruebe la entrega, por favor.”, heard “No podemos probar de la entrada por favor.” (es), understood none (wanted approve)
+- es-es-davefx/es-approve-7: said “Eh, sí, aprobado.”, heard “¡Pepsi! ¡Tapurado!” (es), understood none (wanted approve)
+- es-es-davefx/es-help-1: said “¿Qué puedo decir?”, heard “So, thank you for watching.” (en), understood none (wanted help)
+- es-es-davefx/es-help-2: said “Ayuda.”, heard “Thank you, that.” (en), understood none (wanted help)
+- es-es-davefx/es-launch-ci-1: said “Lanzá la del CI.”, heard “lanzar la del fe.” (es), understood launch:? (wanted launch:ci)
+- es-es-davefx/es-launch-ci-2: said “Arrancá la tercera tarea.”, heard “Alcalá te hacer a tareas.” (es), understood none (wanted launch:ci)
+- es-es-davefx/es-launch-ci-3: said “Empezá la del runner.”, heard “empezar a la del comer.” (es), understood launch:? (wanted launch:ci)
+- es-es-davefx/es-launch-csv-1: said “Lanzá la exportación CSV.”, heard “La Nasa La Exportación de Facebook.” (es), understood none (wanted launch:csv)
+- es-es-davefx/es-launch-csv-2: said “Lanzá la segunda.”, heard “¡Lensar la segunda!” (es), understood none (wanted launch:csv)
+- es-es-davefx/es-launch-csv-3: said “Dale con el CSV.”, heard “Dale con el PSUB.” (es), understood launch:? (wanted launch:csv)
+- es-es-davefx/es-launch-reset-1: said “Lanzá el password reset.”, heard “lanzar el paso de recer.” (es), understood launch:? (wanted launch:reset)
+- es-es-davefx/es-launch-reset-2: said “Arrancá la primera.”, heard “para encarlar primera.” (es), understood none (wanted launch:reset)
+- es-es-davefx/es-launch-reset-3: said “Empezá con la de la contraseña.”, heard “en vez a con la de la contracellena.” (es), understood none (wanted launch:reset)
+- es-es-davefx/es-mute-1: said “Silencio.”, heard “Thank you.” (en), understood none (wanted mute)
+- es-es-davefx/es-mute-2: said “Sacá el sonido.”, heard “Seca el camino.” (es), understood none (wanted mute)
+- es-es-davefx/es-mute-3: said “Callate un rato.”, heard “¡Had ya tu un prato!” (es), understood none (wanted mute)
+- es-es-davefx/es-next-1: said “Siguiente sprint.”, heard “Siéntese, aprendi.” (es), understood none (wanted next)
+- es-es-davefx/es-next-2: said “Pasá al próximo sprint.”, heard “La próxima, la próxima.” (es), understood none (wanted next)
+- es-es-davefx/es-no-1: said “No.”, heard “Now.” (en), understood none (wanted no)
+- es-es-davefx/es-pause-1: said “Pausá.”, heard “That's it.” (en), understood none (wanted pause)
+- es-es-davefx/es-pause-3: said “Esperá.”, heard “It's better.” (en), understood none (wanted pause)
+- es-es-davefx/es-pause-4: said “Poné pausa, por favor.”, heard “Ponen por favor.” (es), understood none (wanted pause)
+- es-es-davefx/es-recenter-1: said “Centrá los paneles.”, heard “entre los paneles.” (es), understood none (wanted recenter)
+- es-es-davefx/es-recenter-2: said “Vení acá.”, heard “Vení, naca.” (es), understood none (wanted recenter)
+- es-es-davefx/es-reject-1: said “Devolvela.”, heard “¡Deboelme!” (es), understood none (wanted reject)
+- es-es-davefx/es-reject-3: said “No, rechazala.”, heard “No, pero ya sale.” (es), understood none (wanted reject)
+- es-es-davefx/es-reject-5: said “Devuélvela al desarrollador.”, heard “de buen deladyador.” (es), understood none (wanted reject)
+- es-es-davefx/es-reject-7: said “Rechazada.”, heard “¡Petas!” (es), understood none (wanted reject)
+- es-es-davefx/es-restart-1: said “Reiniciá.”, heard “Thank you.” (en), understood none (wanted restart)
+- es-es-davefx/es-restart-2: said “Empezá de nuevo.”, heard “empezar el nuevo.” (es), understood launch:? (wanted restart)
+- es-es-davefx/es-restart-3: said “Arrancá otra vez desde cero.”, heard “al cabo de este 0.” (es), understood none (wanted restart)
+- es-es-davefx/es-resume-1: said “Seguí.”, heard “See you.” (en), understood none (wanted resume)
+- es-es-davefx/es-resume-3: said “Reanudá el sprint.”, heard “Prenosados a los primeros.” (es), understood none (wanted resume)
+- es-es-davefx/es-status-1: said “¿Cómo va?”, heard “Come on, bye.” (en), understood none (wanted status)
+- es-es-davefx/es-unmute-1: said “Poné el sonido.”, heard “¡Ponelles amigos!” (es), understood none (wanted unmute)
+- es-es-davefx/es-yes-1: said “Sí.”, heard “Thank you.” (en), understood none (wanted yes)
+- es-es-davefx/es-yes-3: said “Confirmo.”, heard “Con firma.” (es), understood none (wanted yes)
+- es-mx-claude/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Aprovele la entrega, por favor.” (es), understood none (wanted approve)
+- es-mx-claude/es-help-2: said “Ayuda.”, heard “And you'll die.” (en), understood none (wanted help)
+- es-mx-claude/es-launch-ci-1: said “Lanzá la del CI.”, heard “La Salad del Sey.” (es), understood none (wanted launch:ci)
+- es-mx-claude/es-launch-ci-2: said “Arrancá la tercera tarea.”, heard “arrancara la descera tarea.” (es), understood launch:? (wanted launch:ci)
+- es-mx-claude/es-launch-ci-3: said “Empezá la del runner.”, heard “Empezar la del Rúner.” (es), understood launch:? (wanted launch:ci)
+- es-mx-claude/es-launch-csv-2: said “Lanzá la segunda.”, heard “Lanzala Fibunda” (es), understood launch:? (wanted launch:csv)
+- es-mx-claude/es-launch-csv-3: said “Dale con el CSV.”, heard “Dale con el CCB.” (es), understood launch:? (wanted launch:csv)
+- es-mx-claude/es-launch-reset-1: said “Lanzá el password reset.”, heard “Lancelpa Swordset.” (en), understood none (wanted launch:reset)
+- es-mx-claude/es-mute-2: said “Sacá el sonido.”, heard “¿Sacales sonido?” (es), understood none (wanted mute)
+- es-mx-claude/es-mute-3: said “Callate un rato.”, heard “¡Cadiate un rato!” (es), understood none (wanted mute)
+- es-mx-claude/es-no-2: said “No, cancelá.”, heard “No canse la.” (es), understood none (wanted no)
+- es-mx-claude/es-pause-1: said “Pausá.”, heard “Don't say” (en), understood none (wanted pause)
+- es-mx-claude/es-recenter-2: said “Vení acá.”, heard “Denyaka” (en), understood none (wanted recenter)
+- es-mx-claude/es-reject-1: said “Devolvela.”, heard “Debo el beilar.” (es), understood none (wanted reject)
+- es-mx-claude/es-reject-3: said “No, rechazala.”, heard “No preciosa la.” (es), understood none (wanted reject)
+- es-mx-claude/es-reject-5: said “Devuélvela al desarrollador.”, heard “Deboel del al Desarrollador.” (es), understood none (wanted reject)
+- es-mx-claude/es-reject-7: said “Rechazada.”, heard “¡Te hecha salada!” (es), understood none (wanted reject)
+- es-mx-claude/es-restart-1: said “Reiniciá.”, heard “¡Venicia!” (es), understood none (wanted restart)
+- es-mx-claude/es-restart-2: said “Empezá de nuevo.”, heard “Empezad el nuevo.” (es), understood launch:? (wanted restart)
+- es-mx-claude/es-resume-1: said “Seguí.”, heard “city” (en), understood none (wanted resume)
+- es-mx-claude/es-resume-3: said “Reanudá el sprint.”, heard “realenuda el sprint.” (es), understood none (wanted resume)
+- es-mx-claude/es-status-1: said “¿Cómo va?”, heard “Come on there.” (en), understood none (wanted status)
+- es-mx-claude/es-unmute-2: said “Con sonido.”, heard “Consonidate” (en), understood none (wanted unmute)
+- es-mx-claude/es-yes-1: said “Sí.”, heard “See you.” (en), understood none (wanted yes)
+- es-mx-claude/es-yes-2: said “Sí, dale.”, heard “Si tal” (es), understood none (wanted yes)

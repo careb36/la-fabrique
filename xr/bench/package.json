@@ -1,0 +1,17 @@
+{
+  "name": "la-fabrique-xr-voice-bench",
+  "private": true,
+  "description": "Measures speech recognizers and the command grammar against the bilingual phrase bank (not shipped with the app)",
+  "type": "module",
+  "scripts": {
+    "measure": "tsx measure.ts"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "tsx": "4.23.15",
+    "wavefile": "11.0.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

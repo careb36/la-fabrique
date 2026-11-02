@@ -25,7 +25,20 @@ import { awaitingDecision, ROLES, tokenAt } from './model';
 import { agentPanel, companyPanel, controlPanel, resultPanel, taskPanel, type Panel } from './ui/panels';
 import { guide } from './ui/guide';
 import { highContrast, setContrast } from './ui/kit';
-import { listen, parseCommand, speechSupported, type Command } from './voice';
+import { roomRegistry, taskItems } from './commands';
+import {
+  FallbackSpeaker,
+  firstAvailable,
+  PiperSpeaker,
+  SilentSpeaker,
+  VoiceSession,
+  WebSpeechRecognizer,
+  WebSpeechSpeaker,
+  WhisperRecognizer,
+  whisperSize,
+  type Lang,
+  type Recognizer,
+} from './voice';
 import { FrameStats, perfLine } from './perf';
 import { cueFor, Sound } from './sound';
 import { ROLE_COLOR } from './ui/presence';
@@ -226,11 +239,6 @@ try {
   /* no storage: standard colors */
 }
 
-/** What voice is doing, shown on the Room panel; '' while it is off. */
-let voiceLine = '';
-let stopVoice: (() => void) | undefined;
-const VOICE_HINT = 'Listening: say approve, send back, pause, resume, recenter or launch CSV.';
-
 // Sound starts with a person's gesture, as browsers require: the click that
 // enters XR (or any click on the page).
 const sound = new Sound();
@@ -256,62 +264,144 @@ const showPerf = new URLSearchParams(location.search).has('perf');
 const frames = new FrameStats();
 let perfText = '';
 
-function obey(c: Command): string {
-  const waiting = awaitingDecision(player.state);
-  switch (c.kind) {
-    case 'approve':
-    case 'reject':
-      if (live) return 'Live mode: decide in the web app.';
-      if (!waiting) return 'Nothing is waiting for you.';
-      decide(waiting.id, c.kind === 'approve');
-      return c.kind === 'approve' ? 'Approved.' : 'Sent back.';
-    case 'pause':
-      setPaused(true);
-      return 'Paused.';
-    case 'resume':
-      setPaused(false);
-      return 'Resumed.';
-    case 'restart':
+// Voice: the room's actions declared in `commands.ts`, listened for and
+// answered by the voice layer, in the language the person speaks. The page
+// language (`?lang=es`, else the browser's) decides the answer when a phrase
+// does not tell, and which language the browser's recognizer listens in.
+const voiceLang = (): Lang => ((new URLSearchParams(location.search).get('lang') ?? navigator.language).toLowerCase().startsWith('es') ? 'es' : 'en');
+const ROLE_NAME_ES: Record<string, string> = { Architect: 'el Arquitecto', Developer: 'el Desarrollador', QA: 'QA', Verifier: 'el Verificador', ScrumMaster: 'el Scrum Master' };
+const LIVE_DECIDES = { es: 'En modo live se decide en la aplicación web.', en: 'Live mode: decide in the web app.' };
+const NOTHING_WAITING = { es: 'No hay ninguna entrega esperándote.', en: 'Nothing is waiting for you.' };
+const voiceRegistry = roomRegistry(
+  {
+    approve: () => {
+      const waiting = awaitingDecision(player.state);
+      if (!waiting) return NOTHING_WAITING;
+      decide(waiting.id, true);
+      return { es: 'Aprobada.', en: 'Approved.' };
+    },
+    reject: () => {
+      const waiting = awaitingDecision(player.state);
+      if (!waiting) return NOTHING_WAITING;
+      decide(waiting.id, false);
+      return { es: 'Devuelta a los agentes.', en: 'Sent back.' };
+    },
+    restart: () => {
       restart();
-      return 'Restarted.';
-    case 'recenter':
+      return { es: 'Reiniciado.', en: 'Restarted.' };
+    },
+    next: () => {
+      if (!sprintClosed) return { es: 'El sprint todavía está en marcha.', en: 'The sprint is still running.' };
+      restart();
+      return { es: 'Arranca el siguiente sprint.', en: 'Next sprint starting.' };
+    },
+    pause: () => {
+      setPaused(true);
+      return { es: 'En pausa.', en: 'Paused.' };
+    },
+    resume: () => {
+      setPaused(false);
+      return { es: 'Seguimos.', en: 'Resumed.' };
+    },
+    recenter: () => {
       recenter = true;
-      return 'Recentering.';
-    case 'mute':
+      return { es: 'Centrando.', en: 'Recentering.' };
+    },
+    mute: () => {
       setMuted(true);
-      return 'Sound off.';
-    case 'unmute':
+      return { es: 'Sin sonido.', en: 'Sound off.' };
+    },
+    unmute: () => {
       setMuted(false);
-      return 'Sound on.';
-    case 'launch':
-      if (player.launch(c.taskId)) touch();
-      return `Launched ${player.state.tasks[c.taskId]?.title ?? c.taskId}.`;
-  }
-}
-
-function toggleVoice(): void {
-  if (stopVoice) {
-    stopVoice();
-    stopVoice = undefined;
-    voiceLine = '';
-  } else {
-    voiceLine = VOICE_HINT;
-    stopVoice = listen(
-      (said) => {
-        const c = parseCommand(said, tasks);
-        voiceLine = c ? `"${said.trim()}": ${obey(c)}` : `"${said.trim()}": not a command. ${VOICE_HINT}`;
-        touch();
-      },
-      (why) => {
-        stopVoice = undefined;
-        voiceLine = '';
-        player.ingest({ type: 'status', role: 'System', agent: 'Voice', message: why, taskId: tasks[0].id });
-        touch();
-      },
-    );
-  }
-  touch();
-}
+      return { es: 'Con sonido.', en: 'Sound on.' };
+    },
+    launch: ({ item }) => {
+      if (live) return { es: 'En modo live las tareas arrancan desde la aplicación web.', en: 'Live mode: tasks start from the web app.' };
+      if (!item || !player.launch(item.id)) return { es: 'Esa tarea ya está en marcha o terminada.', en: 'That task is already running or done.' };
+      touch();
+      return { es: `Lanzada: ${item.label.es}.`, en: `Launched ${item.label.en}.` };
+    },
+    status: () => {
+      const all = Object.values(player.state.tasks);
+      const done = all.filter((t) => t.state === 'done').length;
+      const waiting = awaitingDecision(player.state);
+      const active = player.state.active;
+      return {
+        es:
+          `${done} de ${all.length} tareas listas.` +
+          (waiting ? ` ${waiting.title} espera tu decisión.` : '') +
+          (active ? ` Está trabajando ${ROLE_NAME_ES[active] ?? active}.` : '') +
+          (player.paused ? ' La sala está en pausa.' : ''),
+        en:
+          `${done} of ${all.length} tasks done.` +
+          (waiting ? ` ${waiting.title} is waiting for your decision.` : '') +
+          (active ? ` The ${active} is working.` : '') +
+          (player.paused ? ' The room is paused.' : ''),
+      };
+    },
+  },
+  () => taskItems(tasks),
+  {
+    // A decision needs a delivery waiting, and in live mode the web app decides.
+    decisionBlocked: () => (live ? LIVE_DECIDES : awaitingDecision(player.state) ? undefined : NOTHING_WAITING),
+    decisionSubject: () => awaitingDecision(player.state)?.title,
+  },
+);
+/** The last exchange, shown on the Room panel; '' while voice is off. */
+let voiceLine = '';
+let lastHeard = '';
+// Who listens: the browser's own recognizer where it exists (instant, no
+// download), else Whisper running in the page, the only one the Meta Quest
+// browser has. `?stt=whisper` forces the latter, `?stt=tiny|base|small`
+// picks its size (the bench's numbers decide the default).
+const voiceParams = new URLSearchParams(location.search);
+const sttChoice = voiceParams.get('stt') ?? 'auto';
+const whisper = new WhisperRecognizer({
+  size: whisperSize(sttChoice, 'base'),
+  hints: () => ({ es: voiceRegistry.vocabularyHint('es'), en: voiceRegistry.vocabularyHint('en') }),
+  preferredLanguage: voiceLang,
+  // Absolute: the worker fetches it, and a relative path would be read against the worker's own URL.
+  vadUrl: new URL(`${import.meta.env.BASE_URL}silero_vad_v6.onnx`, document.baseURI).href,
+});
+const webSpeech = new WebSpeechRecognizer(voiceLang);
+const voiceRecognizer: Recognizer | undefined = firstAvailable(sttChoice === 'auto' || sttChoice === 'web' ? [webSpeech, whisper] : [whisper, webSpeech]);
+// Who talks back: the browser's voice where it has one, else Piper running
+// in the page (a voice per language, downloaded once); `?tts=piper` forces
+// Piper, `?tts=web` the browser's. Without either the words stay on the panel.
+const ttsChoice = voiceParams.get('tts') ?? 'auto';
+const piper = new PiperSpeaker({
+  onStatus: (s) => {
+    if (s.kind === 'loading') {
+      voiceLine = s.percent < 100 ? `${s.lang === 'es' ? 'Descargando la voz' : 'Downloading the voice'} (${s.percent}%)...` : voiceLine;
+      touch();
+    } else console.info(`[voice] piper spoke ${s.audioSeconds.toFixed(1)} s of ${s.lang} in ${s.synthesisSeconds.toFixed(1)} s`);
+  },
+});
+const browserVoice = new WebSpeechSpeaker();
+const speakers = ttsChoice === 'piper' ? [piper, browserVoice] : ttsChoice === 'web' ? [browserVoice] : [browserVoice, piper];
+const voice = new VoiceSession({
+  registry: voiceRegistry,
+  recognizer: voiceRecognizer ?? webSpeech,
+  speaker: new FallbackSpeaker([...speakers, new SilentSpeaker()]),
+  language: voiceLang,
+  onEvent: (e) => {
+    if (e.kind === 'heard') {
+      lastHeard = e.text;
+      return;
+    }
+    if (e.kind === 'status') {
+      // Progress and "hearing you" replace the line only while nothing was said.
+      if (e.text && !lastHeard) voiceLine = e.text;
+      else if (e.status.kind === 'speech-start') lastHeard = '';
+      touch();
+      return;
+    }
+    if (e.kind === 'listening') lastHeard = '';
+    voiceLine = e.kind === 'stopped' ? '' : lastHeard ? `"${lastHeard}": ${e.text}` : e.text;
+    if (e.kind === 'error') player.ingest({ type: 'status', role: 'System', agent: 'Voice', message: e.text, taskId: tasks[0].id });
+    touch();
+  },
+});
 
 place(
   controlPanel({
@@ -338,7 +428,7 @@ place(
       touch();
     },
     contrast: () => highContrast,
-    onVoice: speechSupported() ? toggleVoice : undefined,
+    onVoice: voiceRecognizer ? () => voice.toggle() : undefined,
     voice: () => voiceLine,
   }),
   handPanels,
@@ -653,6 +743,7 @@ if (new URLSearchParams(location.search).has('e2e')) {
     company: () => company,
     sound,
     restart,
+    voice,
   };
 }
 
