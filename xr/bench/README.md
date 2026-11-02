@@ -32,7 +32,17 @@ The numbers behind the room's voice. Not shipped with the app; its own
 Commands understood from the seven synthetic voices (`results/*.md` has
 each run per voice and intent, with every miss). "Prompt" is the room's
 vocabulary given to Whisper as the text said before; "prior" is the page's
-language winning a close call in detection.
+language winning a close call in detection; "near word" is the grammar's
+rule for a lone word within two letters of exactly one command ("Posa" is
+"pausá", "Sagaib" is "seguí"; `src/voice/grammar.ts`), measured by scoring
+the same transcripts again: no chatter became a command, and the few
+misses it adds are a "which task?" question, not an action. "Short word"
+is the device's other rule (`--short 0.9`): a phrase with under 0.9 s of
+voice is taken in the page's language with no detection, since on a lone
+word a small model's language guess is a coin toss; every synthetic lone
+word is under that, and it saves the detection step (1.5 → 1.2 s per
+phrase). Its cost is by design: a lone word in the other language is
+heard in the page's.
 
 | recognizer | es | en | s/phrase (this CPU) | where |
 |---|---|---|---|---|
@@ -40,17 +50,23 @@ language winning a close call in detection.
 | grammar on the written phrases | 100% | 100% | | |
 | whisper tiny, detect | 46% | 82% | 1.6 | device |
 | whisper tiny, detect + prompt | 55% | 87% | 1.1 | device |
+| whisper tiny, detect + prompt, near word | 56% | 88% | 1.1 | device |
 | whisper base, detect | 52% | 87% | 2.5 | device |
 | whisper base, detect + prompt | 64% | 91% | 1.4 | device |
 | whisper base, prior + prompt | 65% | 91% | 1.5 | device |
+| whisper base, prior + prompt, near word | 68% | 93% | 1.5 | device |
+| whisper base, prior + prompt, short word in the page's language | 67% | 91% | 1.2 | device |
+| whisper base, prior + prompt, short word + near word (**the device**) | 70% | 93% | 1.2 | device |
 | whisper small, prior + prompt | 75% | 94% | 3.0 | device |
+| whisper small, prior + prompt, near word | 77% | 94% | 3.0 | device |
 | faster-whisper small | 65% | 90% | | server |
 | faster-whisper small + prompt | 77% | 95% | | server |
 | faster-whisper large-v3-turbo (369 of 434, no prompt) | 74% | 91% | | server |
 | faster-whisper large-v3-turbo + prompt | 81% | 91% | 11.2 | server |
 
-What the numbers decided: the device default is **`base` with the prompt
-and the prior**. `small` hears ten more Spanish commands in a hundred, at
+What the numbers decided: the device default is **`base` with the prompt,
+the prior, the short-word rule and the near-word rule** (70% / 93%).
+`small` hears seven more Spanish commands in a hundred, at
 twice the time per phrase and three times the download (about 240 MB
 against 80), too much for a headset's first visit; `?stt=small` keeps it
 within reach on a desktop. On the server, the prompt is worth more than a

@@ -16,9 +16,9 @@ import { env, pipeline, Tensor } from '@huggingface/transformers';
 // so the browser loads one copy and Silero rides on the backend it set up.
 import * as ort from 'onnxruntime-web/webgpu';
 
-import { Endpointer, padded } from './endpointer';
+import { Endpointer, padded, voicedSeconds } from './endpointer';
 import { SileroVad } from './silero';
-import { detectLanguage, transcribe, type ProcessorLike, type TokenizerLike, type WhisperLike } from './whisper-core';
+import { SHORT_UTTERANCE_SECONDS, detectLanguage, transcribe, type ProcessorLike, type TokenizerLike, type WhisperLike } from './whisper-core';
 import type { Lang, Localized } from './types';
 
 export interface LoadMessage {
@@ -140,10 +140,15 @@ async function heard(phrase: Float32Array): Promise<void> {
   const { model, processor, tokenizer } = loaded.asr;
   const started = performance.now();
   const audio = padded(phrase);
+  // One language: no detection. A lone word on a page with a language: that
+  // language. Anything longer: detected, with the page's language winning a
+  // close call.
   const lang =
     loaded.languages.length === 1
       ? loaded.languages[0]
-      : await detectLanguage(model, processor, Tensor as never, audio, loaded.languages, loaded.preferred);
+      : loaded.preferred && voicedSeconds(phrase) < SHORT_UTTERANCE_SECONDS
+        ? loaded.preferred
+        : await detectLanguage(model, processor, Tensor as never, audio, loaded.languages, loaded.preferred);
   const text = await transcribe(model, processor, tokenizer, audio, lang, loaded.hints[lang]);
   post({ type: 'transcript', text, lang, seconds: (performance.now() - started) / 1000 });
 }

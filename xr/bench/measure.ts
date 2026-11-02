@@ -17,6 +17,7 @@
  *   npx tsx measure.ts --models tiny,base              # transformers.js in Node
  *   npx tsx measure.ts --models base --prompt          # with the room's vocabulary as Whisper's prompt
  *   npx tsx measure.ts --models base --language force  # the phrase's language given
+ *   npx tsx measure.ts --models base --prompt --language prior --short 0.9  # a lone word takes the page's language
  *   npx tsx measure.ts --external results/fw-large-v3-turbo.jsonl
  *   npx tsx measure.ts --grammar-only                  # the written phrases, no audio
  *   npx tsx measure.ts --prompts                       # write the vocabulary hints for other tools
@@ -25,7 +26,9 @@
  * `--language detect` (the default) finds the language the way the device
  * will: one decoder step, the likeliest of the languages the app speaks.
  * `prior` adds what the device also knows, the language the page is read
- * in (here the phrase's), which wins a close call. `force` gives the
+ * in (here the phrase's), which wins a close call; `--short <seconds>` adds
+ * the device's other rule, a phrase with less voice than that is taken in
+ * the page's language with no detection. `force` gives the
  * recognizer the phrase's own language, an upper bound;
  * `es` or `en` fixes one, which is what a person speaking the other
  * language would get from a page that does not detect. Node's CPU timing is
@@ -37,7 +40,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { roomRegistry, taskItems, type RoomHandlers } from '../src/commands.ts';
-import { padded } from '../src/voice/endpointer.ts';
+import { padded, voicedSeconds } from '../src/voice/endpointer.ts';
 import { detectLanguage, transcribe } from '../src/voice/whisper-core.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -118,8 +121,8 @@ export function wordErrorRate(reference: string, hypothesis: string): number {
 }
 
 /** What the grammar makes of a transcript, as "intent" or "launch:task". */
-export function understood(transcript: string): string {
-  const u = grammar.understand(transcript);
+export function understood(transcript: string, language?: string): string {
+  const u = grammar.understand(transcript, language === 'es' || language === 'en' ? language : undefined);
   if (!u) return 'none';
   if (u.intent === 'launch') return u.item ? `launch:${u.item.id}` : 'launch:?';
   return u.intent;
@@ -133,7 +136,7 @@ function score(t: Transcript): Scored | undefined {
   const p = byId.get(t.id);
   if (!p) return undefined;
   const expected = expectedOf(p);
-  const got = understood(t.text);
+  const got = understood(t.text, t.language);
   return {
     ...t,
     lang: p.lang,
@@ -210,9 +213,18 @@ function externalRecognizer(file: string): Recognizer {
 
 type LanguageMode = 'detect' | 'prior' | 'force' | Lang;
 
+interface TransformersOptions {
+  mode: LanguageMode;
+  /** The room's vocabulary as the text said before the phrase. */
+  prompt: boolean;
+  limit?: number;
+  /** In 'prior' mode: a phrase whose voice lasts less than this takes the page's language, no detection (the device's rule). */
+  short?: number;
+}
+
 function transformersRecognizer(size: string, o: TransformersOptions): Recognizer {
   return {
-    name: `whisper-${size}-${o.mode}${o.prompt ? '-prompt' : ''}`,
+    name: `whisper-${size}-${o.mode}${o.short ? `-short${o.short}` : ''}${o.prompt ? '-prompt' : ''}`,
     async transcripts() {
       const { pipeline, Tensor } = await import('@huggingface/transformers');
       const asr = await pipeline('automatic-speech-recognition', `onnx-community/whisper-${size}`, {
@@ -223,12 +235,16 @@ function transformersRecognizer(size: string, o: TransformersOptions): Recognize
       const files = wavFiles().slice(0, o.limit ?? Infinity);
       let n = 0;
       for (const f of files) {
-        const audio = padded(await samplesOf(f.path));
+        const raw = await samplesOf(f.path);
+        const audio = padded(raw);
         const started = performance.now();
         let lang: Lang | undefined;
-        // 'prior': detection with the phrase's language as the page's, the common case.
+        const pageLang = byId.get(f.id)?.lang;
+        // 'prior': detection with the phrase's language as the page's, the common case;
+        // with `short`, a lone word skips detection the way the device does.
         if (o.mode === 'detect') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS);
-        else if (o.mode === 'prior') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS, byId.get(f.id)?.lang);
+        else if (o.mode === 'prior' && o.short && pageLang && voicedSeconds(raw) < o.short) lang = pageLang;
+        else if (o.mode === 'prior') lang = await detectLanguage(asr.model, asr.processor, Tensor, audio, LANGS, pageLang);
         else if (o.mode === 'force') lang = byId.get(f.id)?.lang;
         else lang = o.mode;
         let text = '';
@@ -322,7 +338,8 @@ async function main(): Promise<void> {
   const mode = (arg('language') ?? 'detect') as LanguageMode;
   const prompt = process.argv.includes('--prompt');
   const limit = arg('limit') ? Number(arg('limit')) : undefined;
-  for (const size of (arg('models') ?? '').split(',').filter(Boolean)) recognizers.push(transformersRecognizer(size, { mode, prompt, limit }));
+  const short = arg('short') ? Number(arg('short')) : undefined;
+  for (const size of (arg('models') ?? '').split(',').filter(Boolean)) recognizers.push(transformersRecognizer(size, { mode, prompt, limit, short }));
   for (const file of (arg('external') ?? '').split(',').filter(Boolean)) recognizers.push(externalRecognizer(file));
 
   mkdirSync(RESULTS, { recursive: true });

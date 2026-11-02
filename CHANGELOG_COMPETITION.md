@@ -186,3 +186,15 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   the room's actions in a fixed JSON the service checks; the page's own
   recognizers and voices stay behind as fallbacks. For the demo on the
   published page nothing is needed. 161 tests.
+- **Lone words heard better.** The bench showed the lone imperatives were
+  the weakest phrases: "pausá" came out "Posa" or English "Both sides".
+  Two rules, both measured: a phrase whose voice lasts under 0.9 s is
+  taken in the page's language with no detection (`whisper-core.ts`), and
+  a lone word within two letters of exactly one command is understood as
+  it, never a yes or a no, never a word that names a task, never between
+  two commands ("amute"), marked `approximate` (`grammar.ts`). On the
+  device's `base` model the Spanish commands go from 65% to 70% and the
+  English from 91% to 93%, a fifth faster per phrase (no detection step
+  on a lone word), with no chatter becoming a command. The director
+  checks that a pinch took and tries again; the Voice button's label
+  follows whether voice is on. 171 tests.

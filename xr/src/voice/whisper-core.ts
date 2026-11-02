@@ -44,6 +44,15 @@ export type TensorCtor = new (type: string, data: BigInt64Array | bigint[], dims
 export const PRIOR_MARGIN = 1.0;
 
 /**
+ * A phrase whose voice lasts less than this is taken in the language the
+ * page is read in, with no detection: on a lone word a small model's guess
+ * is a coin toss (the bench heard "pausá" as English "Both sides"), and a
+ * person who chose Spanish for the page is speaking Spanish. The cost is
+ * known: a lone word in the other language is heard in the page's.
+ */
+export const SHORT_UTTERANCE_SECONDS = 0.9;
+
+/**
  * The likeliest of `candidates` from the first decoder step's logits. With
  * `preferred` (the language the page is read in), a close call goes to it:
  * a one-word "pausá" is a coin toss for a small model, and the person is

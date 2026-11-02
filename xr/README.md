@@ -196,9 +196,11 @@ La Fabrique XR was built and checked without a headset:
   the room understood the command meant. The grammar understands every
   written phrase (from 23% of the Spanish ones with the keyword list it
   replaced). From the synthetic voices, with the room's vocabulary as
-  Whisper's prompt, the on-device `base` model gets 65% of the Spanish
-  commands and 91% of the English ones; the server tier's `small` 77% and
-  95%. Synthetic voices are a hard test (one Piper voice says "Lanzá" as
+  Whisper's prompt, the on-device `base` model gets 70% of the Spanish
+  commands and 93% of the English ones (a lone word is taken in the
+  page's language with no detection, and a word within two letters of
+  exactly one command is understood as it); the server tier's `small` 77%
+  and 95%. Synthetic voices are a hard test (one Piper voice says "Lanzá" as
   "la ensal" to a person too); the reports are in `bench/results/`, and
   the owner's own recordings are measured the same way.
 - The logic is covered by unit tests (`npm run test:run`).
