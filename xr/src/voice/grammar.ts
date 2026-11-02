@@ -16,10 +16,15 @@
  *   "the third one"), "the last one", or a word of the item's name or
  *   aliases; a trigger with no item is reported as `needsItem`;
  * - a transcript that names only an item (no trigger) resolves to that item
- *   alone, for the question "which one?" the layer may have just asked.
+ *   alone, for the question "which one?" the layer may have just asked;
+ * - a transcript of one word that matches nothing is compared letter by
+ *   letter with the one-word phrases: a recognizer hears a lone "pausá" as
+ *   "posa" and "seguí" as "sagaib", and a word within two edits of exactly
+ *   one intent is taken as it, marked `approximate`. Never for yes or no
+ *   (a confirmation is not guessed), never for words under four letters.
  */
 
-import { compile, indexOf, nameWords, words, type Pattern } from './text';
+import { compile, indexOf, nameWords, words, STOP_WORDS, type Pattern } from './text';
 import { LANGS, type Item, type Lang, type Localized, type Understanding } from './types';
 
 export interface IntentSpec {
@@ -39,6 +44,40 @@ interface Compiled {
 }
 
 const NEGATIONS = new Set(['no', 'not', 'dont', 'never', 'nunca', 'ni']);
+
+/** The nearest-word rule: how far a lone word may be from a one-word phrase. */
+export const NEAR_MAX_EDITS = 2;
+/** ...as a share of the phrase's length, so two edits in four letters is another word. */
+export const NEAR_MAX_SHARE = 0.4;
+/** Words shorter than this are never guessed: "yet" is not "yes". */
+export const NEAR_MIN_LENGTH = 4;
+/** Intents a near word never produces: a confirmation is said, not guessed. */
+const NEVER_NEAR = new Set(['yes', 'no']);
+
+/** Levenshtein distance between two words. */
+export function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * How far `word` is from a one-token pattern: from the word itself for a
+ * whole word, from the word's beginning for a stem (`segui*` against
+ * "sagaib" looks at "sagai"), so an ending the recognizer invented costs
+ * nothing, as it costs nothing in an exact match.
+ */
+export function distanceToToken(word: string, token: string): number {
+  if (!token.endsWith('*')) return editDistance(word, token);
+  const stem = token.slice(0, -1);
+  return Math.min(editDistance(word, stem), editDistance(word.slice(0, stem.length), stem), editDistance(word.slice(0, stem.length + 1), stem));
+}
 
 const ORDINALS: Localized<string[][]> = {
   es: [
@@ -85,11 +124,15 @@ export class Grammar {
     }
   }
 
-  understand(transcript: string): Understanding | undefined {
+  /**
+   * `heardLang`, when the recognizer gave one, only narrows the nearest-word
+   * rule to that language's phrases: an exact match is taken from either.
+   */
+  understand(transcript: string, heardLang?: Lang): Understanding | undefined {
     const said = words(transcript);
     if (!said.length) return undefined;
     const first = this.compiled.find((c) => indexOf(c.pattern, said) >= 0);
-    if (!first) return undefined;
+    if (!first) return this.nearest(said, heardLang);
     // Every pattern of the winning intent that matches: one language, or
     // both when the word is spelled alike, and then the small words decide.
     const matches = this.compiled.filter((c) => c.intent === first.intent && indexOf(c.pattern, said) >= 0);
@@ -101,6 +144,39 @@ export class Grammar {
     if (!first.items) return { intent, lang };
     const item = resolveItem(said, first.items());
     return item ? { intent, lang, item } : { intent, lang, needsItem: true };
+  }
+
+  /**
+   * A lone word (stop words aside) within reach of exactly one intent's
+   * one-word phrases, as that intent. Nothing when the word is short, when
+   * it names an item ("la segunda" answers "which one?", it is not
+   * "seguí"), when the nearest phrase is still far, or when another intent
+   * is nearly as close ("amute" sits between mute and unmute).
+   */
+  private nearest(said: string[], heardLang?: Lang): Understanding | undefined {
+    const content = said.filter((w) => !STOP_WORDS.has(w));
+    if (content.length !== 1 || content[0].length < NEAR_MIN_LENGTH) return undefined;
+    if (this.itemSources.some((source) => resolveItem(said, source()))) return undefined;
+    const word = content[0];
+    const near: { c: Compiled; d: number }[] = [];
+    for (const c of this.compiled) {
+      if (NEVER_NEAR.has(c.intent) || c.pattern.tokens.length !== 1 || c.pattern.tokens[0] === '_') continue;
+      if (heardLang && c.lang !== heardLang) continue;
+      const token = c.pattern.tokens[0];
+      const length = token.endsWith('*') ? token.length - 1 : token.length;
+      if (length < NEAR_MIN_LENGTH) continue;
+      const d = distanceToToken(word, token);
+      if (d <= NEAR_MAX_EDITS && d <= NEAR_MAX_SHARE * length) near.push({ c, d });
+    }
+    if (!near.length) return undefined;
+    const best = Math.min(...near.map((n) => n.d));
+    const match = near.find((n) => n.d === best)!.c;
+    // Another intent as close, or one edit behind, makes the word a coin toss.
+    if (near.some((n) => n.c.intent !== match.intent && n.d <= best + 1)) return undefined;
+    const langs = new Set(near.filter((n) => n.c.intent === match.intent).map((n) => n.c.lang));
+    const lang = langs.size === 1 ? match.lang : guessLang(said);
+    // A word that named an item was left above, so a near action with items has none.
+    return match.items ? { intent: match.intent, lang, needsItem: true, approximate: true } : { intent: match.intent, lang, approximate: true };
   }
 
   /** The item a transcript names on its own, if it names one. */

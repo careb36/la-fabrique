@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { concat, Endpointer, padded } from './endpointer';
+import { concat, Endpointer, padded, voicedSeconds } from './endpointer';
 
 const RATE = 16_000;
 const WINDOW = 512;
@@ -76,5 +76,13 @@ describe('audio helpers', () => {
   it('padded adds silence on both sides', () => {
     const out = padded(new Float32Array([1, 1]), 0.5, 4);
     expect(Array.from(out)).toEqual([0, 0, 1, 1, 0, 0]);
+  });
+
+  it('voicedSeconds spans the first to the last loud sample, whatever silence surrounds them', () => {
+    // 4 samples per second: quiet, a word of 8 samples, quiet; a faint hum below a tenth of the peak does not count.
+    const clip = new Float32Array([0, 0.01, 0, 0.5, 0.9, 0.2, 0.3, 1, 0.4, 0.2, 0.15, 0.01, 0, 0]);
+    expect(voicedSeconds(clip, 4)).toBeCloseTo(7 / 4);
+    expect(voicedSeconds(new Float32Array(10), 4)).toBe(0);
+    expect(voicedSeconds(padded(clip, 1, 4), 4)).toBeCloseTo(7 / 4);
   });
 });

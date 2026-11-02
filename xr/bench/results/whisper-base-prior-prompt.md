@@ -2,23 +2,23 @@
 
 | language | phrases | commands right | WER | language right | s/phrase |
 |---|---|---|---|---|---|
-| en | 186 | 91% | 10.0% | 100% | 1.45 |
-| es | 248 | 65% | 34.6% | 89% | 1.46 |
-| all | 434 | 76% | 24.1% | 94% | 1.45 |
+| en | 186 | 93% | 10.0% | 100% | 1.45 |
+| es | 248 | 68% | 34.6% | 89% | 1.46 |
+| all | 434 | 79% | 24.1% | 94% | 1.45 |
 
 | voice | commands right | WER |
 |---|---|---|
 | en-heart | 98% | 4.8% |
-| en-us-lessac | 92% | 8.8% |
-| en-us-ryan | 84% | 16.4% |
-| es-ar-daniela | 53% | 46.7% |
-| es-dora | 74% | 30.8% |
-| es-es-davefx | 60% | 35.4% |
-| es-mx-claude | 74% | 25.5% |
+| en-us-lessac | 95% | 8.8% |
+| en-us-ryan | 85% | 16.4% |
+| es-ar-daniela | 56% | 46.7% |
+| es-dora | 76% | 30.8% |
+| es-es-davefx | 61% | 35.4% |
+| es-mx-claude | 77% | 25.5% |
 
 | intent | es | en |
 |---|---|---|
-| approve | 29% | 86% |
+| approve | 39% | 95% |
 | help | 58% | 89% |
 | launch:ci | 58% | 78% |
 | launch:csv | 75% | 78% |
@@ -27,24 +27,21 @@
 | next | 75% | 83% |
 | no | 100% | 89% |
 | none | 100% | 100% |
-| pause | 63% | 83% |
+| pause | 69% | 83% |
 | recenter | 67% | 100% |
-| reject | 46% | 95% |
+| reject | 46% | 100% |
 | restart | 67% | 100% |
-| resume | 50% | 100% |
+| resume | 63% | 100% |
 | status | 88% | 100% |
 | unmute | 88% | 83% |
 | yes | 69% | 92% |
 
-Misses: 102
+Misses: 93
 
 - en-heart/en-no-1: said “No.”, heard “Now.” (en), understood none (wanted no)
-- en-us-lessac/en-approve-4: said “Ship it.”, heard “Chip it.” (en), understood none (wanted approve)
 - en-us-lessac/en-launch-ci-1: said “Launch the CI one.”, heard “Launch the C-di-1.” (en), understood launch:? (wanted launch:ci)
 - en-us-lessac/en-launch-csv-3: said “Go ahead with the CSV.”, heard “Go ahead with the C-desv.” (en), understood launch:? (wanted launch:csv)
-- en-us-lessac/en-reject-7: said “Rejected.”, heard “Redacted.” (en), understood none (wanted reject)
 - en-us-lessac/en-unmute-1: said “Unmute.”, heard “Amute.” (en), understood none (wanted unmute)
-- en-us-ryan/en-approve-2: said “Approve it.”, heard “Approle it.” (en), understood none (wanted approve)
 - en-us-ryan/en-approve-4: said “Ship it.”, heard “Shut that.” (en), understood none (wanted approve)
 - en-us-ryan/en-help-2: said “Help.”, heard “Oh.” (en), understood none (wanted help)
 - en-us-ryan/en-launch-ci-1: said “Launch the CI one.”, heard “Lunge the CI one.” (en), understood none (wanted launch:ci)
@@ -55,7 +52,6 @@ Misses: 102
 - en-us-ryan/en-pause-3: said “Wait.”, heard “What.” (en), understood none (wanted pause)
 - en-us-ryan/en-yes-3: said “Confirmed.”, heard “Tim Verne.” (en), understood none (wanted yes)
 - es-ar-daniela/es-approve-1: said “Aprobá.”, heard “Tapelo.” (es), understood none (wanted approve)
-- es-ar-daniela/es-approve-2: said “Aprobala.”, heard “Apropala.” (es), understood none (wanted approve)
 - es-ar-daniela/es-approve-3: said “Dale, aprobá la entrega.”, heard “Dale. Está por la entrada.” (es), understood none (wanted approve)
 - es-ar-daniela/es-approve-4: said “Está bien, apruebo.”, heard “Está bien. Apluevo.” (es), understood none (wanted approve)
 - es-ar-daniela/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Aprove la entidad. Por favor.” (es), understood none (wanted approve)
@@ -69,7 +65,6 @@ Misses: 102
 - es-ar-daniela/es-mute-1: said “Silencio.”, heard “Cienso.” (es), understood none (wanted mute)
 - es-ar-daniela/es-mute-3: said “Callate un rato.”, heard “Que ya te he congato.” (es), understood none (wanted mute)
 - es-ar-daniela/es-next-1: said “Siguiente sprint.”, heard “Si entro.” (es), understood none (wanted next)
-- es-ar-daniela/es-pause-1: said “Pausá.”, heard “Posa.” (es), understood none (wanted pause)
 - es-ar-daniela/es-recenter-2: said “Vení acá.”, heard “Venía acá.” (es), understood none (wanted recenter)
 - es-ar-daniela/es-recenter-3: said “Traé todo al frente.”, heard “Todo el frente.” (es), understood none (wanted recenter)
 - es-ar-daniela/es-reject-1: said “Devolvela.”, heard “Te olve la.” (es), understood none (wanted reject)
@@ -83,7 +78,6 @@ Misses: 102
 - es-ar-daniela/es-status-1: said “¿Cómo va?”, heard “Cono.” (es), understood none (wanted status)
 - es-ar-daniela/es-yes-1: said “Sí.”, heard “See ya.” (en), understood none (wanted yes)
 - es-ar-daniela/es-yes-3: said “Confirmo.”, heard “Confierelo.” (es), understood none (wanted yes)
-- es-dora/es-approve-2: said “Aprobala.”, heard “Aproveala.” (es), understood none (wanted approve)
 - es-dora/es-approve-3: said “Dale, aprobá la entrega.”, heard “Dale a probarla entrega.” (es), understood none (wanted approve)
 - es-dora/es-approve-4: said “Está bien, apruebo.”, heard “Está bien a prueba.” (es), understood none (wanted approve)
 - es-dora/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Aprove la entrega. Por favor.” (es), understood none (wanted approve)
@@ -91,7 +85,7 @@ Misses: 102
 - es-dora/es-launch-ci-2: said “Arrancá la tercera tarea.”, heard “Ranked.” (en), understood none (wanted launch:ci)
 - es-dora/es-pause-1: said “Pausá.”, heard “Both sides.” (en), understood none (wanted pause)
 - es-dora/es-pause-3: said “Esperá.”, heard “Esp it out.” (en), understood none (wanted pause)
-- es-dora/es-recenter-2: said “Vení acá.”, heard “Benia.” (en), understood none (wanted recenter)
+- es-dora/es-recenter-2: said “Vení acá.”, heard “Benia.” (en), understood launch:? (wanted recenter)
 - es-dora/es-reject-1: said “Devolvela.”, heard “De volvila.” (es), understood none (wanted reject)
 - es-dora/es-reject-3: said “No, rechazala.”, heard “No recasala.” (es), understood none (wanted reject)
 - es-dora/es-reject-5: said “Devuélvela al desarrollador.”, heard “Te vuelve la al desarrollador.” (es), understood none (wanted reject)
@@ -122,9 +116,7 @@ Misses: 102
 - es-es-davefx/es-restart-1: said “Reiniciá.”, heard “Benefiate.” (en), understood none (wanted restart)
 - es-es-davefx/es-restart-2: said “Empezá de nuevo.”, heard “Empezá del nuevo.” (es), understood launch:? (wanted restart)
 - es-es-davefx/es-resume-1: said “Seguí.”, heard “Tell me.” (en), understood none (wanted resume)
-- es-es-davefx/es-resume-3: said “Reanudá el sprint.”, heard “Reanoza el sprint.” (es), understood none (wanted resume)
 - es-es-davefx/es-yes-1: said “Sí.”, heard “See.” (en), understood none (wanted yes)
-- es-mx-claude/es-approve-1: said “Aprobá.”, heard “A probar.” (es), understood none (wanted approve)
 - es-mx-claude/es-approve-4: said “Está bien, apruebo.”, heard “Está bien. A prueba.” (es), understood none (wanted approve)
 - es-mx-claude/es-approve-5: said “Apruebe la entrega, por favor.”, heard “Apreve la entrega. Por favor.” (es), understood none (wanted approve)
 - es-mx-claude/es-approve-6: said “Me parece bien, aceptala.”, heard “Me parece bien. Aseptal.” (es), understood none (wanted approve)
@@ -137,6 +129,5 @@ Misses: 102
 - es-mx-claude/es-reject-5: said “Devuélvela al desarrollador.”, heard “Debo el vellal desarrollador.” (es), understood none (wanted reject)
 - es-mx-claude/es-reject-7: said “Rechazada.”, heard “Deja Sada.” (es), understood none (wanted reject)
 - es-mx-claude/es-resume-1: said “Seguí.”, heard “City.” (en), understood none (wanted resume)
-- es-mx-claude/es-resume-3: said “Reanudá el sprint.”, heard “Renudal sprint.” (es), understood none (wanted resume)
 - es-mx-claude/es-unmute-2: said “Con sonido.”, heard “Consonido.” (es), understood none (wanted unmute)
 - es-mx-claude/es-yes-1: said “Sí.”, heard “See.” (en), understood none (wanted yes)

@@ -119,6 +119,28 @@ export function concat(parts: Float32Array[], total: number): Float32Array {
   return out;
 }
 
+/**
+ * How long the voice in a clip lasts: from the first sample to the last one
+ * above a tenth of the clip's peak, whatever silence surrounds them (the
+ * endpointer's preroll and tail, a synthetic voice's margins). A rough
+ * measure, the same on the device and in the bench, enough to tell a lone
+ * word from a sentence.
+ */
+export function voicedSeconds(audio: Float32Array, rate = 16_000, fractionOfPeak = 0.1): number {
+  let peak = 0;
+  for (const x of audio) peak = Math.max(peak, Math.abs(x));
+  if (!peak) return 0;
+  const threshold = peak * fractionOfPeak;
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < audio.length; i++) {
+    if (Math.abs(audio[i]) < threshold) continue;
+    if (first < 0) first = i;
+    last = i;
+  }
+  return first < 0 ? 0 : (last - first) / rate;
+}
+
 /** Silence before and after a phrase: a recognizer is unsure of a clip that starts mid-breath. */
 export function padded(audio: Float32Array, seconds = 0.5, rate = 16_000): Float32Array {
   const pad = Math.round(seconds * rate);

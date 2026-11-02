@@ -98,7 +98,7 @@ export class VoiceSession {
   hear(transcript: string, heardLang?: Lang): void {
     const text = transcript.trim();
     if (!text || this.now() < this.speakingUntil) return;
-    const understood = this.o.registry.grammar.understand(text);
+    const understood = this.o.registry.grammar.understand(text, heardLang);
     const lang = heardLang ?? understood?.lang ?? this.o.language();
     this.emit({ kind: 'heard', text, lang });
     this.expirePending(lang);
