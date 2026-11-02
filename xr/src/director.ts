@@ -34,6 +34,8 @@ export interface Stage {
   newCompany: () => void;
   /** How many times faster than real time the demo's clock runs. */
   setSpeed: (times: number) => void;
+  /** Voice is on and its recognizer is ready to hear (a model may load first). */
+  voiceReady: () => boolean;
 }
 
 interface EmulatedHand {
@@ -288,7 +290,11 @@ export async function direct(stage: Stage): Promise<void> {
   const voiceButton = stage.label('Voice');
   if (voiceButton) {
     await press(voiceButton);
-    const prompt = overlay('Say: "pausá" or "pause"', 'top-right');
+    // The first time, the recognizer downloads its model: the Room panel
+    // shows the progress; the request to speak waits until it can hear.
+    const prompt = overlay('Voice is getting ready...', 'top-right');
+    await until(stage.voiceReady, 120_000);
+    prompt.textContent = 'Say: "pausá" or "pause"';
     const paused = await until(() => player.paused, 20_000);
     if (paused) {
       await sleep(2500);
