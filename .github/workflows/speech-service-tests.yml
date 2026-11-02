@@ -1,0 +1,46 @@
+# The speech service (speech-service/): the server tier of the voice layer.
+# Its API is tested with stand-in engines, so no model is downloaded here.
+#
+# Run the same checks locally with:
+#   pip install -r speech-service/requirements-dev.txt fastapi numpy
+#   python -m pytest speech-service/tests -q
+
+name: Speech service
+
+on:
+  push:
+    branches: [main, meta-vr, fusion]
+    paths:
+      - 'speech-service/**'
+      - '.github/workflows/speech-service-tests.yml'
+  pull_request:
+    paths:
+      - 'speech-service/**'
+      - '.github/workflows/speech-service-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: speech-service-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # The engines (faster-whisper, kokoro-onnx) stay out: the tests stand them in.
+      - name: Install the test dependencies
+        run: python -m pip install -r speech-service/requirements-dev.txt fastapi==0.162.0 numpy==2.4.6
+
+      - name: Speech service tests
+        run: python -m pytest speech-service/tests -q

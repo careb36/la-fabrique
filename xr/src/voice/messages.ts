@@ -12,6 +12,7 @@ import type { Lang, Localized } from './types';
 const ES = {
   listening: 'Te escucho.',
   hearing: 'Escuchando...',
+  thinking: 'Pensando...',
   loadingModel: 'Cargando el modelo de voz ({percent} %)...',
   stopped: 'Dejé de escuchar.',
   confirmSuffix: 'Decí sí o no.',
@@ -32,6 +33,7 @@ const ES = {
 const EN: Record<keyof typeof ES, string> = {
   listening: 'Listening.',
   hearing: 'Hearing you...',
+  thinking: 'Thinking...',
   loadingModel: 'Loading the voice model ({percent}%)...',
   stopped: 'Stopped listening.',
   confirmSuffix: 'Say yes or no.',

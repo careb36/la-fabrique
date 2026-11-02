@@ -85,8 +85,8 @@ async function main() {
   const log = [];
   page.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[voice]')) log.push(`[${m.type()}] ${m.text()}`);
-    // The Piper speaker says so when a sentence has been played.
-    if (m.text().startsWith('[voice] piper spoke')) void page.evaluate(() => (window.__voiceSpoken = true)).catch(() => {});
+    // A speaker of the page says so when a sentence has been played.
+    if (/^\[voice\] \w+ spoke/.test(m.text())) void page.evaluate(() => (window.__voiceSpoken = true)).catch(() => {});
   });
   page.on('pageerror', (e) => log.push(`[pageerror] ${e.message}`));
   // The context sees the worker's requests too.

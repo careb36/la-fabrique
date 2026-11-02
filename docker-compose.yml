@@ -218,6 +218,35 @@ services:
       nats:
         condition: service_healthy
 
+  # The speech service: the server tier of the voice layer (faster-whisper
+  # and Kokoro). Opt-in: `docker compose --profile speech up -d speech`.
+  # The models (about 1.7 GB) live on the speech-models volume.
+  speech:
+    build:
+      context: ./speech-service
+      dockerfile: Dockerfile
+    container_name: factory-speech
+    profiles: ["speech"]
+    environment:
+      SPEECH_API_KEY: ${SPEECH_API_KEY:-}
+      SPEECH_CORS_ORIGINS: ${SPEECH_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      SPEECH_STT_MODEL: ${SPEECH_STT_MODEL:-large-v3-turbo}
+      SPEECH_DEVICE: ${SPEECH_DEVICE:-cpu}
+      SPEECH_LLM_URL: ${SPEECH_LLM_URL:-http://llm-proxy:5100/v1}
+      SPEECH_LLM_MODEL: ${SPEECH_LLM_MODEL:-}
+      SPEECH_LLM_KEY: ${SPEECH_LLM_KEY:-}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:5200:5200"
+    volumes:
+      - speech-models:/models
+    networks:
+      - factory-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5200/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   janitor:
     build:
       context: .
@@ -256,6 +285,7 @@ services:
       - backend
 
 volumes:
+  speech-models:
   nats-data:
   postgres-data:
   neo4j-data:
