@@ -75,7 +75,8 @@ the XR Simulator).
 with `?director`, select **Enter XR**, and start recording. It moves the
 emulated head and right hand like a person would and lets the room's real
 interactions do the rest (the pinch presses Launch, the grab carries the
-delivery onto a ring, the head's dwell opens the Verifier), starting from a
+delivery onto a ring, the head's dwell opens the Verifier; a press or a
+grab that a slow frame swallowed is tried again), starting from a
 new company: a cold open on a decision, the room, a full task with a send
 back, the rest of the sprint, the next sprint with no rework, high
 contrast, and voice: it presses Voice and asks the person recording to say

@@ -34,9 +34,16 @@ export interface Stage {
   newCompany: () => void;
   /** How many times faster than real time the demo's clock runs. */
   setSpeed: (times: number) => void;
+  /** Voice is on (the Voice button was pressed and the session listens). */
+  voiceOn: () => boolean;
   /** Voice is on and its recognizer is ready to hear (a model may load first). */
   voiceReady: () => boolean;
 }
+
+/** How many times a press is tried before the director moves on. */
+const PRESS_TRIES = 3;
+/** How long a press may take to show its effect before it is tried again. */
+const PRESS_TOOK_MS = 1_500;
 
 interface EmulatedHand {
   position: { set(x: number, y: number, z: number): void };
@@ -137,17 +144,38 @@ export async function direct(stage: Stage): Promise<void> {
     handAt = to.clone();
   }
 
-  /** Point at a button from the resting hand and pinch it. */
-  async function press(button: Object3D | undefined): Promise<void> {
-    if (!button) return;
-    const at = button.getWorldPosition(new Vector3());
-    await reach(rest(), at, 600);
-    await sleep(300);
-    hand.updatePinchValue(1);
-    await sleep(250);
-    hand.updatePinchValue(0);
-    await sleep(400);
+  /**
+   * Point at a button from the resting hand and pinch it, and check that the
+   * press took (`took`): a slow frame can swallow a pinch, so a press that
+   * shows no effect is tried again, aiming afresh at where the button is
+   * now, up to `PRESS_TRIES` times. The button is looked up on each try,
+   * since a label may change with the first press ("Contrast" → "Contrast
+   * off"). Without a button nothing is pressed.
+   */
+  async function press(button: () => Object3D | undefined, took: () => boolean, name: string): Promise<boolean> {
+    for (let attempt = 1; attempt <= PRESS_TRIES; attempt++) {
+      const target = button();
+      if (!target) return false;
+      const at = target.getWorldPosition(new Vector3());
+      await reach(rest(), at, 600);
+      await sleep(300);
+      hand.updatePinchValue(1);
+      await sleep(300);
+      hand.updatePinchValue(0);
+      if (await until(took, PRESS_TOOK_MS)) {
+        if (attempt > 1) console.info(`[director] "${name}" pressed on try ${attempt}`);
+        await sleep(400);
+        return true;
+      }
+      // Let go of the ray for a moment, so the next pinch is a new press.
+      await reach(rest(), stage.wall(), 300);
+    }
+    console.warn(`[director] "${name}" did not take after ${PRESS_TRIES} presses`);
+    return false;
   }
+
+  /** Every task waits in the queue (after a restart or a new sprint). */
+  const allQueued = () => Object.values(player.state.tasks).every((t) => t.state === 'queued');
 
   /**
    * Pinch the delivery, carry it onto a ring, let go. It waits until the
@@ -225,7 +253,8 @@ export async function direct(stage: Stage): Promise<void> {
   await sleep(2500);
   await lookAt(stage.launchButton()?.getWorldPosition(new Vector3()) ?? stage.desk(), 900);
   await sleep(1500);
-  await press(stage.launchButton());
+  // The press took when the first task left the queue.
+  if (!(await press(stage.launchButton, () => !allQueued(), 'Launch'))) player.launch('reset');
 
   // 0:45 The work travels; the Verifier's seals. Watch the wall.
   await lookAt(stage.wall(), 1200);
@@ -259,7 +288,8 @@ export async function direct(stage: Stage): Promise<void> {
 
   // 2:20 Next sprint, with the procedures: no rework this time.
   await lookAt(stage.desk(), 900);
-  await press(stage.label('Next sprint'));
+  // The press took when the closed sprint's tasks are queued again.
+  if (!(await press(() => stage.label('Next sprint'), allQueued, 'Next sprint'))) stage.restart();
   speed(4);
   for (const id of ['reset', 'csv', 'ci']) player.launch(id);
   await lookAt(stage.wall(), 900);
@@ -279,17 +309,17 @@ export async function direct(stage: Stage): Promise<void> {
 
   // 2:40 Another way in: high contrast.
   await lookAt(stage.desk(), 900);
-  await press(stage.label('Contrast'));
-  await sleep(3000);
-  await press(stage.label('Contrast off'));
-  await sleep(1500);
+  // The button's label says what a press turns the contrast to.
+  if (await press(() => stage.label('Contrast'), () => Boolean(stage.label('Contrast off')), 'Contrast')) {
+    await sleep(3000);
+    await press(() => stage.label('Contrast off'), () => Boolean(stage.label('Contrast')), 'Contrast off');
+    await sleep(1500);
+  }
 
   // 2:50 Another way in: voice. The director presses Voice and asks the
   // person recording to speak; the room's real recognizer does the rest.
   // Without a microphone (a headless run) nothing happens and it moves on.
-  const voiceButton = stage.label('Voice');
-  if (voiceButton) {
-    await press(voiceButton);
+  if (stage.label('Voice') && (await press(() => stage.label('Voice'), stage.voiceOn, 'Voice'))) {
     // The first time, the recognizer downloads its model: the Room panel
     // shows the progress; the request to speak waits until it can hear.
     const prompt = overlay('Voice is getting ready...', 'top-right');
@@ -306,7 +336,7 @@ export async function direct(stage: Stage): Promise<void> {
       await sleep(2000);
     }
     prompt.remove();
-    await press(stage.label('Voice'));
+    await press(() => stage.label('Voice off') ?? stage.label('Voice'), () => !stage.voiceOn(), 'Voice off');
     await sleep(800);
   }
 

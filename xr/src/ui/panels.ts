@@ -222,7 +222,9 @@ export function controlPanel(actions: {
   contrast: () => boolean;
   /** Voice on or off; absent when the browser cannot listen. */
   onVoice?: () => void;
-  /** What voice is doing, in a few words, or '' when it is off. */
+  /** Voice is on: the button's label says a press turns it off. */
+  listening: () => boolean;
+  /** What voice is doing, in a few words, or '' when it is off and said nothing. */
   voice: () => string;
 }): Panel {
   const root = panel(0.26);
@@ -267,7 +269,7 @@ export function controlPanel(actions: {
       perf.setProperties({ text: meter, display: meter ? 'flex' : 'none' });
       contrast.label.setProperties({ text: actions.contrast() ? 'Contrast off' : 'Contrast' });
       const v = actions.voice();
-      voice?.label.setProperties({ text: v ? 'Voice off' : 'Voice' });
+      voice?.label.setProperties({ text: actions.listening() ? 'Voice off' : 'Voice' });
       heard.setProperties({ text: v, display: v ? 'flex' : 'none' });
       const recent = [...state.log].reverse();
       log.forEach((l, i) => l.setProperties({ text: recent[i] ?? '' }));

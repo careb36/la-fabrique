@@ -451,6 +451,7 @@ place(
     },
     contrast: () => highContrast,
     onVoice: voiceRecognizer ? () => voice.toggle() : undefined,
+    listening: () => voice.listening,
     voice: () => voiceLine,
   }),
   handPanels,
@@ -797,6 +798,7 @@ if (!live && new URLSearchParams(location.search).has('director')) {
       desk: () => handPanels[1].object.localToWorld(new Vector3(0, handPanels[1].anchor === 'bottom' ? 0.2 : -0.15, 0)),
       restart,
       newCompany,
+      voiceOn: () => voice.listening,
       voiceReady: () => voice.listening && (!(voiceRecognizer instanceof WhisperRecognizer) || modelReady),
       setSpeed: (times) => {
         timeScale = times;
