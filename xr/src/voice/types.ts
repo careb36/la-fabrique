@@ -86,6 +86,8 @@ export interface Understanding {
   item?: Item;
   /** The action takes an item and the transcript named none. */
   needsItem?: boolean;
+  /** The words were near a phrase, not a phrase: a lone word a letter or two off. */
+  approximate?: boolean;
   /**
    * What a model suggested saying, when a model did the understanding;
    * with intent 'none' it is the whole answer ("¿Querés pausar o seguir?").

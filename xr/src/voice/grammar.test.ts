@@ -102,3 +102,64 @@ describe('rules a person expects', () => {
     expect(grammar.understand('es para mañana')).toBeUndefined();
   });
 });
+
+describe('a lone word near a phrase', () => {
+  // What the device's recognizer made of "Pausá." and "Seguí." in the bench.
+  it('is understood as the phrase it is near, and marked approximate', () => {
+    expect(grammar.understand('Posa.')).toMatchObject({ intent: 'pause', lang: 'es', approximate: true });
+    expect(grammar.understand('Sagaib.')).toMatchObject({ intent: 'resume', lang: 'es', approximate: true });
+    expect(grammar.understand('Renudal')).toMatchObject({ intent: 'resume', approximate: true });
+    expect(grammar.understand('Aprove')).toMatchObject({ intent: 'approve', approximate: true });
+    expect(grammar.understand('the pauze')).toMatchObject({ intent: 'pause', approximate: true });
+  });
+
+  it('an exact phrase is never approximate', () => {
+    expect(grammar.understand('Pausá')?.approximate).toBeUndefined();
+    expect(grammar.understand('pause')?.approximate).toBeUndefined();
+  });
+
+  it('a word too far from every phrase is nothing', () => {
+    expect(grammar.understand('Vos.')).toBeUndefined();
+    expect(grammar.understand('City.')).toBeUndefined();
+    expect(grammar.understand('Hola')).toBeUndefined();
+    expect(grammar.understand('Gracias')).toBeUndefined();
+  });
+
+  it('never guesses a confirmation or a short word', () => {
+    expect(grammar.understand('yet')).toBeUndefined();
+    expect(grammar.understand('yess')).toBeUndefined();
+    expect(grammar.understand('not')).toBeUndefined();
+    expect(grammar.understand('sí')).toMatchObject({ intent: 'yes' });
+  });
+
+  it('only a lone word is guessed; a sentence is not', () => {
+    expect(grammar.understand('both sides')).toBeUndefined();
+    expect(grammar.understand("that's it")).toBeUndefined();
+  });
+
+  it('a near launch still asks for the task', () => {
+    expect(grammar.understand('Launsh')).toMatchObject({ intent: 'launch', needsItem: true, approximate: true });
+    // "lansá" is one edit from "lanzá" and two from "pausa": too close to call
+    expect(grammar.understand('Lansá')).toBeUndefined();
+  });
+
+  it('a word that names an item is left to the question it answers', () => {
+    // "la segunda" is one letter from "seguí"; it is the second task.
+    expect(grammar.understand('La segunda.')).toBeUndefined();
+    expect(grammar.itemOnly('La segunda.')?.id).toBe('csv');
+    expect(grammar.understand('password')).toBeUndefined();
+  });
+
+  it('a word between two intents is nothing', () => {
+    // one edit from "mute", two from "unmute"
+    expect(grammar.understand('Amute.')).toBeUndefined();
+  });
+
+  it('the language the recognizer heard narrows the phrases compared', () => {
+    // "benia" is two letters from English "begin"; heard as Spanish it is nothing
+    expect(grammar.understand('Benia.')).toMatchObject({ intent: 'launch' });
+    expect(grammar.understand('Benia.', 'es')).toBeUndefined();
+    // an exact phrase is taken from either language
+    expect(grammar.understand('pause', 'es')).toMatchObject({ intent: 'pause' });
+  });
+});
