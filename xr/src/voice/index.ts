@@ -10,6 +10,7 @@
 
 export { concat, Endpointer, padded, type EndpointerOptions } from './endpointer';
 export { Grammar, guessLang, resolveItem, type IntentSpec } from './grammar';
+export { fromAnswer, intentResolver, type IntentResolver, type IntentServiceOptions } from './intent-service';
 export { MIC_FRAME, MIC_SAMPLE_RATE, microphoneSupported, openMicrophone } from './microphone';
 export { PIPER_VOICES, PiperSpeaker, playWav, type PiperSpeakerOptions, type SpeakerStatus } from './piper-speaker';
 export { SileroVad, VAD_CONTEXT, VAD_SAMPLE_RATE, VAD_WINDOW } from './silero';

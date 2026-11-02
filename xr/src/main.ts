@@ -29,6 +29,7 @@ import { roomRegistry, taskItems } from './commands';
 import {
   FallbackSpeaker,
   firstAvailable,
+  intentResolver,
   PiperSpeaker,
   ServerSpeaker,
   SilentSpeaker,
@@ -396,6 +397,10 @@ const voice = new VoiceSession({
   registry: voiceRegistry,
   recognizer: voiceRecognizer ?? webSpeech,
   speaker: new FallbackSpeaker([...speakers, new SilentSpeaker()]),
+  // With the service, free speech the grammar misses goes to its model.
+  intent: speechService
+    ? intentResolver({ service: speechService, registry: voiceRegistry, context: 'La Fabrique XR: a mixed-reality control room where a team of software agents works on tasks and a person launches tasks, approves or sends back deliveries, pauses and resumes.' })
+    : undefined,
   language: voiceLang,
   onEvent: (e) => {
     if (e.kind === 'heard') {

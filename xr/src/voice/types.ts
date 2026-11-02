@@ -86,6 +86,11 @@ export interface Understanding {
   item?: Item;
   /** The action takes an item and the transcript named none. */
   needsItem?: boolean;
+  /**
+   * What a model suggested saying, when a model did the understanding;
+   * with intent 'none' it is the whole answer ("¿Querés pausar o seguir?").
+   */
+  reply?: string;
 }
 
 /** The layer's own intents, never an application's. */
@@ -97,7 +102,9 @@ export type RecognizerStatus =
   | { kind: 'loading'; percent: number }
   | { kind: 'ready' }
   | { kind: 'speech-start' }
-  | { kind: 'speech-end' };
+  | { kind: 'speech-end' }
+  /** The session is asking a model what was meant. */
+  | { kind: 'thinking' };
 
 export interface Recognizer {
   /** Whether this recognizer can work here at all (an API present, a model reachable). */

@@ -12,13 +12,24 @@ sounds like a person.
 | --- | --- | --- |
 | `POST /v1/transcribe?languages=es,en&preferred=es&prompt=...` | 16-bit PCM WAV (any rate) | `{text, language, seconds}` |
 | `POST /v1/speak` | `{text, language, voice?}` | `audio/wav` (Kokoro, 24 kHz) |
-| `GET /health[?warm=1]` | | both engines described; `warm` loads them |
+| `POST /v1/intent` | `{transcript, language, actions: [{id, label, description?, items?}], context?}` | `{intent, item, reply}` |
+| `GET /health[?warm=1]` | | the engines described; `warm` loads them |
 
 The language is detected among the ones the client speaks, and the page's
 language (`preferred`) wins a close call; `prompt` is the client's
 vocabulary, Whisper's previous text, which steers the decoding toward the
 commands. Kokoro's voices: `ef_dora` for Spanish, `af_heart` for English,
 or any voice of the model by name.
+
+`/v1/intent` is the understanding tier a model provides: the client sends
+what was heard and the catalogue of what it can do, and the model picks
+one action (and its item), or none, in a fixed JSON the service checks
+against the catalogue; anything outside it is no answer. The model never
+runs anything, and the client still confirms what matters. Any
+OpenAI-compatible chat endpoint serves: `SPEECH_LLM_URL` (such as the
+factory's LLM proxy, `http://llm-proxy:5100/v1`, or Nebius),
+`SPEECH_LLM_MODEL`, `SPEECH_LLM_KEY`. Without them the route answers 503
+and the client keeps to its grammar.
 
 ## Running
 
@@ -37,6 +48,7 @@ SPEECH_KOKORO_DIR=~/.b1/kokoro python speech-service/app.py
 | `SPEECH_STT_MODEL` | `large-v3-turbo` | Any faster-whisper model (`small` for a slow CPU). |
 | `SPEECH_DEVICE` / `SPEECH_COMPUTE_TYPE` | `cpu` / `int8` | `cuda` / `float16` on a GPU. |
 | `SPEECH_KOKORO_DIR` | `/models/kokoro` | Kokoro's two files (pinned SHA-256 in `models.py`). |
+| `SPEECH_LLM_URL` / `SPEECH_LLM_MODEL` / `SPEECH_LLM_KEY` | unset | The chat endpoint behind `/v1/intent`. |
 
 The first transcript downloads the recognizer's model (about 1.6 GB for
 `large-v3-turbo`); `GET /health?warm=1` does it ahead of time.

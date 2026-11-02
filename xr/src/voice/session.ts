@@ -14,7 +14,7 @@
 
 import { listOf, message, pick } from './messages';
 import type { CommandRegistry } from './registry';
-import type { Action, Item, Lang, Recognizer, RecognizerFailure, RecognizerStatus, Speaker, VoiceEvent } from './types';
+import type { Action, Item, Lang, Recognizer, RecognizerFailure, RecognizerStatus, Speaker, Understanding, VoiceEvent } from './types';
 
 export const PENDING_MS = 15_000;
 /** Transcripts arriving this long after the speaker finished are still its echo. */
@@ -40,6 +40,12 @@ export interface SessionOptions {
   speaker: Speaker;
   /** The language to answer in when the transcript does not tell. */
   language: () => Lang;
+  /**
+   * A model's understanding, asked only for what the grammar did not catch
+   * (the speech service's `/v1/intent`, through `intentResolver`). Its
+   * answer goes through the same confirmations as the grammar's.
+   */
+  intent?: (transcript: string, lang: Lang) => Promise<Understanding | undefined>;
   onEvent?: (event: VoiceEvent) => void;
   now?: () => number;
 }
@@ -84,7 +90,11 @@ export class VoiceSession {
     else this.start();
   }
 
-  /** One transcript, as the recognizer heard it. Public so tests and tools can speak. */
+  /**
+   * One transcript, as the recognizer heard it. Public so tests and tools
+   * can speak. The grammar answers at once; what it does not catch goes to
+   * the model, when there is one, and is acted on when it answers.
+   */
   hear(transcript: string, heardLang?: Lang): void {
     const text = transcript.trim();
     if (!text || this.now() < this.speakingUntil) return;
@@ -92,6 +102,27 @@ export class VoiceSession {
     const lang = heardLang ?? understood?.lang ?? this.o.language();
     this.emit({ kind: 'heard', text, lang });
     this.expirePending(lang);
+    // Every phrase heard makes an earlier question to the model stale.
+    const asked = ++this.asked;
+    if (understood || !this.o.intent) return this.act(understood, text, lang);
+    this.emit({ kind: 'status', text: message(lang, 'thinking'), lang, status: { kind: 'thinking' } });
+    this.o.intent(text, lang).then(
+      (fromModel) => {
+        // A later phrase has been heard meanwhile: this answer is stale.
+        if (asked !== this.asked) return;
+        this.act(fromModel, text, lang);
+      },
+      (err: unknown) => {
+        if (asked !== this.asked) return;
+        console.warn(`[voice] intent service failed: ${err instanceof Error ? err.message : String(err)}`);
+        this.act(undefined, text, lang);
+      },
+    );
+  }
+
+  /** What the person meant, acted on: the pending question first, then the request itself. */
+  private act(understood: Understanding | undefined, text: string, lang: Lang): void {
+    if (understood?.intent === 'none') return this.say(understood.reply ?? message(this.o.language(), 'notUnderstood'), lang);
 
     if (this.pending?.kind === 'confirm') {
       const p = this.pending;
@@ -136,6 +167,8 @@ export class VoiceSession {
     }
     this.request(action, lang, understood.item);
   }
+
+  private asked = 0;
 
   /** Run the action, or ask first when it changes something that matters. */
   private request(action: Action, lang: Lang, item?: Item): void {
@@ -189,7 +222,9 @@ export class VoiceSession {
           ? message(lang, 'listening')
           : status.kind === 'speech-start'
             ? message(lang, 'hearing')
-            : '';
+            : status.kind === 'thinking'
+              ? message(lang, 'thinking')
+              : '';
     this.emit({ kind: 'status', text, lang, status });
   }
 

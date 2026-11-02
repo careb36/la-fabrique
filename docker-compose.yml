@@ -232,6 +232,9 @@ services:
       SPEECH_CORS_ORIGINS: ${SPEECH_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
       SPEECH_STT_MODEL: ${SPEECH_STT_MODEL:-large-v3-turbo}
       SPEECH_DEVICE: ${SPEECH_DEVICE:-cpu}
+      SPEECH_LLM_URL: ${SPEECH_LLM_URL:-http://llm-proxy:5100/v1}
+      SPEECH_LLM_MODEL: ${SPEECH_LLM_MODEL:-}
+      SPEECH_LLM_KEY: ${SPEECH_LLM_KEY:-}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:5200:5200"
     volumes:

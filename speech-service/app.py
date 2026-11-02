@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from audio import SAMPLE_RATE, AudioError, decode_wav, encode_wav, resample
 from engines import KokoroEngine, Synthesizer, Transcriber, WhisperEngine
+from intent import ActionDescription, IntentResolver, LlmIntentResolver
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about five minutes at 16 kHz, far more than a phrase
 MAX_TEXT_CHARS = 2000
@@ -40,6 +41,10 @@ class Settings:
         self.stt_model = os.getenv("SPEECH_STT_MODEL", "large-v3-turbo")
         self.device = os.getenv("SPEECH_DEVICE", "cpu")
         self.compute_type = os.getenv("SPEECH_COMPUTE_TYPE", "int8" if self.device == "cpu" else "float16")
+        # The understanding tier: any OpenAI-compatible chat endpoint.
+        self.llm_url = os.getenv("SPEECH_LLM_URL", "").strip()
+        self.llm_key = os.getenv("SPEECH_LLM_KEY", "").strip()
+        self.llm_model = os.getenv("SPEECH_LLM_MODEL", "").strip()
 
 
 class SpeakRequest(BaseModel):
@@ -54,10 +59,41 @@ class TranscribeResponse(BaseModel):
     seconds: float
 
 
-def create_app(transcriber: Transcriber | None = None, synthesizer: Synthesizer | None = None, settings: Settings | None = None) -> FastAPI:
+class ItemDescription(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+
+
+class ActionIn(BaseModel):
+    id: str = Field(min_length=1, max_length=80, pattern="^[a-z][a-z0-9_-]*$")
+    label: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=400)
+    items: list[ItemDescription] = Field(default_factory=list, max_length=60)
+
+
+class IntentRequest(BaseModel):
+    transcript: str = Field(min_length=1, max_length=1000)
+    language: str = Field(default="es", pattern="^(es|en)$")
+    actions: list[ActionIn] = Field(min_length=1, max_length=60)
+    context: str = Field(default="", max_length=1000)
+
+
+class IntentResponse(BaseModel):
+    intent: str | None
+    item: str | None
+    reply: str | None
+
+
+def create_app(
+    transcriber: Transcriber | None = None,
+    synthesizer: Synthesizer | None = None,
+    settings: Settings | None = None,
+    resolver: IntentResolver | None = None,
+) -> FastAPI:
     settings = settings or Settings()
     stt: Transcriber = transcriber or WhisperEngine(settings.stt_model, settings.device, settings.compute_type)
     tts: Synthesizer = synthesizer or KokoroEngine()
+    llm: IntentResolver = resolver or LlmIntentResolver(settings.llm_url, settings.llm_model, settings.llm_key)
     app = FastAPI(title="La Fabrique speech service", version="0.1.0", docs_url=None, redoc_url=None)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["POST", "GET"], allow_headers=["Content-Type", "X-API-Key"])
@@ -73,7 +109,7 @@ def create_app(transcriber: Transcriber | None = None, synthesizer: Synthesizer 
         if warm:
             # Loading the models here, on purpose, so the first real request is quick.
             stt.transcribe(resample(_silence(), SAMPLE_RATE), languages=["en"], preferred=None, prompt="")
-        return {"status": "ok", "transcriber": stt.describe(), "synthesizer": tts.describe(), "languages": list(LANGUAGES)}
+        return {"status": "ok", "transcriber": stt.describe(), "synthesizer": tts.describe(), "intent": llm.describe(), "languages": list(LANGUAGES)}
 
     @app.post("/v1/transcribe", response_model=TranscribeResponse)
     async def transcribe(
@@ -104,6 +140,16 @@ def create_app(transcriber: Transcriber | None = None, synthesizer: Synthesizer 
         authorize(x_api_key)
         samples, rate = tts.speak(body.text, language=body.language, voice=body.voice)
         return Response(content=encode_wav(samples, rate), media_type="audio/wav", headers={"X-Sample-Rate": str(rate)})
+
+    @app.post("/v1/intent", response_model=IntentResponse)
+    def intent(body: IntentRequest, x_api_key: str | None = Header(default=None)) -> IntentResponse:
+        authorize(x_api_key)
+        actions = [ActionDescription(a.id, a.label, a.description, [i.model_dump() for i in a.items]) for a in body.actions]
+        try:
+            result = llm.resolve(body.transcript, body.language, actions, body.context)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        return IntentResponse(intent=result.intent, item=result.item, reply=result.reply)
 
     return app
 
