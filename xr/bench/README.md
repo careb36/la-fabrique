@@ -81,6 +81,13 @@ examples use those. The synthetic voices are a hard test (one Piper voice says
 "Lanzá" as "la ensal" to a person too); the owner's own recordings, under
 `audio/real/`, are the measure that counts.
 
+The voice detector (`public/silero_vad_v6.onnx`, sha256 `4cbf549b…`, the
+sequence export with `h`/`c` state) was checked against the model shipped
+in silero-vad 6.2.3 (`silero_vad_16k_sequence.onnx`, same interface):
+over a quarter of the bank, scored against a loudness label per window,
+ours agrees with the label better (mean AUC 0.876 against 0.823), so it
+stays. A real microphone in a noisy room is the measure this misses.
+
 ```bash
 cd xr/bench && npm install
 B1_KOKORO_DIR=~/.b1/kokoro PIPER_VOICES_DIR=~/.b1/voices python synthesize.py
