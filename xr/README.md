@@ -48,8 +48,9 @@ no backend: the page runs a self-contained demo of recorded agent runs.
 9. Also on the **Room** panel: **Contrast** switches to black panels with
    white borders and white text (remembered on the device), and **Voice**
    talks with you in English or Spanish: "approve", "mandala de vuelta",
-   "pause", "seguí", "recenter", "launch the CSV export", "lanzá la
-   segunda", "¿cómo va?", "help". It answers out loud in the language you
+   "pause", "continuá", "recenter", "launch the CSV export", "lanzá la
+   segunda", "¿cómo va?", "help". A short sentence is heard better than a
+   lone word: "pará un momento" over "pausá". It answers out loud in the language you
    spoke, asks before a decision ("Approve Password reset endpoint? Say yes
    or no") and, when a launch names no task, asks which. The panel shows
    what it heard and what it said. On the Quest, which has no speech
@@ -78,7 +79,7 @@ delivery onto a ring, the head's dwell opens the Verifier), starting from a
 new company: a cold open on a decision, the room, a full task with a send
 back, the rest of the sprint, the next sprint with no rework, high
 contrast, and voice: it presses Voice and asks the person recording to say
-"pausá" or "pause", then "seguí" or "resume", and the room's real
+"pará un momento" or "pause", then "continuá" or "resume", and the room's real
 recognizer does the rest (without a microphone it says so and moves on).
 A caption reads "Recorded in the Quest 3 emulator" throughout and a badge
 marks the stretches played faster. It needs the emulator, so on a headset

@@ -53,7 +53,11 @@ and the prior**. `small` hears ten more Spanish commands in a hundred, at
 twice the time per phrase and three times the download (about 240 MB
 against 80), too much for a headset's first visit; `?stt=small` keeps it
 within reach on a desktop. On the server, the prompt is worth more than a
-model size. The synthetic voices are a hard test (one Piper voice says
+model size. The weakest phrases are the lone Rioplatense imperatives:
+"pausá" and "seguí" by themselves are heard by no model from any voice
+("Posa", "Vos", "That's it"), while "pará un momento", "continuá" and
+"esperá" are heard from every voice; the director's prompts and the judges'
+examples use those. The synthetic voices are a hard test (one Piper voice says
 "Lanzá" as "la ensal" to a person too); the owner's own recordings, under
 `audio/real/`, are the measure that counts.
 
