@@ -2,8 +2,8 @@
 
 **Version:** 1.0
 **Owner:** Security Engineering
-**Applies to:** FastAPI control plane, React/Vite frontend, LangGraph agents, PostgreSQL, Neo4j, Kubernetes deployments
-**Last reviewed:** Sprint 0 — Foundations
+**Applies to:** FastAPI control plane, React/Vite frontend, LLM proxy, workspace daemon, LangGraph agents, PostgreSQL, Neo4j, and Kubernetes deployments (`deployment/k8s/`)
+**Last reviewed:** 2026-11-02 (authentication section aligned with the code)
 
 ---
 
@@ -44,13 +44,27 @@ Reference frameworks:
 
 ## 3. Authentication and Authorization
 
-### 3.1 Identity Provider
+### 3.1 Identity and tokens
 
-- Use **OIDC/OAuth 2.1** with a trusted IdP for all human users.
-- Frontend uses **Authorization Code with PKCE** for SPAs. Never use implicit flow.
-- Backend validates JWT access tokens on every request. Accept only tokens signed by the configured IdP and with correct `iss`, `aud`, `exp`, `nbf`.
-- Short-lived access tokens: **≤ 15 minutes**.
-- Refresh tokens are server-side, rotated on use, and bound to the client.
+**What the code does today.** Users register and log in with an email and a
+password, hashed with bcrypt (`backend/app/passwords.py`; a password over
+bcrypt's 72-byte limit is refused, and a stored hash below the current cost is
+re-hashed at login). `POST /v1/auth/login` issues an HS256 JWT signed with
+`JWT_SECRET_KEY` (login answers 503 until it is set), valid for
+`ACCESS_TOKEN_EXPIRE_MINUTES` (60 by default); `auth_deps.get_current_user`
+validates signature and expiry on every protected route. `AUTH_REQUIRED` is on
+by default. Login and registration are rate-limited (`AUTH_RATE_LIMIT`). The
+Glassroom stream, which a browser opens without an Authorization header, takes
+a five-minute ticket scoped to one sprint.
+
+**For a production deployment** the built-in login is the minimum. Where an
+organisation runs an identity provider, the recommended setup is:
+
+- **OIDC/OAuth 2.1** in front of the application (an authenticating reverse
+  proxy or gateway), Authorization Code with PKCE for the browser, tokens
+  checked for `iss`, `aud`, `exp` and `nbf`.
+- Short sessions: `ACCESS_TOKEN_EXPIRE_MINUTES` of 15 or less where people can
+  log in again often.
 
 ### 3.2 API Authorization
 
@@ -273,7 +287,7 @@ yourself.
 
 ### 9.1 Reporting
 
-- Report security incidents to `security@your-org.example` immediately.
+- Report a vulnerability privately through GitHub: **Security → Report a vulnerability** on this repository (a private security advisory).
 - Do **not** open a public issue for suspected vulnerabilities.
 - Include affected component, timestamp, impact, and any reproduce steps.
 
@@ -435,6 +449,5 @@ When auditing the platform, verify the following controls:
 
 ## 14. Contact
 
-Security team: `security@your-org.example`
-Responsible disclosure: see `SECURITY.md` in repository root or contact the address above.
+Report vulnerabilities privately through the repository's GitHub security advisories (**Security → Report a vulnerability**).
 Do not include sensitive details in public issues.

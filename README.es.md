@@ -241,7 +241,7 @@ docker compose up -d --build frontend
 
 ## Primeros Pasos
 
-Una vez que el stack esté en marcha, puedes interactuar con la API:
+Con el stack en marcha, podés usar la API:
 
 ```bash
 # Health check
@@ -252,14 +252,22 @@ curl -X POST http://localhost:8000/v1/init_company \
   -H "Content-Type: application/json" \
   -d '{"company_name": "Mi Empresa"}'
 
-# Iniciar un sprint
+# Iniciar un sprint (carry_over_ids: tareas bloqueadas de sprints anteriores para intentar de nuevo)
 curl -X POST http://localhost:8000/v1/start_sprint \
   -H "Content-Type: application/json" \
   -d '{
-    "company_id": "<company_id>",
-    "scope": "M",
-    "backlog": ["Implementar autenticación de usuario", "Añadir widgets al dashboard"]
+    "company_id": <company_id>,
+    "sprint_name": "Sprint 1",
+    "start_date": "2026-10-20",
+    "scope_size": "M",
+    "backlog_items": [
+      {"title": "Implementar autenticación de usuario", "description": "Login con email y contraseña.", "assignee": "Developer"},
+      {"title": "Agregar widgets al dashboard", "description": "Tiles de KPI en el dashboard.", "assignee": "Developer"}
+    ]
   }'
+
+# Lo que la empresa necesita que decida una persona
+curl "http://localhost:8000/v1/inbox?company_id=<company_id>"
 
 # Abrir documentación de la API
 open http://localhost:8000/docs
@@ -411,48 +419,49 @@ El endpoint SSE (`GET /v1/glassroom/stream?sprint_id=<id>`) reproduce los últim
 la-fabrique/
 ├── backend/
 │   ├── agents/
-│   │   ├── graph.py                  # Workflow multiagente LangGraph
+│   │   ├── graph.py                  # Productor LangGraph opcional (AGENT_GRAPH_ENABLED)
 │   │   └── tools/
-│   │       └── openproject_tools.py  # Creación de work packages
+│   │       └── openproject_tools.py  # Creación de work packages (OpenProject opcional)
 │   ├── app/
-│   │   ├── main.py                   # Punto de entrada FastAPI · 4 workers · puente SSE
-│   │   ├── models/                   # ORM SQLModel (Sprint, Company, BacklogItem…)
-│   │   ├── schemas.py                # Schemas Pydantic de request/response
-│   │   ├── database.py               # Engine · sesión · _ensure_runtime_schema()
-│   │   ├── routers/                  # sprint · agents · enterprise · support
+│   │   ├── main.py                   # App FastAPI: ciclo de vida, middleware, routers
+│   │   ├── routers/                  # agent_runs · agents · auth · enterprise · github · inbox · messages · procedures · sprint · support · workspace
+│   │   ├── models/                   # SQLModel ORM (Company, Sprint, BacklogItem, AgentRun, Procedure…)
 │   │   ├── services/
-│   │   │   ├── agent_worker.py       # Consumidor NATS → ejecución LangGraph
-│   │   │   ├── task_worker.py        # Worker de asignación de tareas
-│   │   │   └── outbox_service.py     # Outbox transaccional → drenaje NATS
-│   │   └── nats_client.py            # Wrapper async de publish/subscribe NATS
+│   │   │   ├── task_worker.py        # Ejecuta tareas, compuerta de entrega, revisión de QA, cierra sprints
+│   │   │   ├── verification.py       # Verificaciones deterministas de una corrida (archivos escritos, tests, nivel de riesgo)
+│   │   │   ├── board.py              # Lectores puros del hilo de comentarios de una tarea
+│   │   │   ├── procedures.py         # Procedimientos: propuestas, adopción, mantener/revertir según los números
+│   │   │   ├── carry_over.py         # Una tarea bloqueada tiene otro intento en el sprint siguiente
+│   │   │   ├── scrum_master.py       # El ScrumMaster responde las escalaciones
+│   │   │   ├── architect.py          # Los briefs del Architect y su historial
+│   │   │   ├── console_assistants.py # Asistentes de terminal en la máquina del daemon
+│   │   │   ├── support_agent.py      # Clasifica tickets de la mesa de ayuda (SUPPORT_AGENT_ENABLED)
+│   │   │   ├── reviewer_agent.py     # Sugiere la decisión sobre corridas de otros productores (REVIEWER_AGENT_ENABLED)
+│   │   │   ├── workspace_daemon.py   # Pedidos al daemon de workspace por NATS
+│   │   │   └── outbox_service.py     # Transactional outbox → JetStream
+│   │   ├── audit_chain.py            # Cadena de hashes de auditoría por empresa
+│   │   ├── history_check.py          # Verificador independiente de historiales de tareas
+│   │   ├── llm_proxy_client.py       # Cliente HTTP del proxy de LLM
+│   │   └── nats_client.py            # Publicación/consumo JetStream
 │   ├── llm/
-│   │   └── model_factory.py          # Mapeo rol → modelo
+│   │   └── model_factory.py          # Rol → modelo (AGENT_MODEL, AGENT_MODEL_<ROLE>)
 │   ├── memory/
 │   │   └── engram_processor.py       # Persistencia de engramas (pgvector + Neo4j)
-│   ├── llm_proxy_client.py           # Cliente HTTP para el servicio LLM Proxy
 │   └── telemetry.py                  # Configuración de trazas OpenTelemetry
 ├── frontend/
 │   └── src/
-│       ├── components/
-│       │   ├── GlassRoom.tsx         # Vista en tiempo real del sprint (3 columnas)
-│       │   ├── KanbanBoard.tsx       # Tablero de backlog del sprint (dnd-kit)
-│       │   ├── ControlPanel.tsx      # UI de configuración de sprint
-│       │   └── ErrorBoundary.tsx     # Error boundary global de React
-│       ├── pages/
-│       │   ├── Dashboard.tsx         # Strip KPI · tarjetas de sprint · lanzamiento rápido
-│       │   └── CompanyNew.tsx        # Wizard de onboarding de empresa
-│       ├── store/
-│       │   └── agentStore.ts         # Store Zustand FSM (idle/active/waiting/error)
+│       ├── components/               # GlassRoom · KanbanBoard · GovernancePanel · Conversation · LearningTrend · SupportBot…
+│       ├── pages/                    # Dashboard · Sprints · SprintWorkspace · TaskDetails · Evidence · Procedures · HelpDesk · CompanyNew…
+│       ├── store/                    # Stores Zustand (agentes, auth)
 │       └── i18n/                     # Archivos de traducción EN + ES
-├── llm-proxy/                        # Gateway de presupuesto de tokens y auditoría (Flask :5100)
-├── vscode-daemon/                    # Suscriptor NATS local para operaciones en el IDE
-├── scripts/
-│   └── verify_infra.py               # Script de verificación de salud de la infraestructura
+├── llm-proxy/                        # Pasarela de modelos: ruteo por prefijo, catálogos, presupuestos de tokens (Flask :5100)
+├── vscode-daemon/                    # Daemon de workspace: corre en tu computadora, escribe archivos y ejecuta comandos
+├── scripts/                          # start-daemon.*, e2e/, verify_infra.py, check_file_sizes.py
 ├── db/
 │   └── init-db/init.sql              # DDL de bootstrap de Postgres
-├── docker-compose.yml                # Definición del stack local (8 servicios)
+├── docker-compose.yml                # Stack local
 ├── reset_infra.sh                    # Script canónico de reset completo
-└── .env.example                      # Plantilla de variables de entorno requeridas
+└── .env.example                      # Plantilla de variables de entorno
 ```
 
 [⬆ Volver al inicio](#la-fabrique)
