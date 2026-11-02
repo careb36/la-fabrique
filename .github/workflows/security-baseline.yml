@@ -1,17 +1,12 @@
 name: Security baseline – secrets, SAST, dependencies
 
-# Homogeneous scheduled control for all five repositories. This workflow does
-# not gate pull requests; it is the weekly baseline that makes missing coverage
-# visible and gives the architect/repair stations a concrete finding list.
+# Scheduled security baseline: secrets in the whole history (gitleaks), static
+# analysis and dependency audits. It does not gate pull requests; it is a
+# weekly control whose findings are tracked outside this repository.
 #
-# The PR-time controls stay where they are (native CI, CodeQL in Searchclaft,
-# gitleaks in osint, Bandit/pip-audit in investigation, Safety/Trivy in
-# la-fabrique, OWASP Dependency Check in Monitor). Findings from this baseline
-# are tracked by the factory instead of being silently ignored.
-#
-# SECURITY_RUNS_ON is a repository variable containing a JSON runner selector.
-# The four repositories with self-hosted runners set it to their runner labels;
-# Monitor keeps the GitHub-hosted default until a runner or billing is fixed.
+# SECURITY_RUNS_ON is a repository variable holding a JSON runner selector;
+# unset, the job runs on GitHub-hosted runners. The workflow never runs on
+# pull requests, so code from a fork never reaches a self-hosted runner.
 
 on:
   schedule:
