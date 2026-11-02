@@ -76,10 +76,13 @@ emulated head and right hand like a person would and lets the room's real
 interactions do the rest (the pinch presses Launch, the grab carries the
 delivery onto a ring, the head's dwell opens the Verifier), starting from a
 new company: a cold open on a decision, the room, a full task with a send
-back, the rest of the sprint, the next sprint with no rework, and high
-contrast. A caption reads "Recorded in the Quest 3 emulator" throughout and
-a badge marks the stretches played faster. It needs the emulator, so on a
-headset the parameter does nothing (`src/director.ts`).
+back, the rest of the sprint, the next sprint with no rework, high
+contrast, and voice: it presses Voice and asks the person recording to say
+"pausá" or "pause", then "seguí" or "resume", and the room's real
+recognizer does the rest (without a microphone it says so and moves on).
+A caption reads "Recorded in the Quest 3 emulator" throughout and a badge
+marks the stretches played faster. It needs the emulator, so on a headset
+the parameter does nothing (`src/director.ts`).
 
 ## Live mode (optional)
 
