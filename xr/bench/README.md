@@ -47,13 +47,17 @@ language winning a close call in detection.
 | faster-whisper small | 65% | 90% | | server |
 | faster-whisper small + prompt | 77% | 95% | | server |
 | faster-whisper large-v3-turbo (369 of 434, no prompt) | 74% | 91% | | server |
+| faster-whisper large-v3-turbo + prompt | 81% | 91% | 11.2 | server |
 
 What the numbers decided: the device default is **`base` with the prompt
 and the prior**. `small` hears ten more Spanish commands in a hundred, at
 twice the time per phrase and three times the download (about 240 MB
 against 80), too much for a headset's first visit; `?stt=small` keeps it
 within reach on a desktop. On the server, the prompt is worth more than a
-model size. The weakest phrases are the lone Rioplatense imperatives:
+model size: `small` with the prompt hears 77% of the Spanish commands,
+`large-v3-turbo` with it 81%, at seven times the time per phrase on a CPU
+(the server tier's default is `large-v3-turbo`; `SPEECH_STT_MODEL=small`
+for a slow CPU). The weakest phrases are the lone Rioplatense imperatives:
 "pausá" and "seguí" by themselves are heard by no model from any voice
 ("Posa", "Vos", "That's it"), while "pará un momento", "continuá" and
 "esperá" are heard from every voice; the director's prompts and the judges'
