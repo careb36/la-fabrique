@@ -26,7 +26,6 @@ quickstart; the files below go deeper, each with a single job.
 
 | Document | What it answers |
 | --- | --- |
-| [`HACKATHON.md`](HACKATHON.md) | The competition context, the pitch, and the judge-facing demo path. |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed, release by release. |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | How to contribute: branches, commits, review. |
 | [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | The rules for participating. |

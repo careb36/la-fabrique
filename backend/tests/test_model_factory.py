@@ -47,43 +47,39 @@ def test_create_completion_passes_bu_header(monkeypatch):
     assert captured["config"] == {"headers": {"X-Business-Unit-ID": "7"}}
 
 
-def test_nemotron_roles_opt_in_overrides_the_default_model(monkeypatch):
-    monkeypatch.setenv("NEMOTRON_ROLES", "developer, qa")
-    monkeypatch.setenv("NEMOTRON_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
+def test_a_role_can_be_given_its_own_model_from_any_provider(monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL_DEVELOPER", "nvidia/nemotron-3-super-120b-a12b")
+    monkeypatch.setenv("AGENT_MODEL_QA", "gemini-2.5-flash")
 
     assert (
         ModelFactory.model_for_role(AgentRole.DEVELOPER)
-        == "nvidia/Llama-3.1-Nemotron-70B-Instruct"
+        == "nvidia/nemotron-3-super-120b-a12b"
     )
-    assert (
-        ModelFactory.model_for_role(AgentRole.QA)
-        == "nvidia/Llama-3.1-Nemotron-70B-Instruct"
-    )
-    # A role that did not opt in keeps its default.
+    assert ModelFactory.model_for_role(AgentRole.QA) == "gemini-2.5-flash"
+    # A role nobody named keeps its default.
     assert ModelFactory.model_for_role(AgentRole.SCRUM_MASTER) == "qwen3.7-plus"
 
 
-def test_nemotron_tier_overrides_pick_the_right_size(monkeypatch):
-    monkeypatch.setenv("NEMOTRON_ROLES", "PO,TechWriter")
-    monkeypatch.setenv("NEMOTRON_MODEL_STRATEGIC", "nvidia/Nemotron-Ultra")
-    monkeypatch.setenv("NEMOTRON_MODEL_FAST", "nvidia/Nemotron-Nano-9B")
+def test_a_roles_own_model_wins_over_the_one_for_every_role(monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("AGENT_MODEL_SCRUMMASTER", "qwen3.7-plus")
+    monkeypatch.setenv("AGENT_MODEL_TECHWRITER", "   ")  # blank: not an override
 
-    assert ModelFactory.model_for_role(AgentRole.PO) == "nvidia/Nemotron-Ultra"
-    assert (
-        ModelFactory.model_for_role(AgentRole.TECH_WRITER) == "nvidia/Nemotron-Nano-9B"
-    )
+    assert ModelFactory.model_for_role(AgentRole.SCRUM_MASTER) == "qwen3.7-plus"
+    assert ModelFactory.model_for_role(AgentRole.TECH_WRITER) == "deepseek-v4-pro"
+    assert ModelFactory.model_for_role(AgentRole.PO) == "deepseek-v4-pro"
 
 
-def test_without_nemotron_roles_nothing_changes(monkeypatch):
-    monkeypatch.delenv("NEMOTRON_ROLES", raising=False)
+def test_the_old_vendor_variables_change_nothing(monkeypatch):
+    """The per-vendor opt-in of earlier releases is gone: only the neutral variables are read."""
+    monkeypatch.setenv("NEMOTRON_ROLES", "developer")
     monkeypatch.setenv("NEMOTRON_MODEL", "nvidia/Nemotron-Ultra")
 
     assert ModelFactory.model_for_role(AgentRole.DEVELOPER) == "deepseek-v4-pro"
 
 
 def test_agent_model_overrides_every_role(monkeypatch):
-    """One key (the assistant's Gemini) must be enough to run every agent."""
-    monkeypatch.delenv("NEMOTRON_ROLES", raising=False)
+    """One provider key must be enough to run every agent."""
     monkeypatch.setenv("AGENT_MODEL", "gemini-flash-latest")
 
     for role in AgentRole:

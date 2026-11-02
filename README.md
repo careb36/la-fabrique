@@ -92,7 +92,7 @@ open `/evidence`.
 - [Installation](#installation)
 - [Getting Started](#getting-started)
 - [Agent Orchestration](#agent-orchestration)
-- [Model Providers (Nebius / NVIDIA Nemotron)](#model-providers-nebius--nvidia-nemotron)
+- [Model providers](#model-providers)
 - [GlassRoom](#glassroom)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
@@ -188,7 +188,7 @@ sequenceDiagram
 | **Vector Memory** | PostgreSQL 15 + pgvector |
 | **Knowledge Graph** | Neo4j 5.25 Enterprise + APOC |
 | **Message Broker** | NATS JetStream |
-| **AI Models** | NVIDIA Nemotron on Nebius Token Factory + Gemini + DeepSeek + Qwen |
+| **AI Models** | Any provider the LLM proxy reaches (Gemini, DeepSeek, Qwen, NVIDIA, Nebius Token Factory), chosen per agent role by configuration |
 | **Infrastructure** | Docker Compose (8 services), VS Code CLI |
 
 [⬆ Back to Top](#la-fabrique)
@@ -201,7 +201,7 @@ sequenceDiagram
 - **Python** 3.12+ (for local development)
 - **Node.js** 24+ (for frontend development; `frontend/package.json` sets
   `engines.node >=24` and CI runs Node 24)
-- **API Keys:** Nebius Token Factory (NVIDIA Nemotron), Google AI Studio (Gemini), DeepSeek, Qwen
+- **API keys** for at least one model provider: Google AI Studio (Gemini), DeepSeek, Qwen, NVIDIA or Nebius Token Factory (see [Model providers](#model-providers))
 
 [⬆ Back to Top](#la-fabrique)
 
@@ -214,10 +214,10 @@ The canonical way to start a clean local environment is `reset_infra.sh`:
 ```bash
 # 1. Copy and configure environment
 cp .env.example .env
-# Edit .env — fill in NEBIUS_API_KEY (as shipped, every agent role runs on
-# NVIDIA Nemotron through Nebius Token Factory), POSTGRES_PASSWORD,
-# NEO4J_PASSWORD, JWT_SECRET_KEY. GEMINI_API_KEY, DEEPSEEK_API_KEY and
-# QWEN_API_KEY matter only if you clear NEMOTRON_ROLES.
+# Edit .env — set the key of at least one model provider (GEMINI_API_KEY,
+# DEEPSEEK_API_KEY, QWEN_API_KEY, NVIDIA_API_KEY or NEBIUS_API_KEY), then
+# POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET_KEY. AGENT_MODEL points every
+# role at one model of that provider (see Model providers).
 
 # 2. Full clean start
 ./reset_infra.sh
@@ -335,126 +335,73 @@ flowchart LR
 
 ---
 
-## Model Providers (Nebius / NVIDIA Nemotron)
+## Model providers
 
 Every model call goes through `llm-proxy/`, which routes each request by the
-model id's prefix and only sends a request for an id that is in that provider's
-fetched catalogue. Four providers are wired today:
+model id's prefix and only sends a request for an id that is in that
+provider's fetched catalogue. No provider is the default: the stack runs on
+whichever keys you set, and each agent role can be pointed at any model the
+proxy reaches.
 
-| Provider | Model id prefix | Endpoint |
-|---|---|---|
-| `nebius` | `nvidia/`, `meta-llama/`, `mistralai/`, `deepseek-ai/`, `qwen/`, `google/` | `https://api.tokenfactory.nebius.com/v1` (Nebius Token Factory) |
-| `gemini` | `gemini-`, `gemma-` | Google Generative Language API |
-| `deepseek` | `deepseek-` | `https://api.deepseek.com/v1` |
-| `qwen` | `qwen`, `qwq-`, `qvq-` | Qwen Cloud compatible mode |
+| Provider | Model id prefix | Key | Endpoint |
+|---|---|---|---|
+| `gemini` | `gemini-`, `gemma-` | `GEMINI_API_KEY` | Google Generative Language API |
+| `deepseek` | `deepseek-` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
+| `qwen` | `qwen`, `qwq-`, `qvq-` | `QWEN_API_KEY` | Qwen Cloud compatible mode |
+| `nvidia` | `nvidia/` | `NVIDIA_API_KEY` (`nvapi-…`) | `https://integrate.api.nvidia.com/v1` (`NVIDIA_PROXY_URL`) |
+| `nebius` | `nvidia/`, `meta-llama/`, `mistralai/`, `deepseek-ai/`, `qwen/`, `google/` | `NEBIUS_API_KEY` | `https://api.tokenfactory.nebius.com/v1` (`NEBIUS_PROXY_URL`) |
 
-**Nebius Token Factory serves the NVIDIA open models.** The key comes from
-<https://tokenfactory.nebius.com> — its own console, *not*
-`console.nebius.com`, whose IAM keys do not authenticate here. Log in, open
-**Workspace → Explore → API keys**, create one and copy it (it is shown once).
-Set `NEBIUS_API_KEY` and the proxy fetches the live catalogue at startup (and
-hourly), lists what it found on `GET /v1/models`, and routes Nemotron ids to
-Token Factory over the OpenAI-compatible chat endpoint:
+The proxy fetches each provider's catalogue at startup and hourly and lists
+what it found on `GET /v1/models`; an id in no catalogue fails at the door
+with its reason, so a retired or mistyped id never reaches a provider. When
+two providers serve the same id (`nvidia/…` on NVIDIA's gateway and on
+Nebius), the first whose key works and whose catalogue lists it answers.
+`NEBIUS_PROXY_URL` can point the `nebius` provider at your own Serverless
+Endpoint.
 
 ```bash
-curl -s localhost:5100/v1/models | jq '.models[] | select(.provider=="nebius")'
+curl -s localhost:5100/v1/models | jq -r '.models[] | "\(.provider)  \(.id)"'
+```
+
+### Choosing a model per role
+
+The roles' built-in models are the `ROLE_MODEL_MAP` in
+`backend/llm/model_factory.py`: a default, not a recommendation, and two
+variables replace it without a code change:
+
+```bash
+# One model for every role: enough with a single provider key.
+AGENT_MODEL=gemini-2.5-flash
+
+# One role its own model, over AGENT_MODEL. The name is the role in upper
+# case: PO, ARCHITECT, SCRUMMASTER, DEVELOPER, QA, SECOPS, TECHWRITER,
+# ENGRAMPROCESSOR. Any id the proxy's catalogues list works.
+AGENT_MODEL_ARCHITECT=nvidia/nemotron-3-ultra-550b-a55b
+AGENT_MODEL_DEVELOPER=deepseek-v4-pro
+```
+
+`ModelFactory.model_for_role()` resolves this for the task worker and the
+LangGraph producer alike. Requests carry `X-Agent-Role` and
+`X-Business-Unit-ID`, so per-role and per-company token budgets apply
+whatever the provider.
+
+### Checking a provider end to end
+
+`GET /v1/models` shows what the proxy can reach; a chat completion through
+it proves the key, the catalogue and the provider together:
+
+```bash
 curl -s localhost:5100/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"nvidia/nemotron-3-super-120b-a12b",
+  -d '{"model":"<an id from /v1/models>",
        "messages":[{"role":"user","content":"Explain the outbox pattern"}]}'
 ```
 
-Nothing about Nebius is hardcoded: the model list comes from Token Factory, so
-new Nemotron releases appear without a code change. `NEBIUS_PROXY_URL` points
-the provider at your own Nebius Serverless Endpoint instead of Token Factory.
-
-Model ids above are examples — the ids Token Factory serves change, and the
-proxy rejects anything not in the catalogue it fetched, so read the real list
-before pinning one:
-
-```bash
-curl -s localhost:5100/v1/models | jq -r '.models[] | select(.provider=="nebius") | .id'
-```
-
-### Giving agent roles an NVIDIA model
-
-`NEMOTRON_ROLES` names the roles that run on Nemotron. The shipped
-`.env.example` opts every role in, so a stack started from it runs on Nemotron
-as soon as `NEBIUS_API_KEY` is set; clear the variable and the roles fall back
-to the Qwen/DeepSeek defaults in `backend/llm/model_factory.py`:
-
-```bash
-# Comma-separated role names (case-insensitive).
-NEMOTRON_ROLES=po,architect,scrummaster,developer,qa,secops,techwriter,engramprocessor
-
-# The model those roles get. The _STRATEGIC and _FAST variants override it
-# per role: PO, Architect and SecOps read _STRATEGIC; TechWriter reads _FAST.
-NEMOTRON_MODEL=nvidia/nemotron-3-super-120b-a12b
-NEMOTRON_MODEL_STRATEGIC=nvidia/nemotron-3-ultra-550b-a55b
-NEMOTRON_MODEL_FAST=nvidia/nemotron-3-super-120b-a12b
-# Any role NEMOTRON_ROLES does not name.
-AGENT_MODEL=nvidia/nemotron-3-super-120b-a12b
-```
-
-The proxy checks every id against the provider's live catalogue before a
-request goes out, so a retired or mistyped id fails at the door with its
-reason. With `NVIDIA_API_KEY` (an `nvapi-` key) the same `nvidia/` ids are
-served by NVIDIA's own gateway (`NVIDIA_PROXY_URL`); when both keys are set,
-the first provider whose key works and whose catalogue lists the id answers.
-
-### Checking the integration end to end
-
-`scripts/verify-nebius.sh` proves the three layers separately, so a failure
-points at the broken one instead of the whole feature:
-
-```bash
-NEBIUS_API_KEY=... ./scripts/verify-nebius.sh
-# or, against a proxy that is already running:
-PROXY_URL=http://localhost:5100 ./scripts/verify-nebius.sh
-```
-
-| Layer | What it checks |
-|-------|----------------|
-| 1 | The key authenticates against Token Factory and lists the served models |
-| 2 | The proxy publishes those models under `provider: nebius`, with tiers |
-| 3 | A real chat completion comes back through the proxy |
-
-The Nemotron models Token Factory serves are reasoning models: they spend
-tokens on `reasoning` before writing `content`. With a small `max_tokens` the
-completion can come back with `content: null` and `finish_reason: length` — the
-request worked, it just ran out of budget. Give it a few hundred tokens.
-
-`ModelFactory.model_for_role()` resolves this, and `get_model()` uses it, so
-the choice reaches every LangGraph node. Requests still carry
-`X-Agent-Role` and `X-Business-Unit-ID`, so per-role and per-company token
-budgets apply to Nemotron calls exactly as they do to the others.
-
-### Nebius services used, and what Token Factory changed
-
-**Nebius Token Factory is the only Nebius service this project uses.** The
-`nebius` provider in `llm-proxy/` talks to its OpenAI-compatible endpoint, and
-`NEBIUS_PROXY_URL` can point the same provider at a Nebius Serverless Endpoint
-instead. No other Nebius service (compute, storage, managed databases) is part
-of the stack: the rest runs on the project's own PostgreSQL, NATS and Neo4j.
-
-What Token Factory did for the project, concretely:
-
-- **The whole NVIDIA open-model line behind one key.** Nemotron 3 Ultra
-  (550B), Super (120B) and Nano (30B) are served from the same endpoint, so the
-  project never had to host or quantize a model to give the strategic roles a
-  larger one and the TechWriter a smaller one. The tiering in
-  `backend/llm/model_factory.py` is a configuration choice, not infrastructure.
-- **A live catalogue instead of a hardcoded list.** The proxy fetches what
-  Token Factory serves at startup and hourly and refuses any id that is not in
-  it. A new Nemotron release becomes available by changing an environment
-  variable, with no release of La Fabrique.
-- **The proxy's existing controls applied unchanged.** Per-company token
-  budgets, per-role routing, and the `reported` / `estimated` marking of each
-  answer's token count work on Nemotron calls as on every other provider,
-  because Token Factory speaks the same OpenAI-compatible protocol.
-- **A reproducible check.** `scripts/verify-nebius.sh` proves the key, the
-  catalogue and a completion separately, so the integration can be verified in
-  a minute on any machine with a key.
+`scripts/verify-nebius.sh` does the same for the Nebius provider in three
+separate layers (key, catalogue, completion), so a failure points at the
+broken one. Reasoning models spend tokens on `reasoning` before writing
+`content`: with a small `max_tokens` the answer can come back empty with
+`finish_reason: length`. Give them a few hundred tokens.
 
 [⬆ Back to Top](#la-fabrique)
 
@@ -475,8 +422,6 @@ The GlassRoom is the real-time observability view for a running sprint. It uses 
 **Event types:** `status`, `agent_start`, `message`, `agent_complete`, `error`, `needs_split`
 
 The SSE endpoint (`GET /v1/glassroom/stream?sprint_id=<id>`) replays the last 50 events on connect so late-joining clients get full context. With authentication required it also takes `ticket=<t>`, a five-minute token for that sprint from `POST /v1/sprints/{id}/stream_ticket` (a browser EventSource cannot send an Authorization header). Keepalive pings are sent every 15 seconds to maintain the connection.
-
-The same room in a headset, La Fabrique XR (the Meta VR Start Developer Competition entry), lives on the `meta-vr` branch and is published at <https://careb36.github.io/la-fabrique/>; `main` is the web product.
 
 [⬆ Back to Top](#la-fabrique)
 
@@ -649,7 +594,7 @@ a task is always a person's. See [SECURITY.md](SECURITY.md).
 [Architecture](ARCHITECTURE.md) · [API reference](docs/API.md) ·
 [User guide](USER_GUIDE.md) · [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) ·
-[Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)
+[Changelog](CHANGELOG.md)
 
 ---
 

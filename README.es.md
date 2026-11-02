@@ -92,6 +92,7 @@ contra un stack en marcha y abre `/evidence`.
 - [Instalación](#instalación)
 - [Primeros Pasos](#primeros-pasos)
 - [Orquestación de Agentes](#orquestación-de-agentes)
+- [Proveedores de modelos](#proveedores-de-modelos)
 - [GlassRoom](#glassroom)
 - [Estructura del Proyecto](#estructura-del-proyecto)
 - [Referencia de la API](#referencia-de-la-api)
@@ -178,7 +179,7 @@ sequenceDiagram
 | **Memoria Vectorial** | PostgreSQL 15 + pgvector |
 | **Grafo de Conocimiento** | Neo4j 5.15 Enterprise + APOC |
 | **Broker de Mensajes** | NATS JetStream |
-| **Modelos de IA** | Gemini (Google AI Studio) + DeepSeek |
+| **Modelos de IA** | Cualquier proveedor al que llegue el proxy de LLM (Gemini, DeepSeek, Qwen, NVIDIA, Nebius Token Factory), elegido por rol de agente en la configuración |
 | **Infraestructura** | Docker Compose (8 servicios), VS Code CLI |
 
 [⬆ Volver al inicio](#la-fabrique)
@@ -190,7 +191,7 @@ sequenceDiagram
 - **Docker** 24.0+ con Docker Compose v2
 - **Python** 3.12+ (para desarrollo local)
 - **Node.js** 24+ (para desarrollo frontend) — `engines.node >=24` y CI usa Node 24
-- **API Keys:** Google AI Studio (Gemini), DeepSeek
+- **API keys** de al menos un proveedor de modelos: Google AI Studio (Gemini), DeepSeek, Qwen, NVIDIA o Nebius Token Factory (ver [Proveedores de modelos](#proveedores-de-modelos))
 
 [⬆ Volver al inicio](#la-fabrique)
 
@@ -203,8 +204,11 @@ La forma canónica de levantar el entorno local es `reset_infra.sh`:
 ```bash
 # 1. Copiar y configurar el entorno
 cp .env.example .env
-# Editar .env — completar GEMINI_API_KEY, DEEPSEEK_API_KEY,
-# POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET_KEY
+# Editar .env — poner la clave de al menos un proveedor de modelos
+# (GEMINI_API_KEY, DEEPSEEK_API_KEY, QWEN_API_KEY, NVIDIA_API_KEY o
+# NEBIUS_API_KEY), y POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET_KEY.
+# AGENT_MODEL apunta todos los roles a un modelo de ese proveedor
+# (ver Proveedores de modelos).
 
 # 2. Inicio limpio completo
 ./reset_infra.sh
@@ -227,8 +231,8 @@ docker compose up -d --build frontend
 **Daemon local de VS Code** (opcional — para escritura real de archivos en tu IDE):
 
 ```bash
-pip install nats-py
-python vscode-daemon/daemon.py
+./scripts/start-daemon.sh        # macOS / Linux
+.\scripts\start-daemon.ps1       # Windows (PowerShell)
 ```
 
 [⬆ Volver al inicio](#la-fabrique)
@@ -304,6 +308,78 @@ flowchart LR
 **Manejo de errores:** Cualquier fallo en un nodo establece `last_error` y cortocircuita hacia `burn`. El `GraphRecursionError` se captura explícitamente a nivel de workflow. En ambos casos el kickoff falló, pero el sprint sigue `active`: el agent worker publica `Kickoff failed: <reason>; tasks continue` en el Glassroom y las tareas del backlog siguen ejecutándose en el task worker. Solo una decisión explícita de división marca un sprint como `needs_split`.
 
 **Enrutamiento de modelos:** `ModelFactory.ROLE_MODEL_MAP` resuelve cada rol hacia un LLM específico vía el proxy — se cambia el modelo por rol en configuración sin tocar el código.
+
+[⬆ Volver al inicio](#la-fabrique)
+
+---
+
+## Proveedores de modelos
+
+Toda llamada a un modelo pasa por `llm-proxy/`, que enruta cada pedido por
+el prefijo del id del modelo y solo envía un pedido cuando el id está en el
+catálogo que descargó de ese proveedor. Ningún proveedor es el predeterminado:
+el stack corre con las claves que configures, y cada rol de agente puede
+apuntar a cualquier modelo al que llegue el proxy.
+
+| Proveedor | Prefijo del id | Clave | Endpoint |
+|---|---|---|---|
+| `gemini` | `gemini-`, `gemma-` | `GEMINI_API_KEY` | Google Generative Language API |
+| `deepseek` | `deepseek-` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
+| `qwen` | `qwen`, `qwq-`, `qvq-` | `QWEN_API_KEY` | Qwen Cloud, modo compatible |
+| `nvidia` | `nvidia/` | `NVIDIA_API_KEY` (`nvapi-…`) | `https://integrate.api.nvidia.com/v1` (`NVIDIA_PROXY_URL`) |
+| `nebius` | `nvidia/`, `meta-llama/`, `mistralai/`, `deepseek-ai/`, `qwen/`, `google/` | `NEBIUS_API_KEY` | `https://api.tokenfactory.nebius.com/v1` (`NEBIUS_PROXY_URL`) |
+
+El proxy descarga el catálogo de cada proveedor al arrancar y cada hora, y
+publica lo que encontró en `GET /v1/models`; un id que no está en ningún
+catálogo falla en la puerta con su motivo, así que un id retirado o mal
+escrito nunca llega a un proveedor. Cuando dos proveedores sirven el mismo id
+(`nvidia/…` en la pasarela de NVIDIA y en Nebius), responde el primero cuya
+clave funciona y cuyo catálogo lo lista. `NEBIUS_PROXY_URL` puede apuntar el
+proveedor `nebius` a tu propio Serverless Endpoint.
+
+```bash
+curl -s localhost:5100/v1/models | jq -r '.models[] | "\(.provider)  \(.id)"'
+```
+
+### Elegir un modelo por rol
+
+Los modelos de fábrica de cada rol están en `ROLE_MODEL_MAP`, en
+`backend/llm/model_factory.py`: un valor por defecto, no una recomendación,
+y dos variables lo reemplazan sin tocar código:
+
+```bash
+# Un modelo para todos los roles: alcanza con la clave de un solo proveedor.
+AGENT_MODEL=gemini-2.5-flash
+
+# Un rol con su propio modelo, por encima de AGENT_MODEL. El nombre es el rol
+# en mayúsculas: PO, ARCHITECT, SCRUMMASTER, DEVELOPER, QA, SECOPS,
+# TECHWRITER, ENGRAMPROCESSOR. Sirve cualquier id que listen los catálogos.
+AGENT_MODEL_ARCHITECT=nvidia/nemotron-3-ultra-550b-a55b
+AGENT_MODEL_DEVELOPER=deepseek-v4-pro
+```
+
+`ModelFactory.model_for_role()` lo resuelve igual para el task worker y para
+el productor de LangGraph. Los pedidos llevan `X-Agent-Role` y
+`X-Business-Unit-ID`, así que los presupuestos de tokens por rol y por
+empresa aplican sea cual sea el proveedor.
+
+### Verificar un proveedor de punta a punta
+
+`GET /v1/models` muestra a qué llega el proxy; una completion a través de él
+prueba la clave, el catálogo y el proveedor juntos:
+
+```bash
+curl -s localhost:5100/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<un id de /v1/models>",
+       "messages":[{"role":"user","content":"Explicá el patrón outbox"}]}'
+```
+
+`scripts/verify-nebius.sh` hace lo mismo para el proveedor Nebius en tres
+capas separadas (clave, catálogo, completion), así una falla señala la capa
+rota. Los modelos de razonamiento gastan tokens en `reasoning` antes de
+escribir `content`: con un `max_tokens` chico la respuesta puede volver vacía
+con `finish_reason: length`. Dales unos cientos de tokens.
 
 [⬆ Volver al inicio](#la-fabrique)
 
@@ -465,7 +541,7 @@ persona. Ver [SECURITY.md](SECURITY.md).
 [Arquitectura](ARCHITECTURE.md) · [Referencia de la API](docs/API.md) ·
 [Guía de usuario](USER_GUIDE.es.md) · [Contribuir](CONTRIBUTING.md) ·
 [Seguridad](SECURITY.md) · [Código de conducta](CODE_OF_CONDUCT.md) ·
-[Changelog](CHANGELOG.md) · [Hackathon](docs/HACKATHON.md)
+[Changelog](CHANGELOG.md)
 
 ---
 
