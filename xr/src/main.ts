@@ -352,6 +352,8 @@ const voiceRegistry = roomRegistry(
 /** The last exchange, shown on the Room panel; '' while voice is off. */
 let voiceLine = '';
 let lastHeard = '';
+/** The on-device recognizer has loaded its model (the browser's needs none). */
+let modelReady = false;
 // Who listens: the browser's own recognizer where it exists (instant, no
 // download), else Whisper running in the page, the only one the Meta Quest
 // browser has. `?stt=whisper` forces the latter, `?stt=tiny|base|small`
@@ -408,6 +410,7 @@ const voice = new VoiceSession({
       return;
     }
     if (e.kind === 'status') {
+      if (e.status.kind === 'ready') modelReady = true;
       // Progress and "hearing you" replace the line only while nothing was said.
       if (e.text && !lastHeard) voiceLine = e.text;
       else if (e.status.kind === 'speech-start') lastHeard = '';
@@ -415,6 +418,7 @@ const voice = new VoiceSession({
       return;
     }
     if (e.kind === 'listening') lastHeard = '';
+    if (e.kind === 'stopped' || e.kind === 'error') modelReady = false;
     voiceLine = e.kind === 'stopped' ? '' : lastHeard ? `"${lastHeard}": ${e.text}` : e.text;
     if (e.kind === 'error') player.ingest({ type: 'status', role: 'System', agent: 'Voice', message: e.text, taskId: tasks[0].id });
     touch();
@@ -793,6 +797,7 @@ if (!live && new URLSearchParams(location.search).has('director')) {
       desk: () => handPanels[1].object.localToWorld(new Vector3(0, handPanels[1].anchor === 'bottom' ? 0.2 : -0.15, 0)),
       restart,
       newCompany,
+      voiceReady: () => voice.listening && (!(voiceRecognizer instanceof WhisperRecognizer) || modelReady),
       setSpeed: (times) => {
         timeScale = times;
       },

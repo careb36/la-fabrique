@@ -34,6 +34,8 @@ export interface Stage {
   newCompany: () => void;
   /** How many times faster than real time the demo's clock runs. */
   setSpeed: (times: number) => void;
+  /** Voice is on and its recognizer is ready to hear (a model may load first). */
+  voiceReady: () => boolean;
 }
 
 interface EmulatedHand {
@@ -281,6 +283,43 @@ export async function direct(stage: Stage): Promise<void> {
   await sleep(3000);
   await press(stage.label('Contrast off'));
   await sleep(1500);
+
+  // 2:50 Another way in: voice. The director presses Voice and asks the
+  // person recording to speak; the room's real recognizer does the rest.
+  // Without a microphone (a headless run) nothing happens and it moves on.
+  const voiceButton = stage.label('Voice');
+  if (voiceButton) {
+    await press(voiceButton);
+    // The first time, the recognizer downloads its model: the Room panel
+    // shows the progress; the request to speak waits until it can hear.
+    const prompt = overlay('Voice is getting ready...', 'top-right');
+    await until(stage.voiceReady, 120_000);
+    prompt.textContent = 'Say: "pausá" or "pause"';
+    const paused = await until(() => player.paused, 20_000);
+    if (paused) {
+      await sleep(2500);
+      prompt.textContent = 'Say: "seguí" or "resume"';
+      await until(() => !player.paused, 15_000);
+      await sleep(2000);
+    } else {
+      prompt.textContent = 'No microphone here: voice skipped.';
+      await sleep(2000);
+    }
+    prompt.remove();
+    await press(stage.label('Voice'));
+    await sleep(800);
+  }
+
   await lookAt(stage.wall(), 1500);
   overlay('The end. Stop recording.', 'top-right');
+}
+
+/** True as soon as `check` holds, false once `ms` have passed without it. */
+async function until(check: () => boolean, ms: number): Promise<boolean> {
+  const end = performance.now() + ms;
+  while (performance.now() < end) {
+    if (check()) return true;
+    await sleep(100);
+  }
+  return check();
 }

@@ -148,3 +148,41 @@ listed here was built during it, in `xr/` and its workflow, and is new.
   without a headset. A caption says it was recorded in the emulator; a badge
   marks the faster stretches. Motion is timed by the clock, not by frames,
   so a slow machine records the same script.
+- **A voice that talks with the person, in Spanish and English**
+  (`src/voice/`, `src/commands.ts`; replaces `src/voice.ts`). The room
+  declares its actions with their phrases in both languages, and a voice
+  layer that stands alone (a test fails if it imports from the room)
+  listens, understands with a deterministic grammar, confirms before a
+  decision ("¿Apruebo Password reset endpoint? Decí sí o no."), asks which
+  task when a launch names none and takes "la tercera" as the answer, and
+  answers out loud in the language spoken. Stems match every form of a verb
+  (aprobá, aprobala, aprobado); a send back beats an approval in the same
+  sentence; "no la apruebo" is a send back. The grammar understands every
+  phrase of a bilingual bank of 124 (`bench/phrases.json`), from 23% of
+  the Spanish ones with the keyword list it replaced. What the microphone
+  hears while the room talks is dropped, so an answer never becomes an
+  order.
+- **Recognition and voice on the device** (`src/voice/whisper-recognizer.ts`,
+  `src/voice/piper-speaker.ts`). The Meta Quest browser has no speech
+  recognition or `speechSynthesis`, so the room brings both: Silero VAD and
+  Whisper in a worker (transformers.js, WebGPU when the browser hands out
+  an adapter, else WASM), the language detected per phrase among the two the
+  room speaks with the page's language winning a close call, the room's
+  vocabulary as Whisper's prompt; and Piper in another worker, a voice per
+  language, downloaded once and kept on the device. The browser's own
+  recognizer and voice are still used where they exist. Checked end to end
+  in a headless Chromium with a WAV as the microphone
+  (`scripts/voice-e2e.cjs`): a synthesized "Pausá." pauses the room in about
+  fifteen seconds, model download included.
+- **The voice measured, not guessed** (`bench/`). The bank, rendered by
+  seven synthetic voices (Kokoro, and Piper voices from Argentina, Mexico,
+  Spain and the US), scored by whether the room understood the command
+  meant, per language, voice and intent. The vocabulary prompt lifts the
+  on-device `base` model from 52% to 65% of the Spanish commands (91%
+  English); the numbers choose the default model. Reports in
+  `bench/results/`.
+- **A server tier for the voice** (`speech-service/`, optional): faster-whisper
+  `large-v3-turbo`, Kokoro, and a model that matches free speech to one of
+  the room's actions in a fixed JSON the service checks; the page's own
+  recognizers and voices stay behind as fallbacks. For the demo on the
+  published page nothing is needed. 161 tests.

@@ -46,14 +46,17 @@ no backend: the page runs a self-contained demo of recorded agent runs.
    the device, so the curve continues next time; **New company** starts
    over.
 9. Also on the **Room** panel: **Contrast** switches to black panels with
-   white borders and white text (remembered on the device), and **Voice**,
-   where the browser has speech recognition, talks with you in English or
-   Spanish: "approve", "mandala de vuelta", "pause", "seguí", "recenter",
-   "launch the CSV export", "lanzá la segunda", "¿cómo va?", "help". It
-   answers out loud in the language you spoke, asks before a decision
-   ("Approve Password reset endpoint? Say yes or no") and, when a launch
-   names no task, asks which. The panel shows what it heard and what it
-   said.
+   white borders and white text (remembered on the device), and **Voice**
+   talks with you in English or Spanish: "approve", "mandala de vuelta",
+   "pause", "seguí", "recenter", "launch the CSV export", "lanzá la
+   segunda", "¿cómo va?", "help". It answers out loud in the language you
+   spoke, asks before a decision ("Approve Password reset endpoint? Say yes
+   or no") and, when a launch names no task, asks which. The panel shows
+   what it heard and what it said. On the Quest, which has no speech
+   recognition or voice of its own, the room brings both: the first time
+   you press Voice it downloads a recognizer (about 80 MB) and, when it
+   first answers, a voice (about 60 MB per language); both are kept on the
+   device, and from then on it works offline. The panel shows the download.
 
 The whole demo takes under five minutes.
 
@@ -73,10 +76,13 @@ emulated head and right hand like a person would and lets the room's real
 interactions do the rest (the pinch presses Launch, the grab carries the
 delivery onto a ring, the head's dwell opens the Verifier), starting from a
 new company: a cold open on a decision, the room, a full task with a send
-back, the rest of the sprint, the next sprint with no rework, and high
-contrast. A caption reads "Recorded in the Quest 3 emulator" throughout and
-a badge marks the stretches played faster. It needs the emulator, so on a
-headset the parameter does nothing (`src/director.ts`).
+back, the rest of the sprint, the next sprint with no rework, high
+contrast, and voice: it presses Voice and asks the person recording to say
+"pausá" or "pause", then "seguí" or "resume", and the room's real
+recognizer does the rest (without a microphone it says so and moves on).
+A caption reads "Recorded in the Quest 3 emulator" throughout and a badge
+marks the stretches played faster. It needs the emulator, so on a headset
+the parameter does nothing (`src/director.ts`).
 
 ## Live mode (optional)
 
@@ -95,6 +101,14 @@ each agent's panel and the room's log update as the factory works. Live
 mode only watches: tasks start, and decisions are taken, in the web app,
 where a Manager signs in. The backend must list the page's origin in
 `CORS_ORIGINS`.
+
+A build with `VITE_SPEECH_API` (or a page opened with `?speech=<url>`,
+`?speech_key=<key>`) gives the voice the project's server tier, the
+speech service in `speech-service/`: faster-whisper `large-v3-turbo` hears
+far better than a model that fits in a headset, Kokoro answers in a
+natural voice, and free speech the grammar does not catch goes to a model
+that picks one of the room's actions. The page's own recognizers and
+voices stay behind as fallbacks.
 
 ## What it shows
 
@@ -138,13 +152,22 @@ The Room panel says where it went.
 - Every action has a second way in: a fingertip or a pinch on a button,
   the delivery carried by hand or the buttons, and voice for everything
   the Room and Tasks panels do. The voice layer (`src/voice/`) stands
-  alone: the room declares its actions with their phrases in both
-  languages (`src/commands.ts`), and the layer listens, understands with a
-  deterministic grammar (a send back always wins over an approval in the
-  same sentence; "no la apruebo" is a send back), confirms what matters
-  and answers in the language spoken. Its grammar is held to the phrase
-  bank the recognizers are measured with (`bench/`). High contrast keeps
-  the layout and changes only the palette (`setContrast` in `src/ui/kit.ts`).
+  alone (a test fails if it imports from the room): the room declares its
+  actions with their phrases in both languages (`src/commands.ts`), and
+  the layer listens, understands with a deterministic grammar (a send
+  back always wins over an approval in the same sentence; "no la apruebo"
+  is a send back; a task is named by a word of its title or its place),
+  confirms what matters, and answers in the language spoken. It listens
+  with the browser's recognizer where there is one, else with Silero VAD
+  and Whisper running in the page in a worker (WebGPU when the browser
+  hands out an adapter, else WASM), the language detected per phrase
+  among the two it speaks and the room's vocabulary as Whisper's prompt;
+  it answers with the browser's voice where there is one, else with Piper
+  in a worker. Its grammar is held to the phrase bank the recognizers are
+  measured with (`bench/`), and what the microphone hears while the room
+  talks is dropped, so an answer never becomes an order. High contrast
+  keeps the layout and changes only the palette (`setContrast` in
+  `src/ui/kit.ts`).
 - Sound tells you what happens without looking: each agent has its own
   note and its sounds come from its light on the wall (spatial audio, all
   synthesized, no files); a delivery that waits for you chimes from the
@@ -158,9 +181,24 @@ The Room panel says where it went.
 La Fabrique XR was built and checked without a headset:
 
 - Every interaction (pinch, carrying the delivery to a ring, looking at an
-  agent, the guide, voice with a stand-in recognizer, high contrast, two
-  sprints in a row) was driven in IWSDK's Quest 3 emulator, seated in its
-  synthetic office, with emulated hands, by scripted browser runs.
+  agent, the guide, high contrast, two sprints in a row) was driven in
+  IWSDK's Quest 3 emulator, seated in its synthetic office, with emulated
+  hands, by scripted browser runs.
+- **Voice, end to end, with a WAV as the microphone**
+  (`scripts/voice-e2e.cjs`): a headless Chromium opens the built page,
+  the on-device recognizer downloads its model, hears a synthesized
+  "Pausá." and the room pauses, in about fifteen seconds; a Piper sentence
+  is synthesized at speaking pace. **Voice, measured** (`bench/`): 124
+  phrases a person would say, Spanish (Rioplatense, with tuteo and usted)
+  and English, rendered by seven synthetic voices and scored by whether
+  the room understood the command meant. The grammar understands every
+  written phrase (from 23% of the Spanish ones with the keyword list it
+  replaced). From the synthetic voices, with the room's vocabulary as
+  Whisper's prompt, the on-device `base` model gets 65% of the Spanish
+  commands and 91% of the English ones; the server tier's `small` 77% and
+  95%. Synthetic voices are a hard test (one Piper voice says "Lanzá" as
+  "la ensal" to a person too); the reports are in `bench/results/`, and
+  the owner's own recordings are measured the same way.
 - The logic is covered by unit tests (`npm run test:run`).
 - **Render cost, measured**: at the demo's busiest moment each frame asks
   for 118 draw calls and about 48,000 triangles, against a budget of 200
@@ -182,6 +220,9 @@ npm run dev        # https://localhost:5173 with the Quest 3 emulator
 npm run test:run   # unit tests
 npm run build      # static site in dist/
 npm run budget     # render budget in the emulator (after build + preview)
+node scripts/voice-e2e.cjs bench/audio/es-dora/es-pause-1.wav pause tiny
+                   # voice end to end in a headless Chromium (after build;
+                   # the WAV comes from bench/synthesize.py, see bench/README.md)
 ```
 
 Requires Node.js 20.19 or later. To try a local build on a Quest, serve it
@@ -197,6 +238,9 @@ prints from the Quest browser; accept the self-signed certificate.
 | `src/ui/` | the panels |
 | `src/layout.ts` | where panels go around a seated person |
 | `src/room.ts`, `src/surfaces.ts` | the desk and wall from the room's detected surfaces |
+| `src/commands.ts` | what the room can be asked to do by voice: its actions and their phrases |
+| `src/voice/` | the voice layer: registry, grammar, session, recognizers (browser, Whisper on the device, the speech service), speakers (browser, Piper, Kokoro through the service) |
+| `bench/` | the phrase bank and the meter the recognizers and the grammar are held to |
 | `src/main.ts` | the IWSDK world |
 
 What is new for the Meta VR Start Developer Competition is listed in
