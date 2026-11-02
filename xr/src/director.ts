@@ -294,11 +294,11 @@ export async function direct(stage: Stage): Promise<void> {
     // shows the progress; the request to speak waits until it can hear.
     const prompt = overlay('Voice is getting ready...', 'top-right');
     await until(stage.voiceReady, 120_000);
-    prompt.textContent = 'Say: "pausá" or "pause"';
+    prompt.textContent = 'Say: "pará un momento" or "pause"';
     const paused = await until(() => player.paused, 20_000);
     if (paused) {
       await sleep(2500);
-      prompt.textContent = 'Say: "seguí" or "resume"';
+      prompt.textContent = 'Say: "continuá" or "resume"';
       await until(() => !player.paused, 15_000);
       await sleep(2000);
     } else {
