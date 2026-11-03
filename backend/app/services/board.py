@@ -27,13 +27,18 @@ from typing import Any
 
 from models import BacklogItem
 
-from services.orchestration_metrics import is_architect_consult_comment
+from services import orchestration_metrics as _metrics
+from services.orchestration_metrics import (
+    GATE_AUTHORS_LOWER,
+    is_architect_consult_comment,
+)
 
 # Who signs the text checks a deliverable passes before anyone reviews it, and
-# who signs the delivery evidence check; neither ever writes a deliverable.
-QUALITY_GATE_AUTHOR = "Quality gate"
-DELIVERY_GATE_AUTHOR = "Verifier"
-GATE_AUTHORS_LOWER = {QUALITY_GATE_AUTHOR.lower(), DELIVERY_GATE_AUTHOR.lower()}
+# who signs the delivery evidence check; neither ever writes a deliverable. The
+# names live beside the counters that must leave them out.
+QUALITY_GATE_AUTHOR = _metrics.QUALITY_GATE_AUTHOR
+DELIVERY_GATE_AUTHOR = _metrics.DELIVERY_GATE_AUTHOR
+
 # Who writes the phrases that keep a task blocked ("manual triage", "agent
 # error:"): the system, the gates and a person, never a deliverable's author.
 BLOCK_VERDICT_AUTHORS = {"system", "user"} | GATE_AUTHORS_LOWER
@@ -399,6 +404,33 @@ def count_second_attempt(tally: dict[str, int], status: str, comments: Any) -> N
 def has_console_advice(comments: Any) -> bool:
     """Whether the worker wrote a console assistant's advice onto the task."""
     return any(is_console_advice_note(comment) for comment in comment_list(comments))
+
+
+def usage_comment(sources: list[dict[str, str]]) -> str:
+    """The worker's note quoting the console assistants: one line per assistant."""
+    if not sources:
+        return ""
+    lines = [CONSOLE_ADVICE_PREFIX]
+    for source in sources:
+        label = source.get("label", "Assistant")
+        purpose = source.get("purpose", "advice")
+        excerpt = (source.get("excerpt") or "").strip().replace("\n", " ")
+        lines.append(f"- {label} ({purpose}): {excerpt}")
+    return "\n".join(lines)[:1800]
+
+
+def earlier_advice(comments: Any) -> str:
+    """The advice note a first attempt left, to quote back on a rework.
+
+    The assistants' prompt carries no review feedback, so running them again
+    on the same task gives the same answer at the same cost (the Claude CLI
+    reads the whole repository each time). The note holds the excerpts the
+    worker kept, the prefix stripped; empty when no attempt was advised.
+    """
+    for comment in reversed(comment_list(comments)):
+        if is_console_advice_note(comment):
+            return _text(comment)[len(CONSOLE_ADVICE_PREFIX) :].strip()
+    return ""
 
 
 def no_console_advice() -> dict[str, dict[str, int]]:

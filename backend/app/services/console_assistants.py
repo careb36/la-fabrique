@@ -29,8 +29,7 @@ from models import AssistantRuntimeState
 from nats_client import NATSClient
 from sqlmodel import Session, select
 
-from services import console_capabilities
-from services.board import CONSOLE_ADVICE_PREFIX
+from services import board, console_capabilities
 from services.glassroom import publish_glassroom
 
 logger = setup_logger("fabrique-console-assistants")
@@ -435,6 +434,10 @@ async def collect_advice(
     if role not in CONSOLE_ASSISTANT_ALLOWED_ROLES:
         return dict(NO_ADVICE)
 
+    reused = board.earlier_advice(item.get("comments"))
+    if reused:  # asked on an earlier attempt; no sources, so no second note
+        return {"combined": reused, "sources": []}
+
     # Only consult assistants the daemon reported it can run; the capability
     # probe runs once when workers start (see lifecycle).
     available = set(console_capabilities.available_console_assistants())
@@ -610,15 +613,5 @@ async def collect_advice(
     return {"combined": "\n\n".join(notes), "sources": sources}
 
 
-def usage_comment(sources: list[dict[str, str]]) -> str:
-    """Summarize which external assistants were used and their immediate value."""
-    if not sources:
-        return ""
-
-    lines = [CONSOLE_ADVICE_PREFIX]
-    for source in sources:
-        label = source.get("label", "Assistant")
-        purpose = source.get("purpose", "advice")
-        excerpt = (source.get("excerpt") or "").strip().replace("\n", " ")
-        lines.append(f"- {label} ({purpose}): {excerpt}")
-    return "\n".join(lines)[:1800]
+# The board note's builder lives beside its readers (services.board).
+usage_comment = board.usage_comment
