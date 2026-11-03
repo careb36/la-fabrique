@@ -156,7 +156,11 @@ def test_the_decision_is_asked_of_the_companys_scrum_master(
 
     assert answer == "DECISION: person\nEND"
     (messages, model, role, timeout) = calls[0]
-    assert (model, role, timeout) == ("deepseek-v4-pro", "ScrumMaster", 90)
+    assert (model, role, timeout) == (
+        "deepseek-v4-pro",
+        "ScrumMaster",
+        scrum_master.TIMEOUT_SECONDS,
+    )
     assert messages == [
         {"role": "system", "content": "Be brief."},
         {"role": "user", "content": "the question"},
