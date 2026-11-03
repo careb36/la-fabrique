@@ -28,6 +28,7 @@ from routers import (
     inbox_router,
     messages_router,
     procedures_router,
+    sprint_control_router,
     sprint_router,
     support_router,
     voice_router,
@@ -94,6 +95,7 @@ setup_metrics(app)
 app.include_router(auth_router)
 app.include_router(enterprise_router)
 app.include_router(sprint_router)
+app.include_router(sprint_control_router)
 app.include_router(agents_router)
 app.include_router(agent_runs_router)
 app.include_router(support_router)
