@@ -75,8 +75,8 @@ export interface InitCompanyRequest {
   company_name: string
   description?: string
   default_scope_size?: 'S' | 'M' | 'L'
-  default_sprint_length_days?: number
   autonomy_level?: number
+  start_now?: boolean
   timezone?: string
   agents?: DiscoverTeamAgent[]
   permissions?: Record<string, string>
