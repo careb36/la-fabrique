@@ -16,6 +16,7 @@ from routers.inbox import router as inbox_router
 from routers.messages import router as messages_router
 from routers.procedures import router as procedures_router
 from routers.sprint import router as sprint_router
+from routers.sprint_control import router as sprint_control_router
 from routers.support import router as support_router
 from routers.voice import router as voice_router
 from routers.workspace import router as workspace_router
@@ -30,6 +31,7 @@ __all__ = [
     "inbox_router",
     "messages_router",
     "procedures_router",
+    "sprint_control_router",
     "sprint_router",
     "support_router",
     "voice_router",

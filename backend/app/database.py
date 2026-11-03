@@ -86,6 +86,8 @@ def _ensure_runtime_schema() -> None:
         # sprints — scope replaces duration_days
         "ALTER TABLE IF EXISTS sprints ADD COLUMN IF NOT EXISTS scope_size VARCHAR DEFAULT 'M'",
         "ALTER TABLE IF EXISTS sprints ALTER COLUMN duration_days DROP NOT NULL",
+        # sprints — why the worker paused one (no credit at a provider)
+        "ALTER TABLE IF EXISTS sprints ADD COLUMN IF NOT EXISTS pause_reason TEXT",
         # companies — default scope replaces default_sprint_length_days
         "ALTER TABLE IF EXISTS companies ADD COLUMN IF NOT EXISTS default_scope_size VARCHAR DEFAULT 'M'",
         "ALTER TABLE IF EXISTS companies ALTER COLUMN default_sprint_length_days DROP NOT NULL",

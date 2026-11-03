@@ -124,7 +124,9 @@
       "active": "Active",
       "needs_split": "Needs Split",
       "completed": "Completed",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "planned": "Planned",
+      "paused": "Paused"
     },
     "roles": {
       "PO": {
@@ -1525,5 +1527,28 @@
     "runsTitle": "Runs awaiting a decision",
     "loadError": "Could not load what needs you: {{message}}",
     "navCount": "{{count}} waiting for you"
+  },
+  "workControl": {
+    "plannedTitle": "This sprint has not started",
+    "plannedHint": "The agents start working when you start it.",
+    "pausedTitle": "This sprint is paused",
+    "pausedHint": "Nothing is dispatched, reviewed or retried until it is resumed.",
+    "start": "Start",
+    "stop": "Stop",
+    "stopConfirm": "Stop this sprint for good? Unfinished tasks are blocked and no follow-up sprint opens.",
+    "autonomy": "Autonomy",
+    "autonomyLevel": {
+      "1": "1 — A person approves every task",
+      "2": "2 — A person approves risky work",
+      "3": "3 — Fully autonomous"
+    },
+    "autonomyHint": {
+      "1": "Every task QA approves waits for a person to accept it, and new sprints never start on their own.",
+      "2": "Routine work closes on QA's approval; high-risk deliveries wait for a person.",
+      "3": "Also opens the next sprint and adopts procedures on its own when a sprint closes."
+    },
+    "startNow": "Start Sprint 0 as soon as the company is created",
+    "startNowHint": "Leave it unchecked to review the plan first and start it from the sprint page.",
+    "startNowHumanLed": "At level 1 you always start it yourself."
   }
 }
