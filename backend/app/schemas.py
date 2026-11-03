@@ -58,6 +58,8 @@ class CompanyInitRequest(BaseModel):
     )
     project_path: str | None = None  # Filesystem path scanned during discovery
     detected_stack: dict[str, Any] | None = None  # Stack analysis from discovery phase
+    # Start Sprint 0 at once; ``False`` leaves it planned until someone starts it.
+    start_now: bool = True
 
 
 # How many tasks a sprint of each scope may hold, and the ceiling for any.

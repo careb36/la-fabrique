@@ -2,6 +2,8 @@
 Tests for Prometheus metrics.
 """
 
+import re
+
 from metrics import endpoint_label
 
 
@@ -66,7 +68,8 @@ def test_requests_are_labelled_by_route_not_by_path(test_client):
 
     assert 'endpoint="/v1/sprints/{sprint_id}/board"' in text
     assert 'endpoint="unmatched"' in text
-    assert "987654" not in text
+    # Only the labels matter: a duration sum can end in the same digits.
+    assert not re.search(r'="[^"]*987654', text)
 
 
 def test_fixed_routes_and_preflights_are_not_unmatched(test_client):

@@ -17,6 +17,7 @@ import {
 } from '../services/api'
 import { FolderPicker } from '../components/FolderPicker'
 import { WorkspaceDaemonHelp } from '../components/WorkspaceDaemonHelp'
+import { StartChoice } from '../components/SprintControls'
 import { clientPlatform } from '../lib/workspace'
 import {
   useModels,
@@ -554,6 +555,7 @@ export default function CompanyNew() {
 
   // Step 2 — Autonomy
   const [autonomyLevel, setAutonomyLevel] = useState(2)
+  const [startNow, setStartNow] = useState(false)
 
   // Step 3 — Permissions
   const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS)
@@ -721,8 +723,6 @@ export default function CompanyNew() {
   const updatePerm = (key: string, val: string) =>
     setPermissions(prev => ({ ...prev, [key]: val }))
 
-  // ── Submit ────────────────────────────────────────────────────────────────
-
   const handleSubmit = async () => {
     const { require_approval_deploy, require_approval_db_write, ...credPerms } = permissions
     const payload = {
@@ -730,6 +730,7 @@ export default function CompanyNew() {
       description: companyDesc,
       default_scope_size: scopeSize,
       autonomy_level: autonomyLevel,
+      start_now: startNow && autonomyLevel > 1,
       timezone,
       agents,
       permissions: credPerms,
@@ -743,9 +744,7 @@ export default function CompanyNew() {
         const companyId = response.company_id
         const sprintId = response?.sprint_id ?? companyId
         setCompany(companyId, companyName.trim())
-        // Navigate immediately, load profile in background
         navigate(`/sprints/${sprintId}`)
-        // Fallback navigation in case React Router doesn't work
         setTimeout(() => {
           if (!window.location.pathname.startsWith(`/sprints/${sprintId}`)) {
             window.location.href = `/sprints/${sprintId}`
@@ -1127,6 +1126,7 @@ export default function CompanyNew() {
               </div>
               <button type="button" onClick={() => setStep(2)} className="text-xs text-brand-400 hover:underline">{t('companyNew.edit')}</button>
             </div>
+            <StartChoice checked={startNow} humanLed={autonomyLevel === 1} onChange={setStartNow} />
           </div>
 
           {/* Permissions */}
