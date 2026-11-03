@@ -42,6 +42,8 @@ from llm.model_factory import default_model_for_role
 
 REVIEWER_AGENT_NAME = "Reviewer agent"
 REVIEWER_ROLE = "Reviewer"
+# The answer is a fixed form: a decision, a category and a reason.
+ANSWER_MAX_TOKENS = 400
 # The answer's words, and the decision a person records for each.
 DECISIONS = {"approve": "approved", "reject": "rejected"}
 CATEGORIES = ("scope", "quality", "security", "other")
@@ -239,7 +241,7 @@ def ask_llm(prompt: str) -> str:
     client = LLMProxyClient(
         base_url=os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     )
-    client.timeout = 90
+    client.max_tokens = ANSWER_MAX_TOKENS
     model = default_model_for_role(REVIEWER_ROLE)
     result = client.chat(
         messages=[{"role": "user", "content": prompt}], model=model, role=REVIEWER_ROLE

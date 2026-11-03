@@ -53,6 +53,25 @@ from services import (
     scrum_master,
     workspace_daemon,
 )
+from services.answers import (
+    BRIEF_MAX_TOKENS,
+    REVIEW_MAX_TOKENS,
+)
+from services.answers import (
+    gate_reason as _gate_reason,
+)
+from services.answers import (
+    llm_content as _llm_content,
+)
+from services.answers import (
+    llm_failure as _llm_failure,
+)
+from services.answers import (
+    llm_finish_reason as _llm_finish_reason,
+)
+from services.answers import (
+    review_format_reminder as _review_format_reminder,
+)
 from services.architect import track_record as architect_track_record
 from services.architect import track_record_context as architect_record_context
 from services.board import (
@@ -442,37 +461,6 @@ def _resolve_agent_model(agent: dict[str, Any], default_role: str = "Dev") -> st
     return configured or default_model_for_role(agent.get("role") or default_role)
 
 
-def _llm_content(result: dict[str, Any]) -> str:
-    choices = result.get("choices") or [{}]
-    message = (choices[0] or {}).get("message") or {}
-    content = message.get("content") or ""
-    return (content if isinstance(content, str) else str(content)).strip()
-
-
-def _llm_failure(result: dict[str, Any], model: str) -> str | None:
-    """
-    Describe why *result* carries no usable answer, or return ``None``.
-
-    The text reads ``LLM call failed: <provider> <status> <message>``.  The
-    proxy reports provider errors as ``{"provider", "status", "message"}``;
-    errors of the proxy itself (unknown model, quota) name ``llm-proxy`` and
-    the HTTP status.  A 2xx answer with empty content is a failure too, so it
-    never reaches the word-count gate as an empty deliverable.
-    """
-    if result.get("error"):
-        detail = result.get("detail")
-        detail = detail if isinstance(detail, dict) else {}
-        provider = detail.get("provider") or "llm-proxy"
-        status = detail.get("status") or result.get("status_code") or "unreachable"
-        message = detail.get("message") or detail.get("error") or result["error"]
-        return f"LLM call failed: {provider} {status} {message}"
-    if not _llm_content(result):
-        provider = result.get("provider") or "llm-proxy"
-        served = result.get("served_model") or model
-        return f"LLM call failed: {provider} 200 empty response from {served}"
-    return None
-
-
 def _execute_task(
     item: dict[str, Any],
     agent: dict[str, Any],
@@ -502,7 +490,6 @@ def _execute_task(
     """
     llm_url = os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     client = LLMProxyClient(base_url=llm_url)
-    client.timeout = 120  # Agent tasks may produce long outputs
 
     system_prompt = agent.get("system_prompt") or (
         f"You are a {agent.get('seniority', 'Senior')} {agent.get('role', 'Developer')} "
@@ -599,6 +586,7 @@ def _execute_task(
 
     content = _llm_content(result)
     agent["served_model"] = result.get("served_model") or None
+    agent["finish_reason"] = _llm_finish_reason(result)
 
     if company_id is not None:
         record_agent_turn(
@@ -679,7 +667,7 @@ def _consult_architect(
     client = LLMProxyClient(
         base_url=os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     )
-    client.timeout = 90
+    client.max_tokens = BRIEF_MAX_TOKENS
     try:
         result = client.chat(
             messages=[
@@ -2672,8 +2660,9 @@ async def process_backlog_tasks(nats_client: NATSClient) -> None:
                 item, deliverable
             )
             if not is_valid:
+                reason = _gate_reason(validation_reason, agent.get("finish_reason"))
                 await _send_back_from_quality_gate(
-                    nats_client, item, agent, sprint, deliverable, validation_reason
+                    nats_client, item, agent, sprint, deliverable, reason
                 )
                 return
 
@@ -3048,6 +3037,7 @@ async def _review_cycle(nats_client: NATSClient) -> None:
                 f"--- DELIVERABLE ---\n{deliverable[:3000]}\n--- END ---\n\n"
                 "Provide a brief review (2-3 sentences). If acceptable, start with 'APPROVED:'. "
                 "If not, start with 'NEEDS WORK:' and explain what's missing."
+                + _review_format_reminder(qa_review_failures)
                 # A second attempt is judged against what blocked the first and
                 # the ScrumMaster's brief for it, the same context the agent had.
                 + previous_attempt_context(item)
@@ -3507,6 +3497,7 @@ def _call_llm_for_review(
     reads from the audit trail instead of its comment-scan fallback.
     """
     client = LLMProxyClient(os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100"))
+    client.max_tokens = REVIEW_MAX_TOKENS
     messages = [{"role": "user", "content": prompt}]
     if agent.get("system_prompt"):
         messages.insert(0, {"role": "system", "content": agent["system_prompt"]})
