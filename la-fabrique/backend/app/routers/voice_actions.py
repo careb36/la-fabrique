@@ -18,13 +18,8 @@ from services import voice_control
 from sqlmodel import select
 
 from routers.agent_runs import approve_run
-from routers.sprint import (
-    dispatch_sprint_tasks,
-    pause_sprint,
-    plan_sprint,
-    resume_sprint,
-    start_sprint,
-)
+from routers.sprint import plan_sprint, start_sprint
+from routers.sprint_control import dispatch_sprint_tasks, pause_sprint, resume_sprint
 from routers.voice_support import _company, _fail, _result, key_company, status_answer
 
 # ---------------------------------------------------------------------------
