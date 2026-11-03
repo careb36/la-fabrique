@@ -78,6 +78,7 @@ async def init_company(
             project_path=req.project_path,
             detected_stack=req.detected_stack,
             owner_user_id=user.id if user is not None else None,
+            start_now=req.start_now,
         )
         return result
     except Exception as exc:  # noqa: BLE001 - Translate service failures to a sanitized API error.
@@ -493,8 +494,7 @@ async def discover_team(
             )
 
     try:
-        # Run the synchronous scan + LLM call in a thread pool so the async
-        # event loop stays free while the work runs.
+        # In a thread pool, so the event loop stays free during the scan + LLM call.
         if project is not None:
             discovery, detected_stack, suggested_team = await asyncio.to_thread(
                 _scan_snapshot
