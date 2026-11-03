@@ -321,6 +321,47 @@ def test_claude_out_of_quota_enters_cooldown_and_copilot_advice_is_used(
     assert console_assistants.usage_comment([]) == ""
 
 
+def test_a_rework_attempt_reuses_the_first_attempt_s_advice(
+    configured, db, daemon_with_both
+):
+    """The assistants are asked once per task: a second run would answer the
+    same prompt again, so the rework quotes the board note instead."""
+    _session, company = db
+    nats = _Daemon(
+        {"copilot": {"success": True, "stdout": "Split the module in two.\n"}}
+    )
+    item = {"id": 12, "title": "Fix typo", "description": "A letter."}
+
+    first = _collect(nats, item, DEV, company.id)
+    assert first["combined"] == "[GitHub Copilot CLI]\nSplit the module in two."
+    note = console_assistants.usage_comment(first["sources"])
+    item["comments"] = [
+        {"author": "System", "text": note},
+        {"author": "Atlas", "text": "Here it is."},
+        {"author": "QA", "text": "NEEDS WORK: the letter is still wrong"},
+    ]
+
+    again = _Daemon({"copilot": {"success": True, "stdout": "Same advice.\n"}})
+    second = _collect(again, item, DEV, company.id)
+
+    assert again.executed == [], "no CLI runs on the rework"
+    assert again.published == []
+    assert second == {
+        "combined": "- GitHub Copilot CLI (incremental implementation guidance): Split the module in two.",
+        "sources": [],
+    }
+    assert console_assistants.usage_comment(second["sources"]) == "", (
+        "no second note: the task counts as advised once"
+    )
+    # Only the worker's own note is advice; a deliverable that starts the same
+    # way is not, so the assistants still run for an unadvised task.
+    item["comments"] = [{"author": "Atlas", "text": note}]
+    third = _collect(
+        _Daemon({"copilot": {"success": True, "stdout": "x"}}), item, DEV, company.id
+    )
+    assert third["sources"] != []
+
+
 def test_a_failed_request_and_a_missing_binary_do_not_stop_the_task(
     configured, db, daemon_with_both
 ):

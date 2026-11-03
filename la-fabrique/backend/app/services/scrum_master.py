@@ -22,7 +22,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from llm_proxy_client import LLMProxyClient
+from llm_proxy_client import DEFAULT_TIMEOUT_SECONDS, LLMProxyClient
 from logging_config import setup_logger
 from models import Agent, AgentMessage, BacklogItem, Sprint
 from sqlmodel import Session, select
@@ -53,10 +53,14 @@ BRIEF_LIMIT = 600
 WHY_LIMIT = 300
 FEEDBACK_SHOWN = 3
 FEEDBACK_CHARS = 400
-TIMEOUT_SECONDS = 90
-# The triage is advice the worker waits for: one short attempt, no retries, so
-# a slow or failing proxy cannot hold the review loop for long.
-TRIAGE_TIMEOUT_SECONDS = 45
+# The client waits as long as the proxy may take: a shorter wait discarded an
+# answer the provider had already billed.
+TIMEOUT_SECONDS = DEFAULT_TIMEOUT_SECONDS
+# The triage is advice the worker waits for: one attempt, no retries, so a
+# failing proxy cannot hold the review loop for long.
+TRIAGE_TIMEOUT_SECONDS = DEFAULT_TIMEOUT_SECONDS
+# The answers come in a fixed format: a decision and a brief, or two procedures.
+ANSWER_MAX_TOKENS = 1500
 
 _ANSWER = re.compile(
     r"DECISION:[\s*`\"']*(?P<decision>retry|person)\b"
@@ -216,6 +220,7 @@ def ask_model(
         base_url=os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     )
     client.timeout = timeout
+    client.max_tokens = ANSWER_MAX_TOKENS
     if retries is not None:
         client.max_retries = retries
     result = client.chat(messages=messages, model=model, role=SCRUM_MASTER_ROLE)

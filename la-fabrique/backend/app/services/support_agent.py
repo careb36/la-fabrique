@@ -32,6 +32,8 @@ from llm.model_factory import default_model_for_role
 
 SUPPORT_AGENT_NAME = "Support agent"
 SUPPORT_ROLE = "Support"
+# The answer is a fixed form: a severity, a category and a short reply.
+ANSWER_MAX_TOKENS = 400
 SEVERITIES = ("critical", "high", "medium", "low")
 CATEGORIES = ("bug", "feature", "question", "incident")
 TICKETS_PER_CYCLE = 5
@@ -176,7 +178,7 @@ def ask_llm(prompt: str) -> str:
     client = LLMProxyClient(
         base_url=os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     )
-    client.timeout = 90
+    client.max_tokens = ANSWER_MAX_TOKENS
     model = default_model_for_role(SUPPORT_ROLE)
     result = client.chat(
         messages=[{"role": "user", "content": prompt}], model=model, role=SUPPORT_ROLE

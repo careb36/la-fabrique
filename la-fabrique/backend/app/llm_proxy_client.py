@@ -32,6 +32,19 @@ def _json_body(response: Any) -> dict[str, Any] | None:
     return body if isinstance(body, dict) else None
 
 
+# How long a call may wait: the proxy's own upstream budget (its
+# ``LLM_UPSTREAM_TIMEOUT_SECONDS``, 110 by default) plus a margin. A shorter
+# wait gives up on an answer the provider is still writing and has billed.
+DEFAULT_TIMEOUT_SECONDS = float(os.getenv("LLM_UPSTREAM_TIMEOUT_SECONDS", "110")) + 10
+
+
+def _payload(messages: list, model: str, max_tokens: int | None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"messages": messages, "model": model}
+    if max_tokens:
+        payload["max_tokens"] = int(max_tokens)
+    return payload
+
+
 class LLMProxyClient:
     """
     Synchronous HTTP client for the Fabrique LLM proxy with Governance support.
@@ -43,10 +56,14 @@ class LLMProxyClient:
 
     def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("LLM_PROXY_URL", "http://localhost:5100")
-        # Has to outlast the proxy's own upstream budget (110 s by default):
-        # timing out first makes the proxy look dead while it is still working,
-        # and the retry loop then multiplied the wait by three.
-        self.timeout = float(os.getenv("LLM_PROXY_TIMEOUT_SECONDS", "150"))
+        # Has to outlast the proxy's own upstream budget: timing out first
+        # discards an answer the provider is still writing (and billing).
+        self.timeout = float(
+            os.getenv("LLM_PROXY_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
+        )
+        # A cap on the answer for the calls whose form is fixed (a review, a
+        # brief, a plan); ``None`` leaves the provider's own limit.
+        self.max_tokens: int | None = None
         self.max_retries = int(os.getenv("LLM_PROXY_MAX_RETRIES", "2"))
         self.retry_backoff_sec = float(os.getenv("LLM_PROXY_RETRY_BACKOFF_SEC", "1.0"))
 
@@ -77,15 +94,15 @@ class LLMProxyClient:
         """
         Send a multi-turn chat request to the LLM proxy (OpenAI-compatible).
 
-        ``max_tokens`` is forwarded as-is when given: an answer made of whole
-        files does not fit in the provider's default, and the proxy passes the
-        payload through unchanged. ``extra`` carries provider-specific switches
-        (``chat_template_kwargs``) that the proxy also forwards untouched.
+        ``max_tokens`` caps the answer; without it the provider's own limit
+        applies. ``extra`` carries provider-specific switches
+        (``chat_template_kwargs``) that the proxy forwards untouched. Only a
+        request that never reached the proxy is retried: an error the proxy
+        answered has already cost its upstream call (and the proxy's own
+        fallbacks), so sending it again would bill it again.
         """
         headers = self._get_headers(role, bu_id)
-        payload: dict[str, Any] = {"messages": messages, "model": model}
-        if max_tokens:
-            payload["max_tokens"] = int(max_tokens)
+        payload = _payload(messages, model, max_tokens or self.max_tokens)
         if extra:
             payload.update(extra)
 
@@ -100,21 +117,6 @@ class LLMProxyClient:
 
                 if response.ok:
                     return response.json()
-
-                # Retry transient proxy/provider failures (5xx).
-                if response.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.retry_backoff_sec * (attempt + 1)
-                    logger.warning(
-                        "LLM proxy transient error %s for model=%s role=%s (attempt %s/%s), retrying in %.1fs",
-                        response.status_code,
-                        model,
-                        role,
-                        attempt + 1,
-                        self.max_retries + 1,
-                        delay,
-                    )
-                    time.sleep(delay)
-                    continue
 
                 body = response.text[:500]
                 logger.error(
@@ -161,12 +163,13 @@ class LLMProxyClient:
         model: str = "gemini-pro",
         role: str = "Developer",
         bu_id: int | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         """
         Async variant of ``chat()`` used by LangGraph async nodes.
         """
         headers = self._get_headers(role, bu_id)
-        payload = {"messages": messages, "model": model}
+        payload = _payload(messages, model, max_tokens or self.max_tokens)
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -184,20 +187,6 @@ class LLMProxyClient:
                         result["quota_used"] = response.headers.get("X-Quota-Used")
                         result["quota_limit"] = response.headers.get("X-Quota-Limit")
                     return result
-
-                if response.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.retry_backoff_sec * (attempt + 1)
-                    logger.warning(
-                        "LLM proxy transient async error %s for model=%s role=%s (attempt %s/%s), retrying in %.1fs",
-                        response.status_code,
-                        model,
-                        role,
-                        attempt + 1,
-                        self.max_retries + 1,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
 
                 body = response.text[:500]
                 logger.error(
