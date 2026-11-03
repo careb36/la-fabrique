@@ -350,6 +350,10 @@ When a run carries PO feedback, the graph enters at a `rejection` node instead o
 
 **Model routing:** `ModelFactory.ROLE_MODEL_MAP` resolves each role to a specific LLM via the proxy — swap models per role in configuration without code changes.
 
+### Starting and stopping work
+
+A new company's Sprint 0 starts at once only if you tick **Start Sprint 0 as soon as the company is created** in the wizard (never at autonomy level 1); otherwise the sprint page shows it as not started with a **Start** button. On the Board tab a Manager can **Pause** (nothing is dispatched, reviewed or retried until **Resume**), **Stop** a sprint for good, and change the company's **Autonomy**: 1, every approved task waits for a person; 2, only high-risk deliveries wait; 3, follow-up sprints and procedures also run on their own. If a model provider refuses a call for lack of credit, the sprint pauses itself and the page says which provider; top up and resume.
+
 [⬆ Back to Top](#la-fabrique)
 
 ---
