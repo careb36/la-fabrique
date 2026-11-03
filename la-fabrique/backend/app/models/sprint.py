@@ -50,8 +50,12 @@ class Sprint(SQLModel, table=True):
     start_date: str | None = None  # ISO-8601 date string
     scope_size: str = "M"  # "S" (≤4 items) | "M" (≤8) | "L" (≤12)
     duration_days: int | None = None  # deprecated — kept for backwards compat
-    status: str = "active"  # "active" | "completed" | "cancelled" | "needs_split"
+    # "planned" | "active" | "paused" | "completed" | "cancelled" | "needs_split"
+    # (``services/sprint_control.py`` says which of them let agents work).
+    status: str = "active"
     goal: str | None = None  # Sprint goal statement for the team
+    # Why the sprint is paused, when the worker paused it (e.g. no credit).
+    pause_reason: str | None = None
 
 
 class BacklogItem(SQLModel, table=True):

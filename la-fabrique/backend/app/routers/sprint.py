@@ -19,7 +19,6 @@ from auth_policy import current_user_if_required, require_company_role
 from auth_tokens import STREAM_TICKET_MINUTES, create_stream_ticket
 from database import get_session
 from fastapi import APIRouter, Depends, HTTPException
-from logging_config import logger
 from models import (
     Agent,
     BacklogItem,
@@ -389,6 +388,7 @@ async def list_sprints(
             "id": s.id,
             "sprint_name": s.sprint_name,
             "status": s.status,
+            "pause_reason": s.pause_reason,
             "goal": s.goal,
             "start_date": s.start_date,
             "scope_size": s.scope_size,
@@ -453,6 +453,7 @@ async def get_sprint_board(
         "scope_size": sprint.scope_size,
         "item_limit": SCOPE_LIMITS.get(sprint.scope_size, 8),
         "status": sprint.status,
+        "pause_reason": sprint.pause_reason,
         "goal": sprint.goal,
     }
 
@@ -550,95 +551,3 @@ async def update_backlog_item(
         "assignee": item.assignee,
         "comments": item.comments,
     }
-
-
-@router.post("/sprints/{sprint_id}/dispatch")
-async def dispatch_sprint_tasks(
-    sprint_id: int,
-    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
-    user: User | None = Depends(current_user_if_required),  # noqa: B008 - FastAPI dependency marker.
-):
-    """
-    Dispatch all ``todo`` backlog items in a sprint to their assigned agents.
-
-    Creates an ``OutboxEvent`` for each eligible item.  The background worker
-    publishes these to NATS as ``task.assign`` messages and the task worker
-    picks them up.  Items already dispatched (non-todo status) are skipped.
-    """
-    sprint = session.get(Sprint, sprint_id)
-    if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
-
-    require_company_role(session, user, sprint.company_id, "Manager")
-    if sprint.status == "paused":
-        raise HTTPException(status_code=409, detail="Sprint is paused")
-    items = session.exec(
-        select(BacklogItem).where(
-            BacklogItem.sprint_id == sprint_id,
-            BacklogItem.status == "todo",
-        )
-    ).all()
-
-    if not items:
-        return {"dispatched": 0, "message": "No todo items to dispatch"}
-
-    dispatched = 0
-    for item in items:
-        nats_payload = {
-            "subject": "task.assign",
-            "message": {
-                "backlog_item_id": item.id,
-                "interaction_id": str(uuid4()),
-                "agent": item.assignee or "PO",
-                "sprint_id": sprint.id,
-            },
-        }
-        session.add(
-            OutboxEvent(
-                aggregate_type="backlog_item",
-                aggregate_id=str(item.id),
-                event_type="nats_publish",
-                payload=nats_payload,
-            )
-        )
-        dispatched += 1
-
-    session.commit()
-    logger.info("Dispatched %d tasks for sprint %d", dispatched, sprint_id)
-    return {"dispatched": dispatched, "sprint_id": sprint_id}
-
-
-@router.post("/sprints/{sprint_id}/pause")
-async def pause_sprint(
-    sprint_id: int,
-    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
-    user: User | None = Depends(current_user_if_required),  # noqa: B008 - FastAPI dependency marker.
-):
-    sprint = session.get(Sprint, sprint_id)
-    if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
-    require_company_role(session, user, sprint.company_id, "Manager")
-    if sprint.status == "paused":
-        return {"status": "already_paused"}
-    sprint.status = "paused"
-    session.add(sprint)
-    session.commit()
-    return {"status": "paused"}
-
-
-@router.post("/sprints/{sprint_id}/resume")
-async def resume_sprint(
-    sprint_id: int,
-    session: Session = Depends(get_session),  # noqa: B008 - FastAPI dependency marker.
-    user: User | None = Depends(current_user_if_required),  # noqa: B008 - FastAPI dependency marker.
-):
-    sprint = session.get(Sprint, sprint_id)
-    if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
-    require_company_role(session, user, sprint.company_id, "Manager")
-    if sprint.status != "paused":
-        return {"status": sprint.status}
-    sprint.status = "active"
-    session.add(sprint)
-    session.commit()
-    return {"status": "active"}
