@@ -20,6 +20,7 @@ from app.services.orchestration_metrics import (
     canonical_kpi_role,
     classify_review_result,
     count_architect_consults,
+    count_qa_rework_requests,
     extract_usage_tokens,
     format_architect_consult_comment,
     is_architect_consult_comment,
@@ -226,6 +227,30 @@ def test_should_consult_architect_once_per_attempt_and_again_after_rework():
     # Consulted again for the rework → stop until the next rework.
     assert not should_consult_architect(
         item, _DEV, [consulted, deliverable, needs_work, consulted]
+    )
+
+
+def test_a_gate_send_back_is_not_a_rework_that_earns_a_new_brief():
+    """The Quality gate and the Verifier ask for the same deliverable again,
+    so a second brief would repeat the first; only a reviewer's verdict counts."""
+    item = {"title": "Ship login page", "description": "", "priority": "high"}
+    consulted = {"author": "Architect", "text": f"{ARCHITECT_CONSULT_MARKER} do X"}
+    deliverable = {"author": "Atlas", "text": "Here is the implementation ..."}
+    gate = {"author": "Quality gate", "text": "NEEDS WORK: Too short (12 words)"}
+    verifier = {"author": "Verifier", "text": "NEEDS WORK: files_written refuted"}
+    system = {"author": "System", "text": "NEEDS WORK: agent error"}
+    qa = {"author": "QA", "text": "NEEDS WORK: missing validation"}
+
+    assert (
+        count_qa_rework_requests([deliverable, gate, deliverable, verifier, system])
+        == 0
+    )
+    assert not should_consult_architect(item, _DEV, [consulted, deliverable, gate])
+    assert not should_consult_architect(item, _DEV, [consulted, deliverable, verifier])
+    # A reviewer's send-back still earns one, after any number of gate send-backs.
+    assert count_qa_rework_requests([deliverable, gate, deliverable, qa]) == 1
+    assert should_consult_architect(
+        item, _DEV, [consulted, deliverable, gate, deliverable, qa]
     )
 
 

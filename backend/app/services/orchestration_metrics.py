@@ -258,13 +258,32 @@ def count_architect_consults(comments: Any) -> int:
     return sum(1 for c in _coerce_comments(comments) if is_architect_consult_comment(c))
 
 
+# Who signs the text checks a deliverable passes before anyone reviews it, and
+# who signs the delivery evidence check; neither ever writes a deliverable.
+# Defined here, beside the counters that must leave them out, and re-exported
+# by ``services.board``.
+QUALITY_GATE_AUTHOR = "Quality gate"
+DELIVERY_GATE_AUTHOR = "Verifier"
+GATE_AUTHORS_LOWER = frozenset(
+    {QUALITY_GATE_AUTHOR.lower(), DELIVERY_GATE_AUTHOR.lower()}
+)
+# The gates and the system send work back without reviewing it: their
+# ``NEEDS WORK:`` is a deterministic check, not a reviewer's opinion.
+_NOT_A_REVIEWER = frozenset({"system"}) | GATE_AUTHORS_LOWER
+
+
 def count_qa_rework_requests(comments: Any) -> int:
-    """Number of ``NEEDS WORK:`` verdicts already recorded on the item."""
+    """Number of reviewers' ``NEEDS WORK:`` verdicts already recorded on the item.
+
+    A send-back by the Quality gate (too short, unbalanced fences) or the
+    Verifier (a refuted write) is not counted: it asks for the same deliverable
+    again, so a new Architect brief would say what the last one said.
+    """
     return sum(
         1
         for c in _coerce_comments(comments)
         if isinstance(c, dict)
-        and str(c.get("author", "")).strip().lower() != "system"
+        and str(c.get("author", "")).strip().lower() not in _NOT_A_REVIEWER
         and classify_review_result(str(c.get("text", ""))) == RESULT_NEEDS_WORK
     )
 

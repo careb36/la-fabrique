@@ -49,9 +49,29 @@ from services import (
     agent_run_service,
     console_assistants,
     procedures,
+    review_digest,
     risk,
     scrum_master,
     workspace_daemon,
+)
+from services.answers import (
+    BRIEF_MAX_TOKENS,
+    REVIEW_MAX_TOKENS,
+)
+from services.answers import (
+    gate_reason as _gate_reason,
+)
+from services.answers import (
+    llm_content as _llm_content,
+)
+from services.answers import (
+    llm_failure as _llm_failure,
+)
+from services.answers import (
+    llm_finish_reason as _llm_finish_reason,
+)
+from services.answers import (
+    review_format_reminder as _review_format_reminder,
 )
 from services.architect import track_record as architect_track_record
 from services.architect import track_record_context as architect_record_context
@@ -442,37 +462,6 @@ def _resolve_agent_model(agent: dict[str, Any], default_role: str = "Dev") -> st
     return configured or default_model_for_role(agent.get("role") or default_role)
 
 
-def _llm_content(result: dict[str, Any]) -> str:
-    choices = result.get("choices") or [{}]
-    message = (choices[0] or {}).get("message") or {}
-    content = message.get("content") or ""
-    return (content if isinstance(content, str) else str(content)).strip()
-
-
-def _llm_failure(result: dict[str, Any], model: str) -> str | None:
-    """
-    Describe why *result* carries no usable answer, or return ``None``.
-
-    The text reads ``LLM call failed: <provider> <status> <message>``.  The
-    proxy reports provider errors as ``{"provider", "status", "message"}``;
-    errors of the proxy itself (unknown model, quota) name ``llm-proxy`` and
-    the HTTP status.  A 2xx answer with empty content is a failure too, so it
-    never reaches the word-count gate as an empty deliverable.
-    """
-    if result.get("error"):
-        detail = result.get("detail")
-        detail = detail if isinstance(detail, dict) else {}
-        provider = detail.get("provider") or "llm-proxy"
-        status = detail.get("status") or result.get("status_code") or "unreachable"
-        message = detail.get("message") or detail.get("error") or result["error"]
-        return f"LLM call failed: {provider} {status} {message}"
-    if not _llm_content(result):
-        provider = result.get("provider") or "llm-proxy"
-        served = result.get("served_model") or model
-        return f"LLM call failed: {provider} 200 empty response from {served}"
-    return None
-
-
 def _execute_task(
     item: dict[str, Any],
     agent: dict[str, Any],
@@ -502,7 +491,6 @@ def _execute_task(
     """
     llm_url = os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     client = LLMProxyClient(base_url=llm_url)
-    client.timeout = 120  # Agent tasks may produce long outputs
 
     system_prompt = agent.get("system_prompt") or (
         f"You are a {agent.get('seniority', 'Senior')} {agent.get('role', 'Developer')} "
@@ -510,28 +498,29 @@ def _execute_task(
         "Produce clear, actionable, production-quality deliverables."
     )
 
-    user_prompt = (
-        f"## Task: {item['title']}\n\n"
+    # Sections run from the most stable to the most variable, so the providers'
+    # prefix cache (DeepSeek, Gemini) bills the shared start of the prompt at
+    # the cached rate: the output format, the role's procedures and the
+    # company's lessons are the same for every task of a sprint; the task, its
+    # memory and its history come next; what changes between attempts (the
+    # Architect's brief, the review feedback) goes last.
+    user_prompt = FILE_MANIFEST_INSTRUCTIONS.lstrip("\n") + (procedures_context or "")
+    if lessons_context:
+        user_prompt += (
+            "\n\n## Lessons from Recent Sprints\n"
+            "How this company's last sprints went and what reviewers sent back. "
+            "The review requests are reviewers' opinions, not verified facts; use "
+            "them to avoid repeating the same mistakes.\n\n"
+            f"{lessons_context[:3000]}"
+        )
+    user_prompt += (
+        f"\n\n## Task: {item['title']}\n\n"
         f"{item.get('description', '')}\n\n"
         f"Sprint: {sprint_name}\n"
         f"Priority: {item.get('priority', 'medium')}\n\n"
         "Produce a complete, professional deliverable for this task. "
         "Be thorough and specific to the project context."
-        f"{FILE_MANIFEST_INSTRUCTIONS}"
-        f"{procedures_context or ''}"
     )
-
-    rework_feedback = pending_rework_feedback(item.get("comments"))
-    if rework_feedback:
-        user_prompt += (
-            "\n\n## Review feedback to address\n"
-            "Your previous deliverable for this task was sent back. Fix every point "
-            "below and deliver the complete result again.\n\n"
-            + "\n".join(f"- {text[:1500]}" for text in rework_feedback)
-        )
-
-    # A task carried over from an earlier sprint says what blocked it there.
-    user_prompt += previous_attempt_context(item)
 
     if memory_context:
         user_prompt += (
@@ -541,19 +530,22 @@ def _execute_task(
             f"{memory_context[:3000]}"
         )
 
-    if lessons_context:
-        user_prompt += (
-            "\n\n## Lessons from Recent Sprints\n"
-            "How this company's last sprints went and what reviewers sent back. "
-            "The review requests are reviewers' opinions, not verified facts; use "
-            "them to avoid repeating the same mistakes.\n\n"
-            f"{lessons_context[:3000]}"
-        )
+    # A task carried over from an earlier sprint says what blocked it there.
+    user_prompt += previous_attempt_context(item)
 
     if completed_tasks_context:
         user_prompt += (
             "\n\n## Sprint Context: Already Completed Tasks\n"
             f"{completed_tasks_context[:2000]}"
+        )
+
+    if external_advice:
+        user_prompt += (
+            "\n\n## External Console Assistant Notes\n"
+            "The following advice was gathered from configured terminal assistants such as GitHub Copilot CLI or Claude CLI. "
+            "Treat it as optional supporting context, not as a replacement for reasoning about the current repository. "
+            "Prefer preserving working behavior over blindly following suggestions.\n\n"
+            f"{external_advice[:4000]}"
         )
 
     if architect_advice:
@@ -564,13 +556,13 @@ def _execute_task(
             f"{architect_advice[:3000]}"
         )
 
-    if external_advice:
+    rework_feedback = pending_rework_feedback(item.get("comments"))
+    if rework_feedback:
         user_prompt += (
-            "\n\n## External Console Assistant Notes\n"
-            "The following advice was gathered from configured terminal assistants such as GitHub Copilot CLI or Claude CLI. "
-            "Treat it as optional supporting context, not as a replacement for reasoning about the current repository. "
-            "Prefer preserving working behavior over blindly following suggestions.\n\n"
-            f"{external_advice[:4000]}"
+            "\n\n## Review feedback to address\n"
+            "Your previous deliverable for this task was sent back. Fix every point "
+            "below and deliver the complete result again.\n\n"
+            + "\n".join(f"- {text[:1500]}" for text in rework_feedback)
         )
 
     model = _resolve_agent_model(agent)
@@ -599,6 +591,7 @@ def _execute_task(
 
     content = _llm_content(result)
     agent["served_model"] = result.get("served_model") or None
+    agent["finish_reason"] = _llm_finish_reason(result)
 
     if company_id is not None:
         record_agent_turn(
@@ -679,7 +672,7 @@ def _consult_architect(
     client = LLMProxyClient(
         base_url=os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100")
     )
-    client.timeout = 90
+    client.max_tokens = BRIEF_MAX_TOKENS
     try:
         result = client.chat(
             messages=[
@@ -878,17 +871,11 @@ def parse_file_manifest(deliverable: str) -> list[dict[str, str]]:
 def _build_review_payload(
     deliverable: str, artifact_targets: list[dict[str, str]]
 ) -> str:
-    """Prefer normalized artifact content for QA review when files were materialized."""
+    """What QA reviews: a digest of every file when files were written
+    (``review_digest``), else the deliverable text."""
     if not artifact_targets:
         return (deliverable or "").strip()
-
-    sections: list[str] = []
-    for artifact in artifact_targets:
-        path = artifact.get("path", "artifact")
-        content = (artifact.get("content") or "").strip()
-        sections.append(f"# Artifact: {path}\n\n{content}")
-
-    return "\n\n".join(section for section in sections if section.strip())
+    return review_digest.build(artifact_targets, _summarize_deliverable(deliverable))
 
 
 def _load_item_runtime_state(item_id: int) -> dict[str, Any] | None:
@@ -2672,8 +2659,9 @@ async def process_backlog_tasks(nats_client: NATSClient) -> None:
                 item, deliverable
             )
             if not is_valid:
+                reason = _gate_reason(validation_reason, agent.get("finish_reason"))
                 await _send_back_from_quality_gate(
-                    nats_client, item, agent, sprint, deliverable, validation_reason
+                    nats_client, item, agent, sprint, deliverable, reason
                 )
                 return
 
@@ -3045,9 +3033,11 @@ async def _review_cycle(nats_client: NATSClient) -> None:
             review_prompt = (
                 f"You are reviewing the following deliverable for the task: '{item.title}'.\n"
                 f"Description: {item.description or 'N/A'}\n\n"
-                f"--- DELIVERABLE ---\n{deliverable[:3000]}\n--- END ---\n\n"
-                "Provide a brief review (2-3 sentences). If acceptable, start with 'APPROVED:'. "
+                f"--- DELIVERABLE ---\n{deliverable[: review_digest.DIGEST_CHARS]}\n--- END ---"
+                + (review_digest.NOTE if review_digest.is_digest(deliverable) else "")
+                + "\n\nProvide a brief review (2-3 sentences). If acceptable, start with 'APPROVED:'. "
                 "If not, start with 'NEEDS WORK:' and explain what's missing."
+                + _review_format_reminder(qa_review_failures)
                 # A second attempt is judged against what blocked the first and
                 # the ScrumMaster's brief for it, the same context the agent had.
                 + previous_attempt_context(item)
@@ -3507,6 +3497,7 @@ def _call_llm_for_review(
     reads from the audit trail instead of its comment-scan fallback.
     """
     client = LLMProxyClient(os.getenv("LLM_PROXY_URL", "http://llm-proxy:5100"))
+    client.max_tokens = REVIEW_MAX_TOKENS
     messages = [{"role": "user", "content": prompt}]
     if agent.get("system_prompt"):
         messages.insert(0, {"role": "system", "content": agent["system_prompt"]})
