@@ -29,6 +29,7 @@ from models import (
 )
 from sqlmodel import Session, func, select
 
+from services import sprint_control
 from services.sprint_planner import plan_foundation_sprint
 
 
@@ -54,9 +55,14 @@ class CompanyService:
         project_path: str | None = None,
         detected_stack: dict[str, Any] | None = None,
         owner_user_id: int | None = None,
+        start_now: bool = True,
     ) -> dict[str, Any]:
         """
         Bootstrap a new company tenant with its AI agents and project credentials.
+
+        With ``start_now`` Sprint 0 is active and its tasks are dispatched at
+        once; without it (and always at the human-led autonomy level) Sprint 0
+        is ``planned`` and waits for ``POST /v1/sprints/{id}/start``.
 
         This involves multiple tables and a non-critical Neo4j seed operation.
         Returns a summary of the created entities.
@@ -137,12 +143,15 @@ class CompanyService:
             project_path=project_path,
         )
 
+        starts = start_now and not sprint_control.needs_person_acceptance(
+            autonomy_level
+        )
         sprint = Sprint(
             company_id=company.id,
             sprint_name="Sprint 0 — Foundations",
             start_date=datetime.now(UTC).date().isoformat(),
             scope_size=default_scope_size,
-            status="active",
+            status=sprint_control.ACTIVE if starts else sprint_control.PLANNED,
             goal=plan.get("goal", f"Foundation sprint for {company_name}"),
         )
         self.session.add(sprint)
@@ -161,6 +170,8 @@ class CompanyService:
             )
             self.session.add(bi)
             self.session.flush()
+            if not starts:
+                continue
 
             nats_payload = {
                 "subject": "task.assign",
@@ -188,6 +199,7 @@ class CompanyService:
         return {
             "company_id": company.id,
             "sprint_id": sprint.id,
+            "sprint_status": sprint.status,
             "task_count": len(tasks),
             "message": f"Company initialized with {len(tasks)} foundation tasks",
         }
