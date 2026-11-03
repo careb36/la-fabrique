@@ -239,6 +239,35 @@ def test_a_missing_count_is_estimated_apart_and_never_shown_as_usage(client, ups
     assert charged == [body["usage_estimate"]] and body["usage_estimate"] > 0
 
 
+def test_max_tokens_reaches_gemini_as_max_output_tokens(client, upstream):
+    """OpenAI-compatible providers read max_tokens from the body as is; Gemini
+    wants it in generationConfig, or the answer runs to the model's own limit."""
+    upstream.set("gemini", gemini_ok())
+    upstream.set("deepseek", openai_ok())
+    body = {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 600}
+
+    client.post("/v1/chat/completions", json={**body, "model": "gemini-3.8-flash"})
+    client.post("/v1/chat/completions", json={**body, "model": "deepseek-v4-pro"})
+
+    gemini, deepseek = upstream.calls
+    assert gemini["json"]["generationConfig"] == {"temperature": 0.7, "maxOutputTokens": 600}
+    assert deepseek["json"]["max_tokens"] == 600
+
+    client.post("/v1/chat/completions", json={"model": "gemini-3.8-flash", "messages": body["messages"]})
+    assert "maxOutputTokens" not in upstream.calls[2]["json"]["generationConfig"]
+
+
+def test_gemini_answers_carry_a_finish_reason_like_the_others(client, upstream):
+    """A caller tells an answer cut at the limit ("length") from a complete one."""
+    for gemini_reason, expected in [("MAX_TOKENS", "length"), ("STOP", "stop"), (None, "other")]:
+        candidate = {"content": {"parts": [{"text": "hello"}]}}
+        if gemini_reason:
+            candidate["finishReason"] = gemini_reason
+        upstream.set("gemini", FakeResponse(200, {"candidates": [candidate]}))
+        answer = _chat(client, "gemini-3.8-flash").get_json()
+        assert answer["choices"][0]["finish_reason"] == expected, gemini_reason
+
+
 def test_gemini_reports_its_own_count_or_the_estimate_stays_apart(client, upstream):
     upstream.set(
         "gemini",
