@@ -124,7 +124,9 @@
       "active": "Activo",
       "needs_split": "Requiere división",
       "completed": "Completado",
-      "cancelled": "Cancelado"
+      "cancelled": "Cancelado",
+      "planned": "Planificado",
+      "paused": "En pausa"
     },
     "roles": {
       "PO": {
@@ -1525,5 +1527,28 @@
     "runsTitle": "Ejecuciones a la espera de una decisión",
     "loadError": "No se pudo cargar lo que te necesita: {{message}}",
     "navCount": "{{count}} esperan por vos"
+  },
+  "workControl": {
+    "plannedTitle": "Este sprint todavía no empezó",
+    "plannedHint": "Los agentes empiezan a trabajar cuando lo inicies.",
+    "pausedTitle": "Este sprint está en pausa",
+    "pausedHint": "No se reparte, revisa ni reintenta nada hasta que lo reanudes.",
+    "start": "Iniciar",
+    "stop": "Detener",
+    "stopConfirm": "¿Detener este sprint definitivamente? Las tareas sin terminar quedan bloqueadas y no se abre un sprint siguiente.",
+    "autonomy": "Autonomía",
+    "autonomyLevel": {
+      "1": "1 — Una persona aprueba cada tarea",
+      "2": "2 — Una persona aprueba lo riesgoso",
+      "3": "3 — Totalmente autónoma"
+    },
+    "autonomyHint": {
+      "1": "Cada tarea que QA aprueba espera que una persona la acepte, y los sprints nuevos nunca arrancan solos.",
+      "2": "El trabajo de rutina se cierra con la aprobación de QA; las entregas de alto riesgo esperan a una persona.",
+      "3": "Además abre el sprint siguiente y adopta procedimientos por su cuenta cuando un sprint cierra."
+    },
+    "startNow": "Iniciar el Sprint 0 apenas se cree la compañía",
+    "startNowHint": "Dejalo sin marcar para revisar el plan primero e iniciarlo desde la página del sprint.",
+    "startNowHumanLed": "En el nivel 1 siempre lo iniciás vos."
   }
 }
