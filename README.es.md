@@ -317,6 +317,10 @@ flowchart LR
 
 **Enrutamiento de modelos:** `ModelFactory.ROLE_MODEL_MAP` resuelve cada rol hacia un LLM específico vía el proxy — se cambia el modelo por rol en configuración sin tocar el código.
 
+### Arrancar y frenar el trabajo
+
+El Sprint 0 de una compañía nueva arranca enseguida solo si marcás **Iniciar el Sprint 0 apenas se cree la compañía** en el asistente (nunca con autonomía 1); si no, la página del sprint lo muestra sin empezar, con un botón **Iniciar**. En la pestaña Board un Manager puede **Pausar** (no se reparte, revisa ni reintenta nada hasta **Reanudar**), **Detener** un sprint para siempre y cambiar la **Autonomía** de la compañía: 1, cada tarea aprobada espera a una persona; 2, solo esperan las entregas de alto riesgo; 3, además los sprints siguientes y los procedimientos corren solos. Si un proveedor de modelos rechaza una llamada por falta de saldo, el sprint se pausa solo y la página dice qué proveedor; recargá saldo y reanudá.
+
 [⬆ Volver al inicio](#la-fabrique)
 
 ---
