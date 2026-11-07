@@ -433,7 +433,7 @@ class SettingsDialog(QDialog):
         self.status.setText(t(self.language, "ui.model_ok"))
 
     def _test_factory(self) -> None:
-        from ..fabrica import FactoryClient, FactoryError
+        from ..factory import FactoryClient, FactoryError
 
         self.status.setText(t(self.language, "ui.testing_factory"))
         QApplication.processEvents()
@@ -652,7 +652,7 @@ class MainWindow(QMainWindow):
         self.runner.submit(self.assistant.handle(text))
 
     def _show_guide(self) -> None:
-        from ..fabrica import guide_text, guide_title
+        from ..factory import guide_text, guide_title
 
         language = self.language
         self.panel.setPlainText(f"{guide_title(language)}\n\n{guide_text(language)}")

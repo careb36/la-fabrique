@@ -13,7 +13,7 @@ import webbrowser
 from collections import deque
 from typing import Any, Callable
 
-from . import fabrica
+from . import factory as factory_api
 from .config import Settings
 from .i18n import normalize, t
 from .llm import ChatModel, ModelError, Reply
@@ -63,7 +63,7 @@ class Assistant:
         model: ChatModel | None,
         registry: ToolRegistry,
         *,
-        factory: fabrica.FactoryClient | None = None,
+        factory: factory_api.FactoryClient | None = None,
         speaker: Any | None = None,
         on_event: Callable[[dict], None] | None = None,
         history_turns: int = HISTORY_TURNS,
@@ -96,9 +96,9 @@ class Assistant:
         Fixed text on both sides: the panel and the voice cannot drift, and it
         costs no model call — so it still works with no API key loaded.
         """
-        title = fabrica.guide_title(self.language)
-        body = fabrica.guide_text(self.language)
-        summary = fabrica.spoken_summary(self.language)
+        title = factory_api.guide_title(self.language)
+        body = factory_api.guide_text(self.language)
+        summary = factory_api.spoken_summary(self.language)
         self._emit("guide", title=title, text=body)
         self._started = True
         if self.settings.briefing:
@@ -160,13 +160,13 @@ class Assistant:
         if not pending:
             return None
         factory.pending = None
-        if not fabrica.is_confirmation(phrase):
+        if not factory_api.is_confirmation(phrase):
             self._emit("cancelled", action=pending.get("action"))
             return None
         action = pending.pop("action")
         try:
             answer = await asyncio.to_thread(factory.command, action, **pending)
-        except fabrica.FactoryError as exc:
+        except factory_api.FactoryError as exc:
             return str(exc)
         self._after_tool(json.dumps({"ok": answer.ok, "speech": answer.speech, "data": answer.data}))
         return answer.speech
@@ -392,14 +392,14 @@ def build_assistant(settings: Settings, *, on_event=None) -> Assistant:
     factory = None
     retranslate = None
     if settings.factory_url:
-        factory = fabrica.FactoryClient(
+        factory = factory_api.FactoryClient(
             settings.factory_url_clean(),
             settings.voice_key,
             company_id=settings.factory_company_id,
             language=settings.language,
         )
-        fabrica.register_tools(registry, factory, settings.language)
-        retranslate = lambda code: fabrica.register_tools(registry, factory, code)  # noqa: E731
+        factory_api.register_tools(registry, factory, settings.language)
+        retranslate = lambda code: factory_api.register_tools(registry, factory, code)  # noqa: E731
 
     model = None
     if not settings.missing():

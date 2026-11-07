@@ -273,10 +273,11 @@ class FactoryClient:
         body = self._call("POST", "/v1/voice/command", payload)
         return self._answer(body, action)
 
-    def build(self, texto: str, nombre: str | None = None) -> FactoryAnswer:
-        payload: dict[str, Any] = {"texto": texto, "language": self.language}
-        if nombre:
-            payload["nombre"] = nombre
+    def build(self, text: str, name: str | None = None) -> FactoryAnswer:
+        # The factory's build contract names its fields in Spanish.
+        payload: dict[str, Any] = {"texto": text, "language": self.language}
+        if name:
+            payload["nombre"] = name
         body = self._call(
             "POST", "/v1/voice/build", payload, timeout=self.build_timeout
         )
@@ -453,9 +454,9 @@ def register_tools(
             return {"ok": False, "speech": str(exc)}
         return {"ok": answer.ok, "speech": answer.speech, "data": answer.data}
 
-    def factory_build(texto: str) -> dict:
+    def factory_build(text: str) -> dict:
         try:
-            answer = client.build(texto)
+            answer = client.build(text)
         except FactoryError as exc:
             return {"ok": False, "speech": str(exc), "data": {}}
         return {"ok": answer.ok, "speech": answer.speech, "data": answer.data}
@@ -502,12 +503,12 @@ def register_tools(
         _description("build", language),
         object_schema(
             {
-                "texto": {
+                "text": {
                     "type": "string",
                     "description": _description("build_text", language),
                 }
             },
-            required=["texto"],
+            required=["text"],
         ),
         factory_build,
         timeout=240.0,

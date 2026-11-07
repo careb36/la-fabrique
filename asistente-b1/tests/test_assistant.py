@@ -7,7 +7,7 @@ import webbrowser
 
 import pytest
 
-from b1 import fabrica
+from b1 import factory as factory_api
 from b1.assistant import Assistant, build_assistant, detect_language
 from b1.config import Settings
 from b1.llm import ModelError, Reply, ToolCall
@@ -157,9 +157,9 @@ def test_startup_shows_the_guide_and_says_the_summary():
     result = asyncio.run(assistant.startup())
 
     guide_events = [e for e in events if e["type"] == "guide"]
-    assert guide_events and guide_events[0]["title"] == fabrica.guide_title("es")
-    assert result["text"] == fabrica.guide_text("es")
-    assert speaker.said == [fabrica.spoken_summary("es")]
+    assert guide_events and guide_events[0]["title"] == factory_api.guide_title("es")
+    assert result["text"] == factory_api.guide_text("es")
+    assert speaker.said == [factory_api.spoken_summary("es")]
 
 
 def test_startup_can_stay_silent():
@@ -199,15 +199,15 @@ def test_build_url_is_opened_once(monkeypatch):
 
     preview = "http://x/v1/voice/build/pagina/index.html"
 
-    def factory_build(texto: str) -> dict:
+    def factory_build(text: str) -> dict:
         return {"ok": True, "speech": "Listo.", "data": {"url": preview}}
 
     registry.register(
-        "factory_build", "construye", object_schema({"texto": {"type": "string"}}, ["texto"]),
+        "factory_build", "construye", object_schema({"text": {"type": "string"}}, ["text"]),
         factory_build,
     )
     model = ScriptedModel(
-        Reply(tool_calls=[ToolCall("c1", "factory_build", '{"texto": "una página"}')]),
+        Reply(tool_calls=[ToolCall("c1", "factory_build", '{"text": "una página"}')]),
         Reply(text="Listo: te la abrí."),
     )
     events: list[dict] = []
@@ -216,7 +216,7 @@ def test_build_url_is_opened_once(monkeypatch):
         registry=registry,
         events=events,
         cfg=settings(open_build_in_browser=True),
-        factory=fabrica.FactoryClient("http://x"),
+        factory=factory_api.FactoryClient("http://x"),
     )
     asyncio.run(assistant.handle("armá una página"))
     assert opened == [preview]
@@ -242,7 +242,7 @@ def test_only_the_factory_previews_are_opened(monkeypatch, url):
         model,
         registry=registry,
         cfg=settings(open_build_in_browser=True),
-        factory=fabrica.FactoryClient("http://x"),
+        factory=factory_api.FactoryClient("http://x"),
     )
     asyncio.run(assistant.handle("estado"))
     assert opened == []
@@ -255,11 +255,11 @@ def test_build_url_is_not_opened_when_disabled(monkeypatch):
     registry.register(
         "factory_build",
         "construye",
-        object_schema({"texto": {"type": "string"}}, ["texto"]),
-        lambda texto: {"ok": True, "data": {"url": "http://x/y"}},
+        object_schema({"text": {"type": "string"}}, ["text"]),
+        lambda text: {"ok": True, "data": {"url": "http://x/y"}},
     )
     model = ScriptedModel(
-        Reply(tool_calls=[ToolCall("c1", "factory_build", '{"texto": "algo"}')]),
+        Reply(tool_calls=[ToolCall("c1", "factory_build", '{"text": "algo"}')]),
         Reply(text="Hecho."),
     )
     assistant = make(model, registry=registry)
@@ -281,7 +281,7 @@ def test_detect_language(phrase, expected):
 
 
 def test_factory_language_follows_the_turn():
-    client = fabrica.FactoryClient("http://127.0.0.1:9", "", language="es")
+    client = factory_api.FactoryClient("http://127.0.0.1:9", "", language="es")
     assistant = make(
         ScriptedModel(Reply(text="ok")),
         factory=client,

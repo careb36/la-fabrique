@@ -97,7 +97,7 @@ Three pieces that talk to each other:
 |---|---|---|
 | **La Fabrique** | Multi-agent workflow (LangGraph) that takes a requirement to code with tests: PO → Architect → Scrum → Development → QA → SecOps → Documentation → Memory. FastAPI + React + Postgres + NATS. | `la-fabrique/` |
 | **Assistant B1** | Desktop assistant (PyQt6): listens, thinks and speaks. It also executes actions and reads the factory's answers out loud. | `asistente-b1/` |
-| **The fusion** | `/v1/voice/*` endpoints in the factory plus the assistant plugin and the Nemotron provider that makes both think with the same models. | `run_fusion.py`, `asistente-b1/b1/fabrica.py` |
+| **The fusion** | `/v1/voice/*` endpoints in the factory plus the assistant plugin and the Nemotron provider that makes both think with the same models. | `run_fusion.py`, `asistente-b1/b1/factory.py` |
 
 The **write → run → test** loop lives in four places, and all four are code
 that actually runs:
@@ -166,7 +166,7 @@ identical.
 ### From one sentence to a served page
 
 1. The assistant's model chooses the `factory_build` tool
-   (`asistente-b1/b1/fabrica.py`) and calls `POST /v1/voice/build` with the
+   (`asistente-b1/b1/factory.py`) and calls `POST /v1/voice/build` with the
    sentence the person said.
 2. The factory asks the *Developer* model through the `llm-proxy`, with one
    repair retry if the model answers prose instead of JSON
@@ -444,7 +444,7 @@ the person says "resume". It is a second explicit order, not a checkbox the
 model can fill in on its own. Assistant B1 adds one more step for the actions
 that decide or start work (`aprobar`, `rechazar`, `despachar`, `reanudar`,
 `asignar`): it runs them only after the person's next phrase is "yes, confirm"
-(`CONFIRM_ACTIONS` in `asistente-b1/b1/fabrica.py`).
+(`CONFIRM_ACTIONS` in `asistente-b1/b1/factory.py`).
 
 [⬆ Back to Top](#la-fabrique)
 
@@ -662,7 +662,7 @@ The voice façade is a thin adapter over the factory's own router functions:
 Canonical actions and their Spanish and English aliases are declared in
 `VOICE_ACTIONS` (`la-fabrique/backend/app/services/voice_control.py`); the
 handlers live in `routers/voice_actions.py`. The assistant's tool enum
-(`COMMAND_ACTIONS` in `asistente-b1/b1/fabrica.py`) and the factory's action
+(`COMMAND_ACTIONS` in `asistente-b1/b1/factory.py`) and the factory's action
 list are kept in step on purpose: an action only one side knows comes back as
 `ok: false` (the assistant answers `unknown action`, the factory a spoken
 refusal).
@@ -902,7 +902,7 @@ in the assistant's voice dependencies so it does not start deaf.
   ```
 
 - Voice vocabulary is duplicated on purpose: add an action to
-  `asistente-b1/b1/fabrica.py` and
+  `asistente-b1/b1/factory.py` and
   `la-fabrique/backend/app/services/voice_control.py` together, or the voice
   answers `ok: false` for it.
 - Do not copy code or prose from `profesor3/` into `asistente-b1/`;

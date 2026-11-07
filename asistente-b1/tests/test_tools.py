@@ -120,7 +120,7 @@ def test_async_handlers_are_awaited():
 
 @pytest.mark.parametrize("name", ["factory_status", "factory_command", "factory_build"])
 def test_factory_tool_names_are_stable(name):
-    from b1.fabrica import FactoryClient, register_tools
+    from b1.factory import FactoryClient, register_tools
 
     registry = ToolRegistry()
     register_tools(registry, FactoryClient("http://127.0.0.1:9"))
