@@ -23,7 +23,7 @@ import sys
 from . import APP_NAME, __version__
 from .assistant import build_assistant
 from .config import Settings, config_file
-from .fabrica import FactoryClient, FactoryError, guide_text, guide_title
+from .factory import FactoryClient, FactoryError, guide_text, guide_title
 from .i18n import normalize, t
 from .vad import describe as describe_vad
 from .speech import (

@@ -21,7 +21,8 @@ import urllib.request
 
 import pytest
 
-from b1 import fabrica, net
+from b1 import factory as factory_api
+from b1 import net
 from b1.assistant import Assistant
 from b1.config import Settings
 from b1.llm import ModelError, OpenAICompatModel, Reply, ToolCall
@@ -29,7 +30,7 @@ from b1.speech import Silence
 from b1.tools import ToolRegistry
 
 
-class RecordingFactory(fabrica.FactoryClient):
+class RecordingFactory(factory_api.FactoryClient):
     """A factory client that records commands instead of sending them."""
 
     def __init__(self) -> None:
@@ -38,7 +39,7 @@ class RecordingFactory(fabrica.FactoryClient):
 
     def command(self, action, **kwargs):  # type: ignore[override]
         self.sent.append((action, kwargs))
-        return fabrica.FactoryAnswer(ok=True, action=action, speech=f"hecho: {action}", data={})
+        return factory_api.FactoryAnswer(ok=True, action=action, speech=f"hecho: {action}", data={})
 
 
 class ScriptedModel:
@@ -51,7 +52,7 @@ class ScriptedModel:
 
 def _assistant(model, factory):
     registry = ToolRegistry()
-    fabrica.register_tools(registry, factory)
+    factory_api.register_tools(registry, factory)
     return Assistant(Settings(), model, registry, factory=factory, speaker=Silence())
 
 
@@ -60,7 +61,7 @@ def _asks(action: str, **extra) -> Reply:
     return Reply(tool_calls=[ToolCall("c1", "factory_command", arguments)])
 
 
-@pytest.mark.parametrize("action", sorted(fabrica.CONFIRM_ACTIONS))
+@pytest.mark.parametrize("action", sorted(factory_api.CONFIRM_ACTIONS))
 def test_a_decisive_action_waits_for_the_person(action):
     factory = RecordingFactory()
     assistant = _assistant(ScriptedModel(_asks(action, run_id=7), Reply(text="¿Confirmás?")), factory)
@@ -129,12 +130,12 @@ def test_an_action_outside_the_vocabulary_is_refused():
 
 @pytest.mark.parametrize("phrase", ["sí, confirmo", "Si confirmo", "confirmo", "yes, confirm", "Confirm."])
 def test_what_counts_as_a_yes(phrase):
-    assert fabrica.is_confirmation(phrase)
+    assert factory_api.is_confirmation(phrase)
 
 
 @pytest.mark.parametrize("phrase", ["sí, pero después", "no", "aprobá también la 8", ""])
 def test_what_does_not(phrase):
-    assert not fabrica.is_confirmation(phrase)
+    assert not factory_api.is_confirmation(phrase)
 
 
 # --- keys and redirects -------------------------------------------------------

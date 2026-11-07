@@ -169,7 +169,7 @@ class _StubFactory:
 
 
 def test_both_guides_exist_and_differ():
-    from b1.fabrica import guide_text, guide_title, spoken_summary
+    from b1.factory import guide_text, guide_title, spoken_summary
 
     for function in (guide_text, guide_title, spoken_summary):
         spanish, english = function("es"), function("en")

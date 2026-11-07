@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from b1 import fabrica
+from b1 import factory as factory_api
 from b1.tools import ToolRegistry
 
 VOICE_KEY = "clave-de-prueba"
@@ -138,9 +138,9 @@ def server():
     httpd.server_close()
 
 
-def client_for(httpd, key: str = VOICE_KEY, language: str = "es") -> fabrica.FactoryClient:
+def client_for(httpd, key: str = VOICE_KEY, language: str = "es") -> factory_api.FactoryClient:
     host, port = httpd.server_address[:2]
-    return fabrica.FactoryClient(f"http://{host}:{port}", key, language=language)
+    return factory_api.FactoryClient(f"http://{host}:{port}", key, language=language)
 
 
 def test_ping_ok(server):
@@ -157,7 +157,7 @@ def test_ping_without_key_is_reported(server):
 
 def test_unconfigured_factory_is_reported(server):
     server.mode = "unconfigured"
-    with pytest.raises(fabrica.FactoryError) as excinfo:
+    with pytest.raises(factory_api.FactoryError) as excinfo:
         client_for(server).status()
     assert "VOICE_API_KEY" in str(excinfo.value)
 
@@ -203,27 +203,27 @@ def test_english_language_is_forwarded(server):
 
 
 def test_unreachable_factory_says_so():
-    client = fabrica.FactoryClient("http://127.0.0.1:1", "")
-    with pytest.raises(fabrica.FactoryError) as excinfo:
+    client = factory_api.FactoryClient("http://127.0.0.1:1", "")
+    with pytest.raises(factory_api.FactoryError) as excinfo:
         client.status()
     assert "no puedo alcanzar" in str(excinfo.value)
 
 
 def test_tools_talk_to_the_factory(server):
     registry = ToolRegistry()
-    fabrica.register_tools(registry, client_for(server))
+    factory_api.register_tools(registry, client_for(server))
 
     status = asyncio.run(registry.dispatch("factory_status", {}))
     assert json.loads(status)["ok"] is True
 
-    built = asyncio.run(registry.dispatch("factory_build", {"texto": "un formulario"}))
+    built = asyncio.run(registry.dispatch("factory_build", {"text": "un formulario"}))
     body = json.loads(built)
     assert body["data"]["url"].startswith("http://127.0.0.1")
 
 
 def test_tools_turn_transport_errors_into_sentences():
     registry = ToolRegistry()
-    fabrica.register_tools(registry, fabrica.FactoryClient("http://127.0.0.1:1", ""))
+    factory_api.register_tools(registry, factory_api.FactoryClient("http://127.0.0.1:1", ""))
     body = json.loads(asyncio.run(registry.dispatch("factory_status", {})))
     assert body["ok"] is False
     assert "no puedo alcanzar" in body["speech"]
@@ -234,9 +234,9 @@ def test_tools_turn_transport_errors_into_sentences():
     [("es", "la fábrica"), ("en", "the factory")],
 )
 def test_guide_is_complete_in_both_languages(language, opening):
-    text = fabrica.guide_text(language)
-    summary = fabrica.spoken_summary(language)
-    title = fabrica.guide_title(language)
+    text = factory_api.guide_text(language)
+    summary = factory_api.spoken_summary(language)
+    title = factory_api.guide_title(language)
     assert len(text) > 300
     assert text.lower().startswith(opening)
     assert title
@@ -244,12 +244,12 @@ def test_guide_is_complete_in_both_languages(language, opening):
 
 
 def test_guide_mentions_the_paused_sprint_rule():
-    assert "pausa" in fabrica.guide_text("es")
-    assert "paused" in fabrica.guide_text("en")
+    assert "pausa" in factory_api.guide_text("es")
+    assert "paused" in factory_api.guide_text("en")
 
 
 def test_unknown_language_falls_back_to_spanish():
-    assert fabrica.guide_text("fr") == fabrica.guide_text("es")
+    assert factory_api.guide_text("fr") == factory_api.guide_text("es")
 
 
 def test_assignment_carries_the_agent_name(server):
@@ -280,8 +280,8 @@ def test_every_action_the_factory_accepts_is_offered_to_the_model():
             namespace["VOICE_ACTIONS"] = ast.literal_eval(node.value)
     accepted = set(namespace["VOICE_ACTIONS"].values())
 
-    registry = fabrica.ToolRegistry()
-    fabrica.register_tools(registry, fabrica.FactoryClient("http://127.0.0.1:9"))
+    registry = factory_api.ToolRegistry()
+    factory_api.register_tools(registry, factory_api.FactoryClient("http://127.0.0.1:9"))
     schema = next(
         d for d in registry.declarations() if d["function"]["name"] == "factory_command"
     )

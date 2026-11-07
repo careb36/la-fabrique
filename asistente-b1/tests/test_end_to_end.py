@@ -18,7 +18,7 @@ import pytest
 
 from b1.assistant import Assistant
 from b1.config import Settings
-from b1.fabrica import FactoryClient, register_tools
+from b1.factory import FactoryClient, register_tools
 from b1.llm import OpenAICompatModel, model_from_settings
 from b1.speech import Silence
 from b1.tools import ToolRegistry
@@ -46,7 +46,7 @@ class _ModelHandler(BaseHTTPRequestHandler):
                     "type": "function",
                     "function": {
                         "name": "factory_build",
-                        "arguments": json.dumps({"texto": "una página de prueba"}),
+                        "arguments": json.dumps({"text": "una página de prueba"}),
                     },
                 }
             else:

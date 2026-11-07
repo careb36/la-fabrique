@@ -218,7 +218,7 @@ b1/
   llm.py          /chat/completions client with tool calling and streaming (stdlib only)
   sentences.py    cuts a streamed answer into sentences for the speaker
   tools.py        tool declaration + validation + dispatch
-  fabrica.py      /v1/voice/* client, the guide and the three tools
+  factory.py      /v1/voice/* client, the guide and the three tools
   prompts.py      system prompt assembled at runtime
   audio.py        microphone, RMS, end-of-speech detector
   vad.py          Silero voice detector (from faster-whisper), energy fallback

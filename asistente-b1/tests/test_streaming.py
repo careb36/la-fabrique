@@ -136,7 +136,7 @@ def test_tool_call_fragments_are_put_back_together(server):
         sse(
             delta(tool_calls=[{"index": 0, "id": "call_a", "type": "function",
                                "function": {"name": "factory_build", "arguments": ""}}]),
-            delta(tool_calls=[{"index": 0, "function": {"arguments": '{"texto": '}}]),
+            delta(tool_calls=[{"index": 0, "function": {"arguments": '{"text": '}}]),
             delta(tool_calls=[{"index": 0, "function": {"name": "factory_build",
                                                          "arguments": '"una landing"}'}}]),
             delta(tool_calls=[{"index": 1, "id": "call_b",
@@ -146,10 +146,10 @@ def test_tool_call_fragments_are_put_back_together(server):
     reply = model_for(server).stream([], [{"type": "function"}], lambda _p: None)
 
     assert reply.tool_calls == [
-        ToolCall(id="call_a", name="factory_build", arguments='{"texto": "una landing"}'),
+        ToolCall(id="call_a", name="factory_build", arguments='{"text": "una landing"}'),
         ToolCall(id="call_b", name="factory_status", arguments="{}"),
     ]
-    assert json.loads(reply.tool_calls[0].arguments) == {"texto": "una landing"}
+    assert json.loads(reply.tool_calls[0].arguments) == {"text": "una landing"}
 
 
 def test_a_server_that_ignores_stream_still_answers(server):
