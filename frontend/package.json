@@ -35,7 +35,7 @@
     "react-dom": "^18.2.0",
     "react-i18next": "^17.1.9",
     "react-router-dom": "^7.18.5",
-    "tailwindcss": "^3.4.0",
+    "tailwindcss": "^4.3.4",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
